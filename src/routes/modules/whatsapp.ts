@@ -24,7 +24,7 @@ router.get('/qrcode', (req, res) => {
       error: 'Acesso negado!'
     })
   }
-  res.sendFile(path.join(__dirname, '..', '/views', '/qrcode.html'));
+  res.sendFile(path.join(process.cwd(), process.env.NODE_ENV === 'production' ? 'build' : 'src', '/views', '/qrcode.html'));
 });
 router.post('/', auth, (req, res, next) => {
   /*
