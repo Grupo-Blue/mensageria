@@ -1,0 +1,12 @@
+.idea/
+.vscode/
+.yarn/
+node_modules/
+build/
+temp/
+
+tmp/*
+!tmp/.gitkeep
+.env
+.yarnrc.yml
+auth_info_baileys

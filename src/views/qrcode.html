@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <title>QR Code</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js" integrity="sha512-894YE6QWD5I59HgZOGReFYm4dnWc1Qt5NtvYSaNcOP+u1T9qYdvdihz0PPSiiqn/+/3e7Jo4EaG7TubfWGUrMQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+  </head>
+  <body>
+    <noscript>
+      <strong>Necessário habilitar o javascript.</strong>
+    </noscript>
+    <div id="app">
+      <h1>Escanear QR Code</h1>
+
+      <div>
+        <div id="status">Conectando ao servidor para verificar status da conexão...</div>
+        <br /><br />
+        <!-- <img width="350" id="qr" style="padding: 40px; display: none;" src="data:image/jpeg;base64,2@M1Et41UeFQhkIYAn8XsdSPj7/MxKJxKlPTSptEjt8y/QZrExR++MHaUOXN6MGgroLF+9y+vC5hIo/g==,nYKagPq3oWSlW6HqniWCXDpULd0Er7o16qYnK5t+iFE=,r62mP0YONsEj2XBAGDa2iCsD30gdNyumnpEK2nLBnkA=,WLrwh2Rw9jCsboia9NtNYJNXkQl3DvAJpjoKSXV+0rw=" alt="Carregando..."> -->
+        <canvas id="qrcode"></canvas>
+      </div>
+
+      <script type="module">
+        import { Manager } from "https://cdn.socket.io/4.3.2/socket.io.esm.min.js";
+        const manager = new Manager();
+        const socket = manager.socket("/");
+        socket.on("qrcode", data => {
+          if (!data.connected && data.qrcode) {
+            new QRious({
+              element: document.getElementById("qrcode"),
+              value: data.qrcode,
+              size: 350,
+            });
+            const image = document.createElement('div');
+            const status = document.getElementById('status');
+            status.innerHTML = 'Escaneie o código abaixo para conectar:';
+
+            const img = document.getElementById('qrcode');
+            img.style = "display: block";
+          } else if (data.connected) {
+            const status = document.getElementById('status');
+            status.innerHTML = 'Conectado!';
+            const img = document.getElementById('qrcode');
+            img.style = "display: none";
+          }
+        });
+      </script>
+    </div>
+  </body>
+</html>
