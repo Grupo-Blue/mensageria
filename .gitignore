@@ -10,3 +10,4 @@ tmp/*
 .env
 .yarnrc.yml
 auth_info_baileys
+deploy.zip

@@ -41,13 +41,5 @@ jobs:
           password: ${{ secrets.PRODUCTION_PASSWORD }}
           script: |
             cd ~/code/mensageria
-            pm2 stop api_production
-            pm2 stop queue_production
-            unzip -o deploy.zip
-            yarn install --production
-            rm -rf deploy.zip
-            yarn db:migrate:prod
-            rm -rf node_modules/.prisma
-            npx prisma generate
-            pm2 start api_production
-            pm2 start queue_production
+            docker-compose down
+            docker-compose up --build
