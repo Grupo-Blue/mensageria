@@ -32,6 +32,44 @@
     "application/json"
   ],
   "paths": {
+    "/telegram": {
+      "post": {
+        "tags": [
+          "Telegram"
+        ],
+        "description": "Endpoint para envio de mensagem via Telegram.",
+        "parameters": [
+          {
+            "name": "data",
+            "in": "body",
+            "description": "Número de telefone do destinatário, com DDD e mensagem que deseja enviar",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/SendTelegramMessage"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "schema": {
+              "$ref": "#/definitions/SendedTelegramMessage"
+            },
+            "description": "Mensagem enviada com sucesso"
+          },
+          "400": {
+            "schema": {
+              "$ref": "#/definitions/IsNotTelegramNumber"
+            },
+            "description": "Este número não está cadastrado no Telegram"
+          }
+        },
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ]
+      }
+    },
     "/whatsapp/qrcode": {
       "get": {
         "tags": [
@@ -154,6 +192,72 @@
       }
     },
     "IsNotWhatsappNumber": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "type": "string",
+          "example": "Este número não está cadastrado no Whatsapp"
+        }
+      }
+    },
+    "SendTelegramMessage": {
+      "type": "object",
+      "properties": {
+        "phone": {
+          "type": "string",
+          "example": "71999998888"
+        },
+        "message": {
+          "type": "string",
+          "example": "Mensagem que deseja enviar"
+        }
+      }
+    },
+    "SendedTelegramMessage": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "object",
+          "properties": {
+            "remoteJid": {
+              "type": "string",
+              "example": "5571999998888@s.telegram.net"
+            },
+            "fromMe": {
+              "type": "boolean",
+              "example": true
+            },
+            "id": {
+              "type": "string",
+              "example": "abcdefgh"
+            }
+          }
+        },
+        "message": {
+          "type": "object",
+          "properties": {
+            "extendedTextMessage": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "example": "Mensagem enviada"
+                }
+              }
+            }
+          }
+        },
+        "messageTimestamp": {
+          "type": "string",
+          "example": "2342424"
+        },
+        "status": {
+          "type": "string",
+          "example": "PENDING"
+        }
+      }
+    },
+    "IsNotTelegramNumber": {
       "type": "object",
       "properties": {
         "error": {

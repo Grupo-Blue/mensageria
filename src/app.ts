@@ -7,6 +7,7 @@ import swaggerFile from './swagger.json';
 
 import routes from './routes';
 import AppError from './errors/AppError';
+import { telegramEvents } from './services/Telegram';
 
 
 const app = express();
@@ -32,6 +33,6 @@ app.use((err: Error, req: Request, res: Response, _: NextFunction) => {
   });
 });
 
-
+telegramEvents()
 
 export default app;

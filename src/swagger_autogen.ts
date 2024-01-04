@@ -52,6 +52,27 @@ const doc = {
         },
         IsNotWhatsappNumber: {
           error: "Este número não está cadastrado no Whatsapp"
+        },
+        SendTelegramMessage: {
+            phone: "71999998888",
+            message: "Mensagem que deseja enviar"
+        },
+        SendedTelegramMessage: {
+            key: {
+              remoteJid: "5571999998888@s.telegram.net",
+              fromMe: true,
+              id: "abcdefgh"
+            },
+            message: {
+              extendedTextMessage: {
+                text: "Mensagem enviada"
+              }
+            },
+            messageTimestamp: "2342424",
+            status: "PENDING"
+        },
+        IsNotTelegramNumber: {
+          error: "Este número não está cadastrado no Whatsapp"
         }
     }
 }
