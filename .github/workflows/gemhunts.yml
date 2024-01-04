@@ -1,9 +1,9 @@
-name: CI Api Staging
+name: CI Api Gem Hunts
 
 on:
   push:
     branches:
-      - staging
+      - gemhunts
 
 jobs:
   dist:
@@ -22,31 +22,27 @@ jobs:
           node-version: ${{ matrix.node-version }}
       - run: yarn
       - run: yarn build
-      - run: zip -r deploy.zip build tsconfig.json yarn.lock package.json database
+      - run: zip -r deploy.zip build tsconfig.json yarn.lock package.json
 
-      - name: Copy to Staging
+      - name: Copy to Gem Hunts
         uses: appleboy/scp-action@master
         with:
-          host: ${{ secrets.STAGING_IP }}
-          username: ${{ secrets.STAGING_USER }}
-          password: ${{ secrets.STAGING_PASSWORD }}
+          host: ${{ secrets.GEMHUNTS_IP }}
+          username: ${{ secrets.GEMHUNTS_USER }}
+          password: ${{ secrets.GEMHUNTS_PASSWORD }}
           source: "deploy.zip"
           target: "~/code/mensageria"
 
-      - name: Multiple Command on Contabo
+      - name: Multiple Command on Gem Hunts
         uses: appleboy/ssh-action@master
         with:
-          host: ${{ secrets.STAGING_IP }}
-          username: ${{ secrets.STAGING_USER }}
-          password: ${{ secrets.STAGING_PASSWORD }}
+          host: ${{ secrets.GEMHUNTS_IP }}
+          username: ${{ secrets.GEMHUNTS_USER }}
+          password: ${{ secrets.GEMHUNTS_PASSWORD }}
           script: |
             cd ~/code/mensageria
-            pm2 stop api_staging
+            # pm2 stop mensageria
             unzip -o deploy.zip
             yarn install --production
             rm -rf deploy.zip
-            yarn db:migrate:prod
-            rm -rf node_modules/.prisma
-            npx prisma generate
-            pm2 start api_staging
-
+            # pm2 start mensageria
