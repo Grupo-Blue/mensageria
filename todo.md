@@ -47,3 +47,14 @@
 - [ ] Integrar com Apache no servidor
 - [ ] Configurar variáveis de ambiente
 - [ ] Testar em produção
+
+## Deploy e Integração Final
+- [x] Configurar URL do backend para produção
+- [x] Fazer build de produção do frontend
+- [x] Transferir arquivos para o servidor
+- [x] Configurar Apache para servir o frontend
+- [x] Configurar PM2 para rodar Node.js
+- [x] Configurar proxies para APIs WhatsApp e Telegram
+- [x] Testar integração com backend WhatsApp
+- [x] Testar integração com backend Telegram
+- [x] Verificar autenticação OAuth em produção
