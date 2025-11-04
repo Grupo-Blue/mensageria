@@ -101,3 +101,23 @@
 - [x] Verificar variáveis de ambiente VITE_* faltantes
 - [x] Corrigir configuração de URLs no .env de produção
 - [x] Fazer deploy e testar
+
+## Bug: Erro 404 no callback do Google OAuth
+- [x] Verificar URL de callback configurada no Google Cloud Console
+- [x] Verificar rota de callback no backend
+- [x] Verificar logs do servidor para entender o erro
+- [ ] Verificar se deploy foi feito corretamente
+- [ ] Testar login após correção
+
+## Bug: Internal Server Error no callback após login Google bem-sucedido
+- [x] Verificar logs do servidor para identificar erro
+- [x] Corrigir erro de acesso ao banco de dados
+- [x] Corrigir problema de sessão não persistir após login
+- [x] Testar fluxo completo de login novamente
+- [x] Login funcionando corretamente
+
+## Bug: URL do QR Code usando localhost em vez do IP do servidor
+- [x] Corrigir URL do backend para usar http://185.215.166.113:5600
+- [x] Corrigir erro de arquivo qrcode.html não encontrado no backend
+- [x] Fazer deploy e testar geração de QR Code
+- [x] Sistema funcionando - QR Code gerado e WhatsApp conectado com sucesso

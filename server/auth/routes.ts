@@ -29,8 +29,11 @@ router.get(
       }
 
       // Criar token JWT usando o SDK
-      const token = await sdk.createSessionToken(user.openId, {
-        name: user.name || '',
+      const token = await sdk.signSession({
+        openId: user.openId,
+        appId: ENV.appId || 'mensageria-app',
+        name: user.name || user.email || 'User',
+      }, {
         expiresInMs: 7 * 24 * 60 * 60 * 1000, // 7 dias
       });
 
