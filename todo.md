@@ -121,3 +121,13 @@
 - [x] Corrigir erro de arquivo qrcode.html não encontrado no backend
 - [x] Fazer deploy e testar geração de QR Code
 - [x] Sistema funcionando - QR Code gerado e WhatsApp conectado com sucesso
+
+## Melhoria: Exibir QR Code inline na página de conexão WhatsApp
+- [ ] Modificar página WhatsApp.tsx para conectar via WebSocket ao backend
+- [ ] Exibir QR Code diretamente na página em vez de abrir nova aba
+- [ ] Adicionar barra de progresso mostrando estados: "Gerando QR Code", "Aguardando leitura", "Conectado"
+- [ ] Adicionar feedback visual para cada estado da conexão
+
+## Melhoria: Personalizar nome da conexão WhatsApp (remover "Baileys")
+- [ ] Configurar nome personalizado no backend (Baileys)
+- [ ] Testar se o nome aparece corretamente no WhatsApp

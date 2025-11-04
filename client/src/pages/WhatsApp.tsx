@@ -6,33 +6,93 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
 import { CheckCircle, Loader2, Plus, QrCode, Smartphone, Trash2, XCircle } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
+import { io, Socket } from "socket.io-client";
+import QRious from "qrious";
+import { Progress } from "@/components/ui/progress";
 
 export default function WhatsApp() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [identification, setIdentification] = useState("");
   const [qrCodeData, setQrCodeData] = useState<string | null>(null);
   const [selectedConnection, setSelectedConnection] = useState<string | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<"idle" | "generating" | "waiting" | "connected">("idle");
+  const [progress, setProgress] = useState(0);
+  const socketRef = useRef<Socket | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const utils = trpc.useUtils();
   const { data: connections, isLoading } = trpc.whatsapp.list.useQuery();
   
   const createMutation = trpc.whatsapp.create.useMutation({
     onSuccess: (data) => {
-      // Abre a página do QR Code em nova aba
-      if (data.qrCodeUrl) {
-        window.open(data.qrCodeUrl, '_blank');
-        toast.success("Página do QR Code aberta! Escaneie com seu WhatsApp");
-      }
-      setIsDialogOpen(false);
-      utils.whatsapp.list.invalidate();
+      // Conecta ao WebSocket para receber o QR Code
+      setConnectionStatus("generating");
+      setProgress(33);
+      
+      const backendUrl = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:5600";
+      const socket = io(backendUrl);
+      socketRef.current = socket;
+
+      socket.on("connect", () => {
+        console.log("WebSocket conectado");
+        setConnectionStatus("waiting");
+        setProgress(66);
+      });
+
+      socket.on("qrcode", (qrData: { connected: boolean; qrcode?: string }) => {
+        if (!qrData.connected && qrData.qrcode && canvasRef.current) {
+          // Renderiza o QR Code no canvas
+          new QRious({
+            element: canvasRef.current,
+            value: qrData.qrcode,
+            size: 256,
+          });
+          setConnectionStatus("waiting");
+          setProgress(66);
+          toast.info("QR Code gerado! Escaneie com seu WhatsApp");
+        } else if (qrData.connected) {
+          setConnectionStatus("connected");
+          setProgress(100);
+          toast.success("WhatsApp conectado com sucesso!");
+          setTimeout(() => {
+            setIsDialogOpen(false);
+            setQrCodeData(null);
+            setIdentification("");
+            setConnectionStatus("idle");
+            setProgress(0);
+            socket.disconnect();
+          }, 2000);
+          utils.whatsapp.list.invalidate();
+        }
+      });
+
+      socket.on("disconnect", () => {
+        console.log("WebSocket desconectado");
+      });
+
+      socket.on("error", (error: Error) => {
+        console.error("Erro no WebSocket:", error);
+        toast.error("Erro na conexão com o servidor");
+      });
     },
     onError: (error) => {
       toast.error(error.message);
       setIsDialogOpen(false);
+      setConnectionStatus("idle");
+      setProgress(0);
     },
   });
+
+  // Cleanup WebSocket on unmount
+  useEffect(() => {
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
+    };
+  }, []);
 
   const disconnectMutation = trpc.whatsapp.disconnect.useMutation({
     onSuccess: () => {
@@ -116,7 +176,7 @@ export default function WhatsApp() {
                   Digite uma identificação única para esta conexão
                 </DialogDescription>
               </DialogHeader>
-              {!qrCodeData ? (
+              {connectionStatus === "idle" ? (
                 <>
                   <div className="space-y-4 py-4">
                     <div className="space-y-2">
@@ -146,38 +206,76 @@ export default function WhatsApp() {
                   </DialogFooter>
                 </>
               ) : (
-                <div className="space-y-4 py-4">
-                  <div className="flex flex-col items-center space-y-4">
-                    <div className="p-4 bg-white rounded-lg border-2 border-gray-200">
-                      <img
-                        src={qrCodeData}
-                        alt="QR Code WhatsApp"
-                        className="w-64 h-64"
-                      />
+                <div className="space-y-6 py-4">
+                  {/* Barra de Progresso */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-medium">
+                        {connectionStatus === "generating" && "Gerando QR Code..."}
+                        {connectionStatus === "waiting" && "Aguardando leitura do QR Code"}
+                        {connectionStatus === "connected" && "Conectado com sucesso!"}
+                      </span>
+                      <span className="text-gray-500">{progress}%</span>
                     </div>
-                    <div className="text-center space-y-2">
-                      <p className="font-medium">Escaneie o QR Code</p>
-                      <p className="text-sm text-gray-500">
-                        1. Abra o WhatsApp no seu celular
-                        <br />
-                        2. Toque em Mais opções → Aparelhos conectados
-                        <br />
-                        3. Toque em Conectar um aparelho
-                        <br />
-                        4. Aponte seu celular para esta tela
-                      </p>
-                    </div>
+                    <Progress value={progress} className="h-2" />
                   </div>
+
+                  {/* QR Code */}
+                  {connectionStatus === "waiting" && (
+                    <div className="flex flex-col items-center space-y-4">
+                      <div className="p-4 bg-white rounded-lg border-2 border-gray-200">
+                        <canvas
+                          ref={canvasRef}
+                          className="w-64 h-64"
+                        />
+                      </div>
+                      <div className="text-center space-y-2">
+                        <p className="font-medium text-green-600">Escaneie o QR Code</p>
+                        <p className="text-sm text-gray-500">
+                          1. Abra o WhatsApp no seu celular
+                          <br />
+                          2. Toque em Mais opções → Aparelhos conectados
+                          <br />
+                          3. Toque em Conectar um aparelho
+                          <br />
+                          4. Aponte seu celular para esta tela
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Loading */}
+                  {connectionStatus === "generating" && (
+                    <div className="flex flex-col items-center space-y-4 py-8">
+                      <Loader2 className="w-12 h-12 animate-spin text-green-600" />
+                      <p className="text-sm text-gray-500">Conectando ao servidor...</p>
+                    </div>
+                  )}
+
+                  {/* Success */}
+                  {connectionStatus === "connected" && (
+                    <div className="flex flex-col items-center space-y-4 py-8">
+                      <CheckCircle className="w-16 h-16 text-green-600" />
+                      <p className="text-lg font-medium text-green-600">WhatsApp conectado!</p>
+                    </div>
+                  )}
+
                   <DialogFooter>
                     <Button
                       variant="outline"
                       onClick={() => {
+                        if (socketRef.current) {
+                          socketRef.current.disconnect();
+                        }
                         setIsDialogOpen(false);
                         setQrCodeData(null);
                         setIdentification("");
+                        setConnectionStatus("idle");
+                        setProgress(0);
                       }}
+                      disabled={connectionStatus === "connected"}
                     >
-                      Fechar
+                      Cancelar
                     </Button>
                   </DialogFooter>
                 </div>
