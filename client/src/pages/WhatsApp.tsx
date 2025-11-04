@@ -20,9 +20,12 @@ export default function WhatsApp() {
   
   const createMutation = trpc.whatsapp.create.useMutation({
     onSuccess: (data) => {
-      setQrCodeData(data.qrCode);
-      setSelectedConnection(identification);
-      toast.success("QR Code gerado! Escaneie com seu WhatsApp");
+      // Abre a página do QR Code em nova aba
+      if (data.qrCodeUrl) {
+        window.open(data.qrCodeUrl, '_blank');
+        toast.success("Página do QR Code aberta! Escaneie com seu WhatsApp");
+      }
+      setIsDialogOpen(false);
       utils.whatsapp.list.invalidate();
     },
     onError: (error) => {

@@ -38,16 +38,14 @@ export const appRouter = router({
           console.log('[whatsapp.create] Creating connection in DB');
           await db.createWhatsappConnection({ userId: ctx.user.id, identification: input.identification, status: "connecting" });
           
-          console.log('[whatsapp.create] Calling backend API:', `${BACKEND_API_URL}/whatsapp/qrcode?token=${input.identification}`);
-          const response = await axios.get(`${BACKEND_API_URL}/whatsapp/qrcode?token=${input.identification}`);
-          console.log('[whatsapp.create] Backend response:', response.data);
+          const apiToken = process.env.BACKEND_API_TOKEN;
+          if (!apiToken) throw new Error('BACKEND_API_TOKEN não configurado');
           
-          const connection = await db.getWhatsappConnectionByIdentification(input.identification);
-          if (connection) {
-            console.log('[whatsapp.create] Updating connection with QR code');
-            await db.updateWhatsappConnection(connection.id, { qrCode: response.data.qrCode, status: "qr_code" });
-          }
-          return { success: true, qrCode: response.data.qrCode };
+          // Retorna URL para o usuário acessar e escanear o QR Code
+          const qrCodeUrl = `${BACKEND_API_URL}/whatsapp/qrcode?token=${apiToken}`;
+          console.log('[whatsapp.create] QR Code URL:', qrCodeUrl);
+          
+          return { success: true, qrCodeUrl };
         } catch (error: any) {
           console.error('[whatsapp.create] Error:', error.message, error.response?.data);
           throw new Error(error.response?.data?.message || error.message || "Erro ao gerar QR Code");
@@ -60,7 +58,12 @@ export const appRouter = router({
     }),
     checkStatus: protectedProcedure.input(z.object({ identification: z.string() })).query(async ({ input }) => {
       try {
-        const response = await axios.get(`${BACKEND_API_URL}/whatsapp/status/${input.identification}`);
+        const apiToken = process.env.BACKEND_API_TOKEN;
+        if (!apiToken) throw new Error('BACKEND_API_TOKEN não configurado');
+        
+        const response = await axios.get(`${BACKEND_API_URL}/whatsapp/status/${input.identification}`, {
+          headers: { 'x-auth-api': apiToken }
+        });
         const connection = await db.getWhatsappConnectionByIdentification(input.identification);
         if (connection) {
           await db.updateWhatsappConnection(connection.id, {
@@ -76,7 +79,12 @@ export const appRouter = router({
     }),
     disconnect: protectedProcedure.input(z.object({ id: z.number(), identification: z.string() })).mutation(async ({ input }) => {
       try {
-        await axios.post(`${BACKEND_API_URL}/whatsapp/disconnect`, { identification: input.identification });
+        const apiToken = process.env.BACKEND_API_TOKEN;
+        if (!apiToken) throw new Error('BACKEND_API_TOKEN não configurado');
+        
+        await axios.post(`${BACKEND_API_URL}/whatsapp/disconnect`, { identification: input.identification }, {
+          headers: { 'x-auth-api': apiToken }
+        });
         await db.updateWhatsappConnection(input.id, { status: "disconnected", qrCode: null });
         return { success: true };
       } catch (error: any) {
@@ -90,7 +98,13 @@ export const appRouter = router({
     sendMessage: protectedProcedure.input(z.object({ connectionId: z.number(), identification: z.string(), recipient: z.string(), message: z.string() })).mutation(async ({ ctx, input }) => {
       await db.createMessage({ userId: ctx.user.id, platform: "whatsapp", connectionId: input.connectionId, recipient: input.recipient, content: input.message, status: "pending" });
       try {
-        await axios.post(`${BACKEND_API_URL}/whatsapp?token=${input.identification}`, { phone: input.recipient, message: input.message });
+        const apiToken = process.env.BACKEND_API_TOKEN;
+        if (!apiToken) throw new Error('BACKEND_API_TOKEN não configurado');
+        
+        await axios.post(`${BACKEND_API_URL}/whatsapp?token=${input.identification}`, 
+          { phone: input.recipient, message: input.message },
+          { headers: { 'x-auth-api': apiToken } }
+        );
         return { success: true };
       } catch (error: any) {
         throw new Error(error.response?.data?.message || "Erro ao enviar mensagem");
@@ -103,7 +117,13 @@ export const appRouter = router({
     }),
     create: protectedProcedure.input(z.object({ botToken: z.string().min(1) })).mutation(async ({ ctx, input }) => {
       try {
-        const response = await axios.post(`${BACKEND_API_URL}/telegram/connect`, { token: input.botToken });
+        const apiToken = process.env.BACKEND_API_TOKEN;
+        if (!apiToken) throw new Error('BACKEND_API_TOKEN não configurado');
+        
+        const response = await axios.post(`${BACKEND_API_URL}/telegram/connect`, 
+          { token: input.botToken },
+          { headers: { 'x-auth-api': apiToken } }
+        );
         await db.createTelegramConnection({ userId: ctx.user.id, botToken: input.botToken, botUsername: response.data.username, status: "connected", lastConnectedAt: new Date() });
         return { success: true, username: response.data.username };
       } catch (error: any) {
@@ -121,7 +141,13 @@ export const appRouter = router({
     sendMessage: protectedProcedure.input(z.object({ connectionId: z.number(), botToken: z.string(), chatId: z.string(), message: z.string() })).mutation(async ({ ctx, input }) => {
       await db.createMessage({ userId: ctx.user.id, platform: "telegram", connectionId: input.connectionId, recipient: input.chatId, content: input.message, status: "pending" });
       try {
-        await axios.post(`${BACKEND_API_URL}/telegram/send`, { token: input.botToken, chatId: input.chatId, message: input.message });
+        const apiToken = process.env.BACKEND_API_TOKEN;
+        if (!apiToken) throw new Error('BACKEND_API_TOKEN não configurado');
+        
+        await axios.post(`${BACKEND_API_URL}/telegram/send`, 
+          { token: input.botToken, chatId: input.chatId, message: input.message },
+          { headers: { 'x-auth-api': apiToken } }
+        );
         return { success: true };
       } catch (error: any) {
         throw new Error(error.response?.data?.message || "Erro ao enviar mensagem");
