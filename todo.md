@@ -95,3 +95,9 @@
 - [x] Corrigir chamadas de API para formato correto
 - [x] Fazer deploy das correções
 - [ ] Testar criação de QR Code novamente
+
+## Bug: Erro "Invalid URL" na home em produção
+- [x] Investigar qual URL está causando o erro
+- [x] Verificar variáveis de ambiente VITE_* faltantes
+- [x] Corrigir configuração de URLs no .env de produção
+- [x] Fazer deploy e testar

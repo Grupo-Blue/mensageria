@@ -16,6 +16,12 @@ export const getLoginUrl = () => {
 export const getManusLoginUrl = () => {
   const oauthPortalUrl = import.meta.env.VITE_OAUTH_PORTAL_URL;
   const appId = import.meta.env.VITE_APP_ID;
+  
+  // Se as variáveis não estiverem configuradas, retorna URL do Google OAuth
+  if (!oauthPortalUrl || !appId) {
+    return getLoginUrl();
+  }
+  
   const redirectUri = `${window.location.origin}/api/oauth/callback`;
   const state = btoa(redirectUri);
 
