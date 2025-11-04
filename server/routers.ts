@@ -29,16 +29,28 @@ export const appRouter = router({
     create: protectedProcedure
       .input(z.object({ identification: z.string().min(1) }))
       .mutation(async ({ ctx, input }) => {
-        const existing = await db.getWhatsappConnectionByIdentification(input.identification);
-        if (existing) throw new Error("Identificação já existe");
-        await db.createWhatsappConnection({ userId: ctx.user.id, identification: input.identification, status: "connecting" });
+        console.log('[whatsapp.create] Starting with:', { userId: ctx.user.id, identification: input.identification });
         try {
-          const response = await axios.post(`${BACKEND_API_URL}/whatsapp/qrcode`, { identification: input.identification });
+          const existing = await db.getWhatsappConnectionByIdentification(input.identification);
+          console.log('[whatsapp.create] Existing check:', existing);
+          if (existing) throw new Error("Identificação já existe");
+          
+          console.log('[whatsapp.create] Creating connection in DB');
+          await db.createWhatsappConnection({ userId: ctx.user.id, identification: input.identification, status: "connecting" });
+          
+          console.log('[whatsapp.create] Calling backend API:', `${BACKEND_API_URL}/whatsapp/qrcode?token=${input.identification}`);
+          const response = await axios.get(`${BACKEND_API_URL}/whatsapp/qrcode?token=${input.identification}`);
+          console.log('[whatsapp.create] Backend response:', response.data);
+          
           const connection = await db.getWhatsappConnectionByIdentification(input.identification);
-          if (connection) await db.updateWhatsappConnection(connection.id, { qrCode: response.data.qrCode, status: "qr_code" });
+          if (connection) {
+            console.log('[whatsapp.create] Updating connection with QR code');
+            await db.updateWhatsappConnection(connection.id, { qrCode: response.data.qrCode, status: "qr_code" });
+          }
           return { success: true, qrCode: response.data.qrCode };
         } catch (error: any) {
-          throw new Error(error.response?.data?.message || "Erro ao gerar QR Code");
+          console.error('[whatsapp.create] Error:', error.message, error.response?.data);
+          throw new Error(error.response?.data?.message || error.message || "Erro ao gerar QR Code");
         }
       }),
     getQRCode: protectedProcedure.input(z.object({ identification: z.string() })).query(async ({ input }) => {
@@ -78,7 +90,7 @@ export const appRouter = router({
     sendMessage: protectedProcedure.input(z.object({ connectionId: z.number(), identification: z.string(), recipient: z.string(), message: z.string() })).mutation(async ({ ctx, input }) => {
       await db.createMessage({ userId: ctx.user.id, platform: "whatsapp", connectionId: input.connectionId, recipient: input.recipient, content: input.message, status: "pending" });
       try {
-        await axios.post(`${BACKEND_API_URL}/whatsapp/send`, { identification: input.identification, number: input.recipient, message: input.message });
+        await axios.post(`${BACKEND_API_URL}/whatsapp?token=${input.identification}`, { phone: input.recipient, message: input.message });
         return { success: true };
       } catch (error: any) {
         throw new Error(error.response?.data?.message || "Erro ao enviar mensagem");

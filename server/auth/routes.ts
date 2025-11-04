@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import passport from './google';
-import jwt from 'jsonwebtoken';
 import { ENV } from '../_core/env';
 import { COOKIE_NAME } from '../../shared/const';
 import { getSessionCookieOptions } from '../_core/cookies';
+import { sdk } from '../_core/sdk';
 
 const router = Router();
 
@@ -20,7 +20,7 @@ router.get(
     session: false,
     failureRedirect: '/?error=auth_failed' 
   }),
-  (req, res) => {
+  async (req, res) => {
     try {
       const user = req.user as any;
       
@@ -28,17 +28,11 @@ router.get(
         return res.redirect('/?error=no_user');
       }
 
-      // Criar token JWT
-      const token = jwt.sign(
-        {
-          openId: user.openId,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-        },
-        ENV.jwtSecret,
-        { expiresIn: '7d' }
-      );
+      // Criar token JWT usando o SDK
+      const token = await sdk.createSessionToken(user.openId, {
+        name: user.name || '',
+        expiresInMs: 7 * 24 * 60 * 60 * 1000, // 7 dias
+      });
 
       // Definir cookie com token
       const cookieOptions = getSessionCookieOptions(req);

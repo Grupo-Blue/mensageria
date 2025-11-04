@@ -68,3 +68,30 @@
 - [x] Atualizar gerenciamento de sessão JWT
 - [x] Testar login com Google direto
 - [x] Fazer deploy das alterações
+
+## Bug: Internal Server Error no Callback OAuth
+- [ ] Investigar logs do servidor para identificar erro
+- [ ] Corrigir erro no código de callback
+- [ ] Testar fluxo completo de login novamente
+
+## Bug: Sessão não persiste após login
+- [ ] Verificar logs do callback OAuth
+- [ ] Corrigir salvamento de sessão/cookie
+- [ ] Testar persistência de login
+
+## Bug: Schema do banco incompatível
+- [x] Corrigir nomes das colunas no schema Drizzle
+- [x] Fazer push do schema corrigido
+- [ ] Testar criação de conexão WhatsApp
+
+## Bug: Erro 500 ao criar conexão WhatsApp
+- [x] Verificar logs do backend para erro 500
+- [x] Corrigir BACKEND_API_URL para apontar para localhost:5600
+- [ ] Testar criação de conexão novamente
+
+## Bug: Roteamento Apache incorreto
+- [x] Corrigir configuração Apache para proxy de APIs
+- [x] Testar acesso a /whatsapp, /telegram, /docs
+- [x] Corrigir chamadas de API para formato correto
+- [x] Fazer deploy das correções
+- [ ] Testar criação de QR Code novamente
