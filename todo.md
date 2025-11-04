@@ -58,3 +58,13 @@
 - [x] Testar integração com backend WhatsApp
 - [x] Testar integração com backend Telegram
 - [x] Verificar autenticação OAuth em produção
+
+## Correções OAuth e Autenticação Direta Google
+- [x] Corrigir redirect_uri no Google Cloud Console
+- [x] Remover dependência do Manus OAuth
+- [x] Implementar Google OAuth direto no frontend
+- [x] Implementar Google OAuth direto no backend
+- [x] Criar rotas de callback OAuth personalizadas
+- [x] Atualizar gerenciamento de sessão JWT
+- [ ] Testar login com Google direto
+- [x] Fazer deploy das alterações

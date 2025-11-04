@@ -6,8 +6,14 @@ export const APP_LOGO =
   import.meta.env.VITE_APP_LOGO ||
   "https://placehold.co/128x128/E1E7EF/1F2937?text=App";
 
-// Generate login URL at runtime so redirect URI reflects the current origin.
+// Generate login URL for Google OAuth
 export const getLoginUrl = () => {
+  // Usar Google OAuth direto
+  return `${window.location.origin}/api/auth/google`;
+};
+
+// URL de login legado (Manus OAuth) - manter para compatibilidade
+export const getManusLoginUrl = () => {
   const oauthPortalUrl = import.meta.env.VITE_OAUTH_PORTAL_URL;
   const appId = import.meta.env.VITE_APP_ID;
   const redirectUri = `${window.location.origin}/api/oauth/callback`;
