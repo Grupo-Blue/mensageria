@@ -66,5 +66,5 @@
 - [x] Implementar Google OAuth direto no backend
 - [x] Criar rotas de callback OAuth personalizadas
 - [x] Atualizar gerenciamento de sessão JWT
-- [ ] Testar login com Google direto
+- [x] Testar login com Google direto
 - [x] Fazer deploy das alterações
