@@ -31,14 +31,28 @@ export default function WhatsApp() {
       setConnectionStatus("generating");
       setProgress(33);
       
-      const backendUrl = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:5600";
-      const socket = io(backendUrl);
+      // Conecta ao Socket.IO via HTTPS usando o mesmo domínio
+      // O Apache deve fazer proxy do Socket.IO para o backend
+      const socket = io("https://mensageria.grupoblue.com.br", {
+        path: "/socket.io",
+        transports: ["polling", "websocket"],
+        reconnection: true,
+        reconnectionDelay: 1000,
+        reconnectionAttempts: 5
+      });
       socketRef.current = socket;
 
       socket.on("connect", () => {
-        console.log("WebSocket conectado");
+        console.log("WebSocket conectado", socket.id);
+        // Solicita o QR Code para a conexão recém-criada
+        socket.emit("requestQRCode", { identification });
         setConnectionStatus("waiting");
         setProgress(66);
+      });
+      
+      // Debug: escuta TODOS os eventos
+      socket.onAny((eventName, ...args) => {
+        console.log("Evento recebido:", eventName, args);
       });
 
       socket.on("qrcode", (qrData: { connected: boolean; qrcode?: string }) => {
