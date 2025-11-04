@@ -1,11 +1,21 @@
-import { eq } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import { 
+  InsertUser, 
+  users, 
+  whatsappConnections,
+  telegramConnections,
+  messages,
+  settings,
+  InsertWhatsappConnection,
+  InsertTelegramConnection,
+  InsertMessage,
+  InsertSettings
+} from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
-// Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
@@ -89,4 +99,112 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+// WhatsApp Connections
+export async function getWhatsappConnections(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return await db.select().from(whatsappConnections).where(eq(whatsappConnections.userId, userId));
+}
+
+export async function createWhatsappConnection(connection: InsertWhatsappConnection) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db.insert(whatsappConnections).values(connection);
+}
+
+export async function updateWhatsappConnection(id: number, data: Partial<InsertWhatsappConnection>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db.update(whatsappConnections).set(data).where(eq(whatsappConnections.id, id));
+}
+
+export async function deleteWhatsappConnection(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db.delete(whatsappConnections).where(eq(whatsappConnections.id, id));
+}
+
+export async function getWhatsappConnectionByIdentification(identification: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  
+  const result = await db.select().from(whatsappConnections).where(eq(whatsappConnections.identification, identification)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+// Telegram Connections
+export async function getTelegramConnections(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return await db.select().from(telegramConnections).where(eq(telegramConnections.userId, userId));
+}
+
+export async function createTelegramConnection(connection: InsertTelegramConnection) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db.insert(telegramConnections).values(connection);
+}
+
+export async function updateTelegramConnection(id: number, data: Partial<InsertTelegramConnection>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db.update(telegramConnections).set(data).where(eq(telegramConnections.id, id));
+}
+
+export async function deleteTelegramConnection(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db.delete(telegramConnections).where(eq(telegramConnections.id, id));
+}
+
+// Messages
+export async function getMessages(userId: number, limit: number = 50) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return await db.select().from(messages).where(eq(messages.userId, userId)).orderBy(desc(messages.sentAt)).limit(limit);
+}
+
+export async function createMessage(message: InsertMessage) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db.insert(messages).values(message);
+}
+
+export async function updateMessageStatus(id: number, status: "sent" | "failed" | "pending", errorMessage?: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db.update(messages).set({ status, errorMessage }).where(eq(messages.id, id));
+}
+
+// Settings
+export async function getUserSettings(userId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  
+  const result = await db.select().from(settings).where(eq(settings.userId, userId)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function upsertUserSettings(userId: number, data: Partial<InsertSettings>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const existing = await getUserSettings(userId);
+  
+  if (existing) {
+    await db.update(settings).set(data).where(eq(settings.userId, userId));
+  } else {
+    await db.insert(settings).values({ userId, ...data });
+  }
+}
