@@ -131,3 +131,9 @@
 ## Melhoria: Personalizar nome da conexão WhatsApp (remover "Baileys")
 - [ ] Configurar nome personalizado no backend (Baileys)
 - [ ] Testar se o nome aparece corretamente no WhatsApp
+
+## Bug: QR Code não aparece porque conexão já está ativa
+- [ ] Mapear todas as APIs do backend WhatsApp disponíveis
+- [ ] Implementar verificação de status de conexão no frontend
+- [ ] Adicionar funcionalidade de desconexão para gerar novo QR Code
+- [ ] Testar fluxo completo: verificar status → desconectar → gerar QR Code → conectar

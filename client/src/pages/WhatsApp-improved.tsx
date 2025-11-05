@@ -124,38 +124,9 @@ export default function WhatsApp() {
     connectToSocket(false);
   };
 
-  const handleForceNew = async () => {
-    try {
-      toast.info("Desconectando sessão ativa...");
-      
-      // Chama endpoint REST do backend para forçar logout
-      const apiToken = import.meta.env.VITE_BACKEND_API_TOKEN;
-      const response = await fetch("https://mensageria.grupoblue.com.br/whatsapp/disconnect", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-auth-api": apiToken || ""
-        },
-        body: JSON.stringify({
-          identification: identification || "mensageria"
-        })
-      });
-      
-      if (!response.ok) {
-        throw new Error("Erro ao desconectar");
-      }
-      
-      toast.success("Sessão desconectada! Gerando novo QR Code...");
-      
-      // Aguarda 1 segundo para garantir que o backend processou o logout
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Agora solicita novo QR Code
-      connectToSocket(true);
-    } catch (error: any) {
-      console.error("Erro ao desconectar:", error);
-      toast.error("Erro ao desconectar. Tente novamente.");
-    }
+  const handleForceNew = () => {
+    // Força criação de nova conexão (desconecta a atual)
+    connectToSocket(true);
   };
 
   // Cleanup WebSocket on unmount
