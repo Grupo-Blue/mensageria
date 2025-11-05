@@ -55,12 +55,12 @@ export default function WhatsApp() {
       setConnectionStatus("waiting");
       setProgress(66);
       
-      // Timeout de 8 segundos para detectar se já está conectado
-      qrTimeoutRef.current = setTimeout(() => {
-        console.log("Timeout: QR Code não recebido em 8 segundos");
-        setQrCodeTimeout(true);
-        setConnectionStatus("already_connected");
-      }, 8000);
+      // Timeout desativado temporariamente para permitir QR Code carregar
+      // qrTimeoutRef.current = setTimeout(() => {
+      //   console.log("Timeout: QR Code não recebido em 8 segundos");
+      //   setQrCodeTimeout(true);
+      //   setConnectionStatus("already_connected");
+      // }, 8000);
     });
     
     // Debug: escuta TODOS os eventos

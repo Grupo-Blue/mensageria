@@ -137,3 +137,7 @@
 - [ ] Implementar verificação de status de conexão no frontend
 - [ ] Adicionar funcionalidade de desconexão para gerar novo QR Code
 - [ ] Testar fluxo completo: verificar status → desconectar → gerar QR Code → conectar
+
+## Bug: Timeout de 8 segundos aparece antes do QR Code carregar
+- [x] Desativar timeout temporariamente para permitir QR Code aparecer
+- [x] Testar em produção após desativar timeout
