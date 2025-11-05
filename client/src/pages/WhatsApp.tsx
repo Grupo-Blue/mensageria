@@ -48,12 +48,9 @@ export default function WhatsApp() {
     socket.on("connect", () => {
       console.log("WebSocket conectado", socket.id);
       
-      // Solicita o QR Code
-      const requestData = {
-        identification: identification || "mensageria",
-        forceNew: forceNew
-      };
-      socket.emit("requestQRCode", requestData);
+      // Solicita QR Code ao backend
+      socket.emit("requestQRCode", { identification });
+      console.log("Evento requestQRCode emitido para:", identification);
       
       setConnectionStatus("waiting");
       setProgress(66);
