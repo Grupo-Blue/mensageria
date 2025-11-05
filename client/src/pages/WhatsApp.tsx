@@ -24,6 +24,7 @@ export default function WhatsApp() {
 
   const utils = trpc.useUtils();
   const { data: connections, isLoading } = trpc.whatsapp.list.useQuery();
+  const saveConnectionMutation = trpc.whatsapp.saveConnection.useMutation();
 
   const connectToSocket = (forceNew: boolean = false) => {
     setConnectionStatus("generating");
@@ -92,6 +93,22 @@ export default function WhatsApp() {
         setConnectionStatus("connected");
         setProgress(100);
         toast.success("WhatsApp conectado com sucesso!");
+        
+        // Salva a conexão no banco de dados
+        saveConnectionMutation.mutate(
+          { identification },
+          {
+            onSuccess: () => {
+              console.log("Conexão salva no banco de dados");
+              utils.whatsapp.list.invalidate();
+            },
+            onError: (error) => {
+              console.error("Erro ao salvar conexão:", error);
+              toast.error("Erro ao salvar conexão no banco de dados");
+            }
+          }
+        );
+        
         setTimeout(() => {
           setIsDialogOpen(false);
           setIdentification("");
@@ -99,7 +116,6 @@ export default function WhatsApp() {
           setProgress(0);
           socket.disconnect();
         }, 2000);
-        utils.whatsapp.list.invalidate();
       }
     });
 

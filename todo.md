@@ -153,3 +153,16 @@
 - [x] Remover alerta de "Conexão já ativa"
 - [x] Permitir gerar QR Code sempre que solicitado
 - [ ] Testar múltiplas conexões funcionando simultaneamente
+
+## Bug: Apache intercepta rotas do frontend React (/whatsapp, /telegram)
+- [x] Remover proxy de /whatsapp e /telegram do Apache (são rotas do frontend)
+- [x] Manter apenas proxy de /api/whatsapp e /api/telegram para o backend
+- [x] Testar acesso direto a https://mensageria.grupoblue.com.br/whatsapp
+- [ ] Testar geração de QR Code após correção
+
+## Feature: Sincronizar conexões WhatsApp com banco de dados
+- [x] Criar schema no banco de dados para armazenar conexões WhatsApp
+- [x] Implementar endpoint tRPC para salvar conexão após sucesso
+- [x] Atualizar frontend para chamar endpoint quando conectar
+- [x] Exibir conexões salvas na lista de gerenciamento
+- [ ] Testar salvamento e exibição de conexões

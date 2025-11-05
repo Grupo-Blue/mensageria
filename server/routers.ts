@@ -95,6 +95,35 @@ export const appRouter = router({
       await db.deleteWhatsappConnection(input.id);
       return { success: true };
     }),
+    saveConnection: protectedProcedure
+      .input(z.object({ identification: z.string(), phoneNumber: z.string().optional() }))
+      .mutation(async ({ ctx, input }) => {
+        try {
+          const existing = await db.getWhatsappConnectionByIdentification(input.identification);
+          if (existing) {
+            // Atualizar conexão existente
+            await db.updateWhatsappConnection(existing.id, {
+              status: "connected",
+              phoneNumber: input.phoneNumber,
+              lastConnectedAt: new Date(),
+            });
+            return { success: true, id: existing.id };
+          } else {
+            // Criar nova conexão
+            await db.createWhatsappConnection({
+              userId: ctx.user.id,
+              identification: input.identification,
+              status: "connected",
+              phoneNumber: input.phoneNumber,
+              lastConnectedAt: new Date(),
+            });
+            const newConnection = await db.getWhatsappConnectionByIdentification(input.identification);
+            return { success: true, id: newConnection?.id };
+          }
+        } catch (error: any) {
+          throw new Error("Erro ao salvar conexão");
+        }
+      }),
     sendMessage: protectedProcedure.input(z.object({ connectionId: z.number(), identification: z.string(), recipient: z.string(), message: z.string() })).mutation(async ({ ctx, input }) => {
       await db.createMessage({ userId: ctx.user.id, platform: "whatsapp", connectionId: input.connectionId, recipient: input.recipient, content: input.message, status: "pending" });
       try {
