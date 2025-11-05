@@ -141,3 +141,15 @@
 ## Bug: Timeout de 8 segundos aparece antes do QR Code carregar
 - [x] Desativar timeout temporariamente para permitir QR Code aparecer
 - [x] Testar em produção após desativar timeout
+
+## Bug: Backend retorna "conexão ativa" mesmo sem conexão ativa
+- [x] Investigar logs do backend para entender por que retorna connected: true
+- [x] Verificar pasta auth_info_baileys para ver se há sessões antigas
+- [x] Limpar sessões antigas ou corrigir lógica de detecção
+- [ ] Testar geração de QR Code após correção
+
+## Melhoria: Permitir múltiplas conexões WhatsApp simultâneas
+- [x] Remover estado already_connected do frontend
+- [x] Remover alerta de "Conexão já ativa"
+- [x] Permitir gerar QR Code sempre que solicitado
+- [ ] Testar múltiplas conexões funcionando simultaneamente

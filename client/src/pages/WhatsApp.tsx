@@ -15,7 +15,7 @@ import { Progress } from "@/components/ui/progress";
 export default function WhatsApp() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [identification, setIdentification] = useState("");
-  const [connectionStatus, setConnectionStatus] = useState<"idle" | "generating" | "waiting" | "connected" | "already_connected">("idle");
+  const [connectionStatus, setConnectionStatus] = useState<"idle" | "generating" | "waiting" | "connected">("idle");
   const [progress, setProgress] = useState(0);
   const [qrCodeTimeout, setQrCodeTimeout] = useState(false);
   const socketRef = useRef<Socket | null>(null);
@@ -311,38 +311,7 @@ export default function WhatsApp() {
               </div>
             )}
 
-            {connectionStatus === "already_connected" && qrCodeTimeout && (
-              <div className="space-y-4 py-4">
-                <Alert className="bg-yellow-50 border-yellow-200">
-                  <AlertTriangle className="h-4 w-4 text-yellow-600" />
-                  <AlertDescription className="text-yellow-800">
-                    <p className="font-medium mb-2">Conexão já ativa</p>
-                    <p className="text-sm">
-                      Parece que já existe uma conexão WhatsApp ativa. Para gerar um novo QR Code, você precisa desconectar a sessão atual primeiro.
-                    </p>
-                  </AlertDescription>
-                </Alert>
-
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={handleCancel}
-                    className="flex-1"
-                  >
-                    Cancelar
-                  </Button>
-                  <Button
-                    onClick={handleForceNew}
-                    className="flex-1"
-                  >
-                    Desconectar e Gerar Novo QR Code
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {connectionStatus !== "already_connected" && (
-              <DialogFooter>
+            <DialogFooter>
                 {connectionStatus === "idle" ? (
                   <>
                     <Button variant="outline" onClick={handleCancel}>
@@ -358,7 +327,6 @@ export default function WhatsApp() {
                   </Button>
                 )}
               </DialogFooter>
-            )}
           </DialogContent>
         </Dialog>
       </div>
