@@ -4,6 +4,8 @@ import {
   store,
 } from '../../controllers/WhatsappController';
 import auth from '../../middlewares/auth';
+import groupStore from '../../services/Baileys/groupStore';
+import { listConnections } from '../../services/Baileys';
 
 
 const router = Router();
@@ -57,5 +59,14 @@ router.post('/', auth, (req, res, next) => {
 
   next()
 }, store);
+
+router.get('/groups', auth, (_req, res) => {
+  const groups = groupStore.listAll();
+  return res.json(groups);
+});
+
+router.get('/connections', auth, (_req, res) => {
+  return res.json(listConnections());
+});
 
 export default router;
