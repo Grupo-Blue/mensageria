@@ -244,3 +244,11 @@
 - [x] Substituir inputs de texto por selects de grupos
 - [x] Testar detecção automática de grupos
 - [x] Deploy em produção
+
+## Bug: Captura de grupos não está funcionando
+- [x] Investigar por que handler de messages.upsert não executa código de captura
+- [x] Verificar se há conflito com código existente
+- [x] Corrigir handler para capturar grupos corretamente
+- [x] Obter nomes dos grupos via groupMetadata
+- [x] Testar com mensagens reais
+- [x] Verificar se grupos aparecem no banco de dados

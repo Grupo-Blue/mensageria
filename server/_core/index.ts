@@ -8,6 +8,7 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import passport from "../auth/google";
 import authRoutes from "../auth/routes";
+import whatsappRoutes from "../whatsapp/routes";
 import session from "express-session";
 import cookieParser from "cookie-parser";
 import { ENV } from "./env";
@@ -62,6 +63,9 @@ async function startServer() {
   
   // Google OAuth routes
   app.use('/api/auth', authRoutes);
+  
+  // WhatsApp routes
+  app.use('/api/whatsapp', whatsappRoutes);
   
   // OAuth callback under /api/oauth/callback (Manus - manter para compatibilidade)
   registerOAuthRoutes(app);

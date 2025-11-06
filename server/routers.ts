@@ -26,6 +26,21 @@ export const appRouter = router({
     list: publicProcedure.query(async () => {
       return await db.getWhatsappGroups();
     }),
+    save: publicProcedure
+      .input(z.object({
+        sessionId: z.string(),
+        groupId: z.string(),
+        groupName: z.string(),
+        lastMessageAt: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        await db.upsertWhatsappGroup(
+          input.groupId,
+          input.groupName,
+          0 // TODO: map sessionId to connectionId
+        );
+        return { success: true };
+      }),
   }),
   
   whatsapp: router({
