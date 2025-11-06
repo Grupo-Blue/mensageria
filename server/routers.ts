@@ -192,7 +192,7 @@ export const appRouter = router({
     get: protectedProcedure.query(async ({ ctx }) => {
       return await db.getUserSettings(ctx.user.id);
     }),
-    update: protectedProcedure.input(z.object({ googleApiKey: z.string().optional(), resumeGroupId: z.string().optional(), resumeGroupIdToSend: z.string().optional(), resumeHourOfDay: z.number().min(0).max(23).optional(), enableGroupResume: z.boolean().optional() })).mutation(async ({ ctx, input }) => {
+    update: protectedProcedure.input(z.object({ googleApiKey: z.string().optional(), resumeGroupId: z.string().optional(), resumeGroupIdToSend: z.string().optional(), resumeHourOfDay: z.number().min(0).max(23).optional(), enableGroupResume: z.boolean().optional(), resumePrompt: z.string().optional(), resumeConnectionId: z.number().optional() })).mutation(async ({ ctx, input }) => {
       await db.upsertUserSettings(ctx.user.id, input);
       
       // Configurar scheduler de resumo no backend
@@ -216,6 +216,23 @@ export const appRouter = router({
       }
       
       return { success: true };
+    }),
+    analyzeMessages: protectedProcedure.input(z.object({ question: z.string(), groupId: z.string(), geminiApiKey: z.string() })).mutation(async ({ ctx, input }) => {
+      try {
+        const apiToken = process.env.BACKEND_API_TOKEN;
+        if (!apiToken) throw new Error('BACKEND_API_TOKEN não configurado');
+        
+        const response = await axios.post(`${BACKEND_API_URL}/whatsapp/analyze-messages`, {
+          question: input.question,
+          groupId: input.groupId,
+        }, {
+          headers: { 'x-auth-api': apiToken }
+        });
+        
+        return { response: response.data.answer };
+      } catch (error: any) {
+        throw new Error(error.response?.data?.message || "Erro ao analisar mensagens");
+      }
     }),
   }),
 });

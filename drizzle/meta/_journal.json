@@ -15,6 +15,13 @@
       "when": 1762222192439,
       "tag": "0001_deep_red_shift",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1762455020188,
+      "tag": "0002_minor_cammi",
+      "breakpoints": true
     }
   ]
 }

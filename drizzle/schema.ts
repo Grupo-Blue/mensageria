@@ -83,6 +83,8 @@ export const settings = mysqlTable("settings", {
   resumeGroupIdToSend: varchar("resume_group_id_to_send", { length: 100 }),
   resumeHourOfDay: int("resume_hour_of_day").default(22),
   enableGroupResume: boolean("enable_group_resume").default(false),
+  resumePrompt: text("resume_prompt"),
+  resumeConnectionId: int("resume_connection_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 });

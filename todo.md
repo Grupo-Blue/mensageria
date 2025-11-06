@@ -221,3 +221,16 @@
 - [x] Limpar mensagens armazenadas após envio
 - [ ] Testar fluxo completo em produção
 - [ ] Documentar configuração e uso
+
+## Feature: Melhorias no sistema de resumo de grupos
+- [x] Adicionar campo de prompt customizável nas configurações
+- [x] Atualizar schema do banco para armazenar prompt customizado
+- [x] Adicionar campo de seleção de conexão WhatsApp
+- [x] Atualizar schema do banco para armazenar ID da conexão
+- [x] Criar interface de chat de análise de mensagens
+- [x] Implementar backend para chat usando Gemini
+- [x] Integrar chat com messageStore para análise em tempo real
+- [x] Testar prompt customizado
+- [x] Testar seletor de conexão
+- [x] Testar chat de análise
+- [x] Deploy em produção
