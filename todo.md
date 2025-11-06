@@ -194,3 +194,9 @@
 - [x] Registrar listener para enviar estado inicial a novos clientes
 - [x] Rebuild e reiniciar container Docker
 - [ ] Testar se QR Code aparece imediatamente ao conectar
+
+## Bug: Página WhatsApp sem menu lateral
+- [x] Verificar estrutura atual da página WhatsApp
+- [x] Integrar DashboardLayout na página WhatsApp
+- [x] Remover header duplicado se existir
+- [x] Testar navegação e consistência visual
