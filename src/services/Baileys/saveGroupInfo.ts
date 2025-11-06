@@ -1,29 +1,12 @@
 import axios from 'axios';
 
-interface SaveGroupInfoParams {
-  sessionId: string;
-  groupId: string;
-  groupName: string;
-  lastMessageAt?: Date;
-}
-
-interface CachedGroupInfo {
-  groupName: string;
-  lastMessageAt?: string;
-}
-
-const reportedGroups = new Map<string, CachedGroupInfo>();
+const reportedGroups = new Map<string, string>();
 let missingUrlLogged = false;
 
-const getCacheKey = (sessionId: string, groupId: string): string =>
-  `${sessionId}:${groupId}`;
-
-export const saveGroupInfo = async ({
-  sessionId,
-  groupId,
-  groupName,
-  lastMessageAt,
-}: SaveGroupInfoParams): Promise<void> => {
+export const saveGroupInfo = async (
+  groupId: string,
+  groupName: string,
+): Promise<void> => {
   const url = process.env.WHATSAPP_GROUPS_CALLBACK_URL;
 
   if (!url) {
@@ -36,29 +19,15 @@ export const saveGroupInfo = async ({
     return;
   }
 
-  const cacheKey = getCacheKey(sessionId, groupId);
-  const cached = reportedGroups.get(cacheKey);
-
-  const normalizedGroupName = groupName.trim();
-  const normalizedLastMessageAt = (lastMessageAt ?? new Date()).toISOString();
-
-  if (
-    cached &&
-    cached.groupName === normalizedGroupName &&
-    cached.lastMessageAt === normalizedLastMessageAt
-  ) {
+  const cachedName = reportedGroups.get(groupId);
+  if (cachedName === groupName) {
     return;
   }
 
   await axios.post(url, {
-    sessionId,
     groupId,
-    groupName: normalizedGroupName,
-    lastMessageAt: normalizedLastMessageAt,
+    groupName,
   });
 
-  reportedGroups.set(cacheKey, {
-    groupName: normalizedGroupName,
-    lastMessageAt: normalizedLastMessageAt,
-  });
+  reportedGroups.set(groupId, groupName);
 };

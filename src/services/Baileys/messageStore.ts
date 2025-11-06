@@ -7,18 +7,13 @@ interface StoredMessage {
 class MessageStore {
   private readonly messages: Map<string, StoredMessage[]> = new Map();
 
-  addMessage(
-    groupId: string,
-    sender: string,
-    message: string,
-    timestamp?: number,
-  ): void {
+  addMessage(groupId: string, sender: string, message: string): void {
     const existing = this.messages.get(groupId) ?? [];
 
     const newMessage: StoredMessage = {
       sender,
       message,
-      timestamp: timestamp ?? Date.now(),
+      timestamp: Date.now(),
     };
 
     const updated = [...existing, newMessage].slice(-100);

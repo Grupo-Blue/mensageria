@@ -198,17 +198,8 @@ export const addConnection = async (id: string): Promise<void> => {
 
         groupName = groupName ?? 'Grupo sem nome';
 
-        const messageTimestamp = msg.messageTimestamp
-          ? Number(msg.messageTimestamp) * 1000
-          : Date.now();
-
         try {
-          await saveGroupInfo({
-            sessionId: id,
-            groupId,
-            groupName,
-            lastMessageAt: new Date(messageTimestamp),
-          });
+          await saveGroupInfo(groupId, groupName);
         } catch (error) {
           console.error(
             `Falha ao salvar informações do grupo ${groupId}:`,
@@ -232,7 +223,7 @@ export const addConnection = async (id: string): Promise<void> => {
           msg.message?.videoMessage?.caption ||
           '[Mídia ou mensagem especial]';
 
-        messageStore.addMessage(groupId, sender, messageText, messageTimestamp);
+        messageStore.addMessage(groupId, sender, messageText);
       }
     } catch (error) {
       console.error('[ERRO] Falha ao processar mensagem:', error);
