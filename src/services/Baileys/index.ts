@@ -199,7 +199,7 @@ export const addConnection = async (id: string): Promise<void> => {
         groupName = groupName ?? 'Grupo sem nome';
 
         try {
-          await saveGroupInfo(groupId, groupName);
+          await saveGroupInfo(id, groupId, groupName);
         } catch (error) {
           console.error(
             `Falha ao salvar informações do grupo ${groupId}:`,
