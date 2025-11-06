@@ -180,3 +180,17 @@
 - [x] Limpar estado de conexões antigas no backend
 - [x] Corrigir configuração Apache para proxy Socket.IO correto
 - [ ] Testar geração de novo QR Code após correção
+
+## Bug: Conexão WhatsApp estabelecida mas não aparece na lista
+- [ ] Verificar logs do console para identificar erro ao salvar conexão
+- [ ] Verificar se endpoint saveConnection está sendo chamado
+- [ ] Corrigir lógica de salvamento ou endpoint
+- [ ] Testar exibição de conexões após correção
+
+## Feature: Persistir estado de conexões no backend
+- [x] Aplicar patch sugerido pelo desenvolvedor no Baileys/index.ts
+- [x] Adicionar campos qrcode e connected ao ConnectionInterface
+- [x] Implementar emitQrCodeUpdate() para emitir estado
+- [x] Registrar listener para enviar estado inicial a novos clientes
+- [x] Rebuild e reiniciar container Docker
+- [ ] Testar se QR Code aparece imediatamente ao conectar

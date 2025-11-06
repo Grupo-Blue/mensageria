@@ -95,16 +95,18 @@ export default function WhatsApp() {
         toast.success("WhatsApp conectado com sucesso!");
         
         // Salva a conexão no banco de dados
+        console.log("Tentando salvar conexão:", identification);
         saveConnectionMutation.mutate(
           { identification },
           {
-            onSuccess: () => {
-              console.log("Conexão salva no banco de dados");
+            onSuccess: (data) => {
+              console.log("Conexão salva no banco de dados com sucesso!", data);
               utils.whatsapp.list.invalidate();
+              toast.success("Conexão salva com sucesso!");
             },
             onError: (error) => {
               console.error("Erro ao salvar conexão:", error);
-              toast.error("Erro ao salvar conexão no banco de dados");
+              toast.error("Erro ao salvar conexão: " + (error as any).message);
             }
           }
         );
