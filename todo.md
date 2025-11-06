@@ -173,3 +173,10 @@
 - [x] Rebuild do backend Docker
 - [x] Reiniciar container
 - [x] Testar acesso ao QR Code
+
+## Bug: Backend retorna "já conectado" mesmo sem conexão ativa
+- [x] Investigar logs do backend para entender estado das conexões
+- [x] Verificar se conexão está em memória ou cache
+- [x] Limpar estado de conexões antigas no backend
+- [x] Corrigir configuração Apache para proxy Socket.IO correto
+- [ ] Testar geração de novo QR Code após correção
