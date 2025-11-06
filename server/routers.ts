@@ -194,6 +194,27 @@ export const appRouter = router({
     }),
     update: protectedProcedure.input(z.object({ googleApiKey: z.string().optional(), resumeGroupId: z.string().optional(), resumeGroupIdToSend: z.string().optional(), resumeHourOfDay: z.number().min(0).max(23).optional(), enableGroupResume: z.boolean().optional() })).mutation(async ({ ctx, input }) => {
       await db.upsertUserSettings(ctx.user.id, input);
+      
+      // Configurar scheduler de resumo no backend
+      try {
+        const apiToken = process.env.BACKEND_API_TOKEN;
+        if (apiToken && input.enableGroupResume !== undefined) {
+          await axios.post(`${BACKEND_API_URL}/whatsapp/configure-resume`, {
+            enabled: input.enableGroupResume,
+            sourceGroupId: input.resumeGroupId,
+            destinationGroupId: input.resumeGroupIdToSend,
+            hourOfDay: input.resumeHourOfDay,
+            geminiApiKey: input.googleApiKey,
+          }, {
+            headers: { 'x-auth-api': apiToken }
+          });
+          console.log('[settings.update] Scheduler configurado no backend');
+        }
+      } catch (error: any) {
+        console.error('[settings.update] Erro ao configurar scheduler:', error.message);
+        // Não falha a operação se o scheduler não puder ser configurado
+      }
+      
       return { success: true };
     }),
   }),

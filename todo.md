@@ -200,3 +200,24 @@
 - [x] Integrar DashboardLayout na página WhatsApp
 - [x] Remover header duplicado se existir
 - [x] Testar navegação e consistência visual
+
+## Investigação: Sistema de resumo de grupos WhatsApp
+- [x] Verificar código do frontend (página de configurações)
+- [x] Verificar backend Docker (rotas e lógica)
+- [x] Identificar prompt enviado para API do Gemini
+- [x] Documentar processo completo
+- [x] Explicar ao usuário como funciona
+
+## Feature: Implementar resumo automático de grupos WhatsApp
+- [x] Criar serviço de armazenamento de mensagens em memória
+- [x] Capturar mensagens do grupo configurado via Baileys
+- [x] Instalar e configurar @google/generative-ai no backend
+- [x] Criar serviço de integração com Google Gemini API
+- [x] Criar prompt para geração de resumos inteligentes
+- [x] Implementar scheduler com node-schedule
+- [x] Configurar job para rodar no horário especificado
+- [x] Gerar resumo das mensagens do dia usando Gemini
+- [x] Enviar resumo para o grupo de destino via Baileys
+- [x] Limpar mensagens armazenadas após envio
+- [ ] Testar fluxo completo em produção
+- [ ] Documentar configuração e uso
