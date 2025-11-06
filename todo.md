@@ -166,3 +166,10 @@
 - [x] Atualizar frontend para chamar endpoint quando conectar
 - [x] Exibir conexões salvas na lista de gerenciamento
 - [ ] Testar salvamento e exibição de conexões
+
+## Bug: Caminho incorreto para qrcode.html no backend Docker
+- [x] Localizar arquivo src/routes/modules/whatsapp.ts no backend Docker
+- [x] Corrigir path.join para usar segmentos relativos (sem barras no início)
+- [x] Rebuild do backend Docker
+- [x] Reiniciar container
+- [x] Testar acesso ao QR Code
