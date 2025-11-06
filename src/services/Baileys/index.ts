@@ -6,6 +6,8 @@ import { Boom } from '@hapi/boom';
 import fs from 'fs';
 import path from 'path';
 import socket from '../../libs/socket';
+import messageStore from './messageStore';
+import { saveGroupInfo } from './saveGroupInfo';
 
 interface ConnectionInterface {
   id: string;
@@ -13,11 +15,30 @@ interface ConnectionInterface {
 }
 
 const connections: ConnectionInterface[] = [];
+const groupNameCache = new Map<string, string>();
+
+const closeBaileysConnection = (connection: any): void => {
+  if (!connection) {
+    return;
+  }
+
+  try {
+    connection?.end?.();
+  } catch (error) {
+    console.error('Erro ao encerrar conexão Baileys com end():', error);
+  }
+
+  try {
+    connection?.ws?.close?.();
+  } catch (error) {
+    console.error('Erro ao encerrar WebSocket do Baileys:', error);
+  }
+};
 
 export const removeConnection = (id: string): void => {
   const index = connections.findIndex(c => c.id === id);
   if (index !== -1) {
-    // connections[index].connection.close();
+    closeBaileysConnection(connections[index].connection);
     connections.splice(index, 1);
   }
 };
@@ -25,6 +46,7 @@ export const removeConnection = (id: string): void => {
 export const addConnection = async (id: string): Promise<void> => {
   console.log('Entrou no addConnection')
   const io = socket.getIO();
+  removeConnection(id);
   const dir = path.resolve(
     process.cwd(),
     'auth_info_baileys',
@@ -138,17 +160,74 @@ export const addConnection = async (id: string): Promise<void> => {
       console.log('Conexão aberta para o usuário', id);
     }
   });
-  sock.ev.on('messages.upsert', m => {
+  sock.ev.on('messages.upsert', async m => {
     console.log(
       'messages.upsert>>>>>>>>',
       new Date().toISOString(),
       JSON.stringify(m, undefined, 2),
     );
 
-    console.log('replying to', m.messages[0].key.remoteJid);
-    // sock.sendMessage(m.messages[0].key.remoteJid!, {
-    //   text: 'Hello there!',
-    // });
+    try {
+      if (m.type !== 'notify' || !m.messages?.length) {
+        return;
+      }
+
+      for (const msg of m.messages) {
+        const remoteJid = msg.key?.remoteJid;
+        if (!remoteJid || !remoteJid.endsWith('@g.us')) {
+          continue;
+        }
+
+        const groupId = remoteJid;
+        const sender = msg.pushName || msg.key?.participant || 'Desconhecido';
+
+        let groupName = groupNameCache.get(groupId);
+        if (!groupName) {
+          try {
+            const groupMetadata = await sock.groupMetadata(groupId);
+            groupName = groupMetadata.subject || 'Grupo sem nome';
+            groupNameCache.set(groupId, groupName);
+          } catch (error) {
+            console.log(
+              `Não foi possível obter metadata do grupo ${groupId}:`,
+              error,
+            );
+            groupName = 'Grupo sem nome';
+          }
+        }
+
+        groupName = groupName ?? 'Grupo sem nome';
+
+        try {
+          await saveGroupInfo(groupId, groupName);
+        } catch (error) {
+          console.error(
+            `Falha ao salvar informações do grupo ${groupId}:`,
+            error,
+          );
+        }
+
+        console.log(
+          '🔔 [GRUPO DETECTADO] ID:',
+          groupId,
+          '| Nome:',
+          groupName,
+          '| Remetente:',
+          sender,
+        );
+
+        const messageText =
+          msg.message?.conversation ||
+          msg.message?.extendedTextMessage?.text ||
+          msg.message?.imageMessage?.caption ||
+          msg.message?.videoMessage?.caption ||
+          '[Mídia ou mensagem especial]';
+
+        messageStore.addMessage(groupId, sender, messageText);
+      }
+    } catch (error) {
+      console.error('[ERRO] Falha ao processar mensagem:', error);
+    }
   });
   connections.push({
     id,
