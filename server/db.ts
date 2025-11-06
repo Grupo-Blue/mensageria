@@ -1,8 +1,9 @@
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { 
   InsertUser, 
   users, 
+  whatsappGroups,
   whatsappConnections,
   telegramConnections,
   messages,
@@ -99,7 +100,29 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-// WhatsApp Connections
+// WhatsApp Groups
+export async function upsertWhatsappGroup(groupId: string, groupName: string, connectionId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const existing = await db.select().from(whatsappGroups).where(eq(whatsappGroups.groupId, groupId)).limit(1);
+  
+  if (existing.length > 0) {
+    await db.update(whatsappGroups)
+      .set({ groupName, lastMessageAt: new Date() })
+      .where(eq(whatsappGroups.groupId, groupId));
+  } else {
+    await db.insert(whatsappGroups).values({ groupId, groupName, connectionId, lastMessageAt: new Date() });
+  }
+}
+
+export async function getWhatsappGroups() {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  return await db.select().from(whatsappGroups).orderBy(whatsappGroups.lastMessageAt);
+}
+
 export async function getWhatsappConnections(userId: number) {
   const db = await getDb();
   if (!db) return [];

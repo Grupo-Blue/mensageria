@@ -91,3 +91,19 @@ export const settings = mysqlTable("settings", {
 
 export type Settings = typeof settings.$inferSelect;
 export type InsertSettings = typeof settings.$inferInsert;
+
+/**
+ * WhatsApp groups table
+ */
+export const whatsappGroups = mysqlTable("whatsapp_groups", {
+  id: int("id").autoincrement().primaryKey(),
+  connectionId: int("connection_id").notNull(),
+  groupId: varchar("group_id", { length: 100 }).notNull().unique(),
+  groupName: varchar("group_name", { length: 255 }),
+  lastMessageAt: timestamp("last_message_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+
+export type WhatsappGroup = typeof whatsappGroups.$inferSelect;
+export type InsertWhatsappGroup = typeof whatsappGroups.$inferInsert;

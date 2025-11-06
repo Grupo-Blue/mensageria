@@ -23,6 +23,7 @@ export default function Settings() {
 
   const { data: settings, isLoading } = trpc.settings.get.useQuery();
   const { data: connections } = trpc.whatsapp.list.useQuery();
+  const { data: groups } = trpc.whatsappGroups.list.useQuery();
   const utils = trpc.useUtils();
 
   const updateMutation = trpc.settings.update.useMutation({
@@ -179,29 +180,53 @@ export default function Settings() {
               <>
                 {/* Source Group */}
                 <div className="space-y-2">
-                  <Label htmlFor="resumeGroupId">ID do Grupo (Origem)</Label>
-                  <Input
-                    id="resumeGroupId"
-                    placeholder="120363..."
-                    value={resumeGroupId}
-                    onChange={(e) => setResumeGroupId(e.target.value)}
-                  />
+                  <Label htmlFor="resumeGroupId">Grupo de Origem</Label>
+                  <Select value={resumeGroupId} onValueChange={setResumeGroupId}>
+                    <SelectTrigger id="resumeGroupId">
+                      <SelectValue placeholder="Selecione o grupo a monitorar" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {groups && groups.length > 0 ? (
+                        groups.map((group) => (
+                          <SelectItem key={group.groupId} value={group.groupId}>
+                            {group.groupName || group.groupId}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <SelectItem value="none" disabled>
+                          Nenhum grupo detectado ainda
+                        </SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
                   <p className="text-xs text-gray-500">
-                    ID do grupo WhatsApp que será monitorado
+                    Grupo WhatsApp que será monitorado para resumos
                   </p>
                 </div>
 
                 {/* Destination Group */}
                 <div className="space-y-2">
-                  <Label htmlFor="resumeGroupIdToSend">ID do Grupo (Destino)</Label>
-                  <Input
-                    id="resumeGroupIdToSend"
-                    placeholder="120363..."
-                    value={resumeGroupIdToSend}
-                    onChange={(e) => setResumeGroupIdToSend(e.target.value)}
-                  />
+                  <Label htmlFor="resumeGroupIdToSend">Grupo de Destino</Label>
+                  <Select value={resumeGroupIdToSend} onValueChange={setResumeGroupIdToSend}>
+                    <SelectTrigger id="resumeGroupIdToSend">
+                      <SelectValue placeholder="Selecione onde enviar o resumo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {groups && groups.length > 0 ? (
+                        groups.map((group) => (
+                          <SelectItem key={group.groupId} value={group.groupId}>
+                            {group.groupName || group.groupId}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <SelectItem value="none" disabled>
+                          Nenhum grupo detectado ainda
+                        </SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
                   <p className="text-xs text-gray-500">
-                    ID do grupo onde o resumo será enviado (pode ser o mesmo)
+                    Grupo onde o resumo será enviado (pode ser o mesmo)
                   </p>
                 </div>
 

@@ -234,3 +234,13 @@
 - [x] Testar seletor de conexão
 - [x] Testar chat de análise
 - [x] Deploy em produção
+
+## Feature: Lista selecionável de grupos WhatsApp
+- [x] Criar tabela whatsapp_groups no schema
+- [x] Capturar informações de grupos (ID, nome) no Baileys
+- [x] Armazenar grupos detectados no banco de dados
+- [x] Criar rota de API para listar grupos
+- [x] Adicionar componente de seleção de grupos na UI
+- [x] Substituir inputs de texto por selects de grupos
+- [x] Testar detecção automática de grupos
+- [x] Deploy em produção

@@ -22,6 +22,12 @@ export const appRouter = router({
     }),
   }),
 
+  whatsappGroups: router({
+    list: publicProcedure.query(async () => {
+      return await db.getWhatsappGroups();
+    }),
+  }),
+  
   whatsapp: router({
     list: protectedProcedure.query(async ({ ctx }) => {
       return await db.getWhatsappConnections(ctx.user.id);
