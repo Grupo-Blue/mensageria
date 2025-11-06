@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, boolean } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, boolean, unique } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -97,12 +97,16 @@ export type InsertSettings = typeof settings.$inferInsert;
  */
 export const whatsappGroups = mysqlTable("whatsapp_groups", {
   id: int("id").autoincrement().primaryKey(),
-  connectionId: int("connection_id").notNull(),
-  groupId: varchar("group_id", { length: 100 }).notNull().unique(),
+  sessionId: varchar("session_id", { length: 100 }).notNull(),
+  groupId: varchar("group_id", { length: 100 }).notNull(),
   groupName: varchar("group_name", { length: 255 }),
   lastMessageAt: timestamp("last_message_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (table) => {
+  return {
+    uniqueSessionGroup: unique().on(table.sessionId, table.groupId),
+  };
 });
 
 export type WhatsappGroup = typeof whatsappGroups.$inferSelect;

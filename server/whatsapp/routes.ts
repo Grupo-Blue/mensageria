@@ -8,14 +8,12 @@ router.post('/groups', async (req, res) => {
   try {
     const { sessionId, groupId, groupName, lastMessageAt } = req.body;
 
-    if (!groupId || !groupName) {
-      return res.status(400).json({ error: 'groupId and groupName are required' });
+    if (!sessionId || !groupId || !groupName) {
+      return res.status(400).json({ error: 'sessionId, groupId and groupName are required' });
     }
 
-    // TODO: Map sessionId to connectionId from database
-    const connectionId = 0;
-
-    await db.upsertWhatsappGroup(groupId, groupName, connectionId);
+    const timestamp = lastMessageAt ? new Date(lastMessageAt) : undefined;
+    await db.upsertWhatsappGroup(sessionId, groupId, groupName, timestamp);
 
     res.json({ success: true });
   } catch (error) {

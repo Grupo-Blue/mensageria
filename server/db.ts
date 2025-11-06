@@ -1,4 +1,4 @@
-import { eq, desc } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { 
   InsertUser, 
@@ -101,18 +101,21 @@ export async function getUserByOpenId(openId: string) {
 }
 
 // WhatsApp Groups
-export async function upsertWhatsappGroup(groupId: string, groupName: string, connectionId: number) {
+export async function upsertWhatsappGroup(sessionId: string, groupId: string, groupName: string, lastMessageAt?: Date) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   
-  const existing = await db.select().from(whatsappGroups).where(eq(whatsappGroups.groupId, groupId)).limit(1);
+  const timestamp = lastMessageAt || new Date();
+  const existing = await db.select().from(whatsappGroups)
+    .where(and(eq(whatsappGroups.sessionId, sessionId), eq(whatsappGroups.groupId, groupId)))
+    .limit(1);
   
   if (existing.length > 0) {
     await db.update(whatsappGroups)
-      .set({ groupName, lastMessageAt: new Date() })
-      .where(eq(whatsappGroups.groupId, groupId));
+      .set({ groupName, lastMessageAt: timestamp })
+      .where(and(eq(whatsappGroups.sessionId, sessionId), eq(whatsappGroups.groupId, groupId)));
   } else {
-    await db.insert(whatsappGroups).values({ groupId, groupName, connectionId, lastMessageAt: new Date() });
+    await db.insert(whatsappGroups).values({ sessionId, groupId, groupName, lastMessageAt: timestamp });
   }
 }
 
@@ -120,7 +123,7 @@ export async function getWhatsappGroups() {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   
-  return await db.select().from(whatsappGroups).orderBy(whatsappGroups.lastMessageAt);
+  return await db.select().from(whatsappGroups).orderBy(desc(whatsappGroups.lastMessageAt));
 }
 
 export async function getWhatsappConnections(userId: number) {

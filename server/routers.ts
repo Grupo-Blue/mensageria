@@ -34,10 +34,12 @@ export const appRouter = router({
         lastMessageAt: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
+        const timestamp = input.lastMessageAt ? new Date(input.lastMessageAt) : undefined;
         await db.upsertWhatsappGroup(
+          input.sessionId,
           input.groupId,
           input.groupName,
-          0 // TODO: map sessionId to connectionId
+          timestamp
         );
         return { success: true };
       }),

@@ -187,11 +187,24 @@ export default function Settings() {
                     </SelectTrigger>
                     <SelectContent>
                       {groups && groups.length > 0 ? (
-                        groups.map((group) => (
-                          <SelectItem key={group.groupId} value={group.groupId}>
-                            {group.groupName || group.groupId}
-                          </SelectItem>
-                        ))
+                        groups.map((group) => {
+                          const lastActivity = group.lastMessageAt 
+                            ? new Date(group.lastMessageAt).toLocaleString('pt-BR', { 
+                                day: '2-digit', 
+                                month: '2-digit', 
+                                hour: '2-digit', 
+                                minute: '2-digit' 
+                              })
+                            : 'Sem atividade';
+                          return (
+                            <SelectItem key={group.groupId} value={group.groupId}>
+                              <div className="flex flex-col">
+                                <span>{group.groupName || group.groupId}</span>
+                                <span className="text-xs text-gray-500">Última msg: {lastActivity}</span>
+                              </div>
+                            </SelectItem>
+                          );
+                        })
                       ) : (
                         <SelectItem value="none" disabled>
                           Nenhum grupo detectado ainda
@@ -213,11 +226,24 @@ export default function Settings() {
                     </SelectTrigger>
                     <SelectContent>
                       {groups && groups.length > 0 ? (
-                        groups.map((group) => (
-                          <SelectItem key={group.groupId} value={group.groupId}>
-                            {group.groupName || group.groupId}
-                          </SelectItem>
-                        ))
+                        groups.map((group) => {
+                          const lastActivity = group.lastMessageAt 
+                            ? new Date(group.lastMessageAt).toLocaleString('pt-BR', { 
+                                day: '2-digit', 
+                                month: '2-digit', 
+                                hour: '2-digit', 
+                                minute: '2-digit' 
+                              })
+                            : 'Sem atividade';
+                          return (
+                            <SelectItem key={group.groupId} value={group.groupId}>
+                              <div className="flex flex-col">
+                                <span>{group.groupName || group.groupId}</span>
+                                <span className="text-xs text-gray-500">Última msg: {lastActivity}</span>
+                              </div>
+                            </SelectItem>
+                          );
+                        })
                       ) : (
                         <SelectItem value="none" disabled>
                           Nenhum grupo detectado ainda
