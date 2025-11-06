@@ -12,9 +12,17 @@ import { saveGroupInfo } from './saveGroupInfo';
 interface ConnectionInterface {
   id: string;
   connection: any;
+  connected: boolean;
 }
 
 const connections: ConnectionInterface[] = [];
+
+const updateConnectionStatus = (id: string, status: boolean): void => {
+  const target = connections.find(connectionItem => connectionItem.id === id);
+  if (target) {
+    target.connected = status;
+  }
+};
 const groupNameCache = new Map<string, string>();
 
 const closeBaileysConnection = (connection: any): void => {
@@ -134,6 +142,7 @@ export const addConnection = async (id: string): Promise<void> => {
     }
     const { connection, lastDisconnect } = update;
     if (connection === 'close') {
+      updateConnectionStatus(id, false);
       const shouldReconnect =
         (lastDisconnect?.error as Boom)?.output?.statusCode !==
         DisconnectReason.loggedOut;
@@ -158,6 +167,7 @@ export const addConnection = async (id: string): Promise<void> => {
       }
     } else if (connection === 'open') {
       console.log('Conexão aberta para o usuário', id);
+      updateConnectionStatus(id, true);
     }
   });
   sock.ev.on('messages.upsert', async m => {
@@ -198,8 +208,17 @@ export const addConnection = async (id: string): Promise<void> => {
 
         groupName = groupName ?? 'Grupo sem nome';
 
+        const messageTimestamp = msg.messageTimestamp
+          ? Number(msg.messageTimestamp) * 1000
+          : Date.now();
+
         try {
-          await saveGroupInfo(id, groupId, groupName);
+          await saveGroupInfo({
+            sessionId: id,
+            groupId,
+            groupName,
+            lastMessageAt: new Date(messageTimestamp),
+          });
         } catch (error) {
           console.error(
             `Falha ao salvar informações do grupo ${groupId}:`,
@@ -223,7 +242,7 @@ export const addConnection = async (id: string): Promise<void> => {
           msg.message?.videoMessage?.caption ||
           '[Mídia ou mensagem especial]';
 
-        messageStore.addMessage(groupId, sender, messageText);
+        messageStore.addMessage(groupId, sender, messageText, messageTimestamp);
       }
     } catch (error) {
       console.error('[ERRO] Falha ao processar mensagem:', error);
@@ -232,6 +251,7 @@ export const addConnection = async (id: string): Promise<void> => {
   connections.push({
     id,
     connection: sock,
+    connected: false,
   });
 };
 
@@ -246,6 +266,12 @@ export const getConnection = (id: string): any => {
   }
   return connection.connection;
 };
+
+export const listConnections = (): Array<{ id: string; connected: boolean }> =>
+  connections.map(({ id: connectionId, connected }) => ({
+    id: connectionId,
+    connected,
+  }));
 
 interface SendMessageParamsInterface {
   toPhone: string;
