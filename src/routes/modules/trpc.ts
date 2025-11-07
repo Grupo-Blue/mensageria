@@ -83,83 +83,37 @@ const executeProcedure = async (
   }
 };
 
-const parseJson = <T>(raw: unknown, fallback: T): T => {
-  if (raw === undefined || raw === null || raw === '') {
-    return fallback;
-  }
-
+const parseBatchInput = (raw: unknown): BatchInput => {
   if (typeof raw === 'string') {
     try {
-      return JSON.parse(raw) as T;
+      return JSON.parse(raw) as BatchInput;
     } catch (error) {
-      console.error('Não foi possível fazer o parse do JSON recebido:', error);
-      return fallback;
+      console.error('Não foi possível interpretar batch input da query string:', error);
+      return {};
     }
   }
 
-  if (typeof raw === 'object') {
-    return raw as T;
+  if (raw && typeof raw === 'object') {
+    return raw as BatchInput;
   }
 
-  return fallback;
+  return {};
 };
 
-const extractProcedures = (req: Request): string[] => {
-  const cleanedPath = req.path.replace(/^\/+/, '');
-  if (!cleanedPath) {
-    return [];
-  }
-
-  return cleanedPath.split(',').filter(Boolean);
-};
-
-const buildBatchPayload = (value: unknown, fallbackKeys: string[]): BatchInput => {
-  if (value === undefined || value === null || value === '') {
-    return fallbackKeys.reduce<BatchInput>((accumulator, _key, index) => {
-      accumulator[String(index)] = {};
-      return accumulator;
-    }, {});
-  }
-
-  const parsed = parseJson<unknown>(value, {});
-
-  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-    if ('json' in parsed && Object.keys(parsed).length === 1) {
-      return { '0': parsed as BatchInputItem };
-    }
-
-    const entries = Object.entries(parsed);
-    if (entries.every(([key]) => /^\d+$/.test(key))) {
-      if (entries.length === 0) {
-        return fallbackKeys.reduce<BatchInput>((accumulator, _key, index) => {
-          accumulator[String(index)] = {};
-          return accumulator;
-        }, {});
-      }
-      return parsed as BatchInput;
-    }
-
-    return { '0': { json: parsed } };
-  }
-
-  return { '0': { json: parsed } };
-};
-
-const handleTrpcRequest = async (req: Request, res: Response): Promise<void> => {
-  const procedures = extractProcedures(req);
+const handleBatchRequest = async (req: Request, res: Response): Promise<void> => {
+  const proceduresParam = req.params.procedures ?? '';
+  const procedures = proceduresParam.split(',').filter(Boolean);
 
   if (!procedures.length) {
-    res.status(404).json({
-      error: 'Procedimento não informado',
-    });
+    res.json([]);
     return;
   }
 
   const inputSource = req.method === 'GET' ? req.query.input : req.body?.input ?? req.body;
-  const batchInput = buildBatchPayload(inputSource, procedures);
-  const orderedKeys = Object.keys(batchInput).sort((a, b) => Number(a) - Number(b));
+  const batchInput = parseBatchInput(inputSource);
+  const orderedEntries = Object.keys(batchInput).sort((a, b) => Number(a) - Number(b));
 
-  if (orderedKeys.length && orderedKeys.length !== procedures.length) {
+  if (orderedEntries.length && orderedEntries.length !== procedures.length) {
     console.warn(
       'Quantidade de procedimentos não corresponde aos parâmetros recebidos:',
       { procedures, batchInput },
@@ -168,18 +122,16 @@ const handleTrpcRequest = async (req: Request, res: Response): Promise<void> => 
 
   const results = await Promise.all(
     procedures.map((procedure, index) => {
-      const key = orderedKeys[index] ?? String(index);
+      const key = orderedEntries[index] ?? String(index);
       const payload = batchInput[key];
       return executeProcedure(procedure, payload);
     }),
   );
 
-  const isBatchRequest = req.query.batch !== undefined || procedures.length > 1;
-  res.json(isBatchRequest ? results : results[0]);
+  res.json(results);
 };
 
-router.all('*', (req, res) => {
-  void handleTrpcRequest(req, res);
-});
+router.get('/:procedures', handleBatchRequest);
+router.post('/:procedures', handleBatchRequest);
 
 export default router;

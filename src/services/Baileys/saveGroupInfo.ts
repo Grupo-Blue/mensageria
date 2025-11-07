@@ -26,6 +26,8 @@ export const saveGroupInfo = async ({
   lastMessageAt,
 }: SaveGroupInfoParams): Promise<void> => {
   const fallbackDate = lastMessageAt ?? new Date();
+  
+  // Salvar localmente no groupStore
   groupStore.upsertGroup({
     sessionId,
     groupId,
@@ -33,12 +35,13 @@ export const saveGroupInfo = async ({
     lastMessageAt: fallbackDate,
   });
 
+  // Tentar sincronizar com o frontend
   const url = process.env.WHATSAPP_GROUPS_CALLBACK_URL;
 
   if (!url) {
     if (!missingUrlLogged) {
       console.warn(
-        'WHATSAPP_GROUPS_CALLBACK_URL não configurada. Informações de grupos não serão persistidas.',
+        'WHATSAPP_GROUPS_CALLBACK_URL não configurada. Informações de grupos não serão persistidas no frontend.',
       );
       missingUrlLogged = true;
     }
