@@ -252,3 +252,33 @@
 - [x] Obter nomes dos grupos via groupMetadata
 - [x] Testar com mensagens reais
 - [x] Verificar se grupos aparecem no banco de dados
+
+## Bug: Grupos não são detectados automaticamente em produção
+- [x] Investigar logs do backend para verificar se mensagens estão sendo capturadas
+- [x] Verificar se código de detecção foi deployado corretamente no Docker
+- [x] Corrigir Dockerfile para copiar arquivos corretamente
+- [x] Corrigir Dockerfile para fazer build do TypeScript
+- [x] Deploy com todos os arquivos (groupStore.ts, saveGroupInfo.ts, etc)
+- [x] Endpoints /whatsapp/groups e /whatsapp/connections funcionando
+- [ ] Testar envio de mensagem em grupo e verificar detecção automática
+
+## Bug: Backend em loop de crash - build falha com arquivos .backup e .sqlite
+- [x] Remover arquivos .backup do repositório backend
+- [x] Remover arquivo database.sqlite do repositório
+- [x] Adicionar .dockerignore para excluir arquivos problemáticos
+- [x] Mudar Dockerfile para usar tsx em vez de build compilado
+- [x] Rebuild do Docker com tsx (sem compilação)
+- [x] Container rodando com sucesso
+- [x] Testar endpoints /whatsapp/groups e /whatsapp/connections - FUNCIONANDO
+- [x] QR Code sendo gerado corretamente
+
+
+## Bug: Endpoints tRPC retornando 404
+- [x] Investigar por que /api/trpc/* retorna 404
+- [x] Verificar se rota está registrada corretamente em src/routes/index.ts
+- [x] Identificado: arquivo trpc.ts não estava sendo copiado no build
+- [x] Copiado arquivos manualmente do sandbox para servidor
+- [x] Rebuild completo do Docker
+- [x] Testar endpoints tRPC manualmente - FUNCIONANDO!
+- [x] whatsappGroups.list - OK
+- [x] settings.get - OK
