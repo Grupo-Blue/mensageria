@@ -18,4 +18,3 @@ EXPOSE 3333
 
 # Usar tsx para rodar TypeScript diretamente (sem build)
 CMD ["yarn", "dev"]
-
