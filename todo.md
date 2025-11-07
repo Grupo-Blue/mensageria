@@ -282,3 +282,100 @@
 - [x] Testar endpoints tRPC manualmente - FUNCIONANDO!
 - [x] whatsappGroups.list - OK
 - [x] settings.get - OK
+
+
+## Bug CRÍTICO: Grupos não são detectados automaticamente
+- [x] Investigar logs do backend para ver se mensagens de grupos estão sendo capturadas
+- [x] Verificar se groupStore está salvando grupos corretamente
+- [x] Verificar se endpoint /api/trpc/whatsappGroups.list retorna dados - FUNCIONANDO
+- [x] Verificar se frontend está fazendo query correta - FUNCIONANDO
+- [x] CAUSA RAIZ: Banco de dados 'mensageria' não existia e tabelas não estavam criadas
+- [x] SOLUÇÃO: Criado banco 'mensageria' e rodado pnpm db:push para criar todas as tabelas
+- [x] Frontend agora conecta no banco e dropdowns funcionam corretamente
+- [x] Dropdowns não mostram mais badges de erro
+- [x] Mensagem "Nenhum grupo detectado ainda" é esperada (nenhuma conexão WhatsApp ativa)
+- [ ] Testar fluxo: conectar WhatsApp → enviar msg em grupo → verificar se aparece no dropdown
+
+
+## Bug: Deploy não foi feito corretamente - versão antiga em produção
+- [x] Verificar qual versão está rodando em produção - IDENTIFICADO: código desatualizado
+- [x] Identificar quais correções não foram deployadas - DashboardLayout e timeout
+- [x] Fazer build correto do frontend com todas as correções - BUILD CONCLUÍDO
+- [x] Transferir arquivos para o servidor - RSYNC COMPLETO
+- [x] Reiniciar PM2 - PM2 RODANDO
+- [ ] PROBLEMA: Variáveis de ambiente VITE não estão sendo substituídas no build
+- [ ] Página carrega mas mostra %VITE_APP_TITLE% ao invés do título real
+- [ ] Precisa corrigir processo de build para substituir variáveis corretamente
+- [ ] Testar: timeout de 8s no QR Code deve estar desativado
+- [ ] Testar: página /whatsapp deve ter menu lateral (DashboardLayout)
+
+
+## Bug: Erro de API Query - settings.get retorna undefined
+- [x] Investigar erro: [API Query Error] Error: [["settings","get"],{"type":"query"}] data is undefined
+- [x] Verificar se tabela settings existe no banco - EXISTE
+- [x] Verificar se procedure settings.get está implementado corretamente - CORRETO
+- [x] CAUSA RAIZ: Tabela settings vazia, getUserSettings retorna undefined
+- [x] Modificar backend para criar registro default automaticamente em getUserSettings
+- [x] Deploy do db.ts corrigido para produção
+- [x] Testar página Settings sem erro - FUNCIONANDO PERFEITAMENTE
+
+## Bug: Grupos WhatsApp não aparecem após enviar mensagem
+- [x] Verificar logs do backend Docker para ver se mensagens estão sendo capturadas - FUNCIONANDO
+- [x] Verificar se groupStore está salvando grupos localmente - FUNCIONANDO (arquivo tmp/whatsapp-groups.json)
+- [x] CAUSA RAIZ: WHATSAPP_GROUPS_CALLBACK_URL configurada com localhost:3000 (errado dentro do Docker)
+- [x] Corrigir WHATSAPP_GROUPS_CALLBACK_URL para http://172.17.0.1:3000/api/whatsapp/groups
+- [x] Reiniciar container Docker com nova configuração
+- [x] Testar: enviar mensagem em grupo e verificar se sincroniza com frontend - FUNCIONANDO
+- [x] Verificar se dados aparecem na tabela whatsapp_groups do banco - GRUPO SALVO CORRETAMENTE
+- [x] Usuário configurou resumo automático com sucesso
+- [x] Todas as configurações salvas no banco de dados
+
+
+## Teste: Executar resumo automático manualmente
+- [x] Investigar código do backend que executa resumo - ENCONTRADO resumeScheduler.ts
+- [x] Identificar scheduler/cron job - USA node-schedule
+- [x] PROBLEMA: resumeScheduler NÃO estava sendo inicializado no server.ts
+- [x] Modificar server.ts para inicializar scheduler - FEITO
+- [x] Buscar configurações do banco e passar para scheduler - FUNCIONANDO
+- [x] Deploy do server.ts modificado - COMPLETO
+- [x] Reiniciar container Docker - REINICIADO
+- [x] Verificar logs - scheduler configurado e agendado para 9h
+- [x] Gemini inicializado com sucesso
+- [x] Criar endpoint HTTP /api/test-resume para teste manual - CRIADO
+- [x] Testar endpoint - FUNCIONANDO (http://185.215.166.113:5600/api/test-resume)
+- [x] PROBLEMA: messageStore vazio - "Nenhuma mensagem para resumir"
+- [x] Verificar código do messageStore - ENCONTRADO
+- [x] CAUSA RAIZ: Baileys usa messageStore diferente do resumeScheduler (2 instâncias separadas)
+- [x] Baileys importa de './messageStore', scheduler importa de '../messageStore'
+- [x] Corrigir import em Baileys/index.ts para usar messageStore correto - FEITO
+- [x] Deploy e reiniciar container - FEITO
+- [x] Enviar mensagem de teste - MENSAGENS RECEBIDAS
+- [x] NOVO PROBLEMA: Incompatibilidade de parâmetros em addMessage
+- [x] Baileys chama com 4 parâmetros, messageStore aceita apenas 3
+- [x] Corrigir assinatura de addMessage para aceitar timestamp opcional - FEITO
+- [x] Deploy e reiniciar - FEITO
+- [x] Executar /api/test-resume - EXECUTADO
+- [x] 3 mensagens capturadas com sucesso!
+- [x] Scheduler tentou gerar resumo
+- [x] ERRO FINAL: Modelo gemini-pro não existe mais (404)
+- [x] Corrigir geminiService.ts para usar gemini-1.5-flash-latest
+- [x] Deploy e reiniciar container
+- [x] 4 mensagens capturadas com sucesso
+- [x] Scheduler executou teste
+- [x] BLOQUEIO FINAL: Biblioteca @google/generative-ai@0.24.1 usa API v1beta
+- [x] API v1beta NÃO suporta gemini-1.5-flash-latest (404)
+- [ ] SOLUÇÃO: Atualizar biblioteca para @google/generative-ai@latest
+- [ ] Executar: docker exec -it mensageria npm install @google/generative-ai@latest
+- [ ] Reiniciar container
+- [ ] Enviar mensagens de teste no grupo
+- [ ] Executar /api/test-resume
+- [ ] Validar que resumo foi gerado pelo Gemini
+- [ ] Validar que resumo foi enviado no WhatsApp
+- [ ] Confirmar sistema 100% operacional
+
+## Correção: Logo e título do app
+- [x] Copiar logo LogoMensageria.png para client/public/logo.png
+- [x] Atualizar const.ts para usar valores fixos (APP_TITLE = "Mensageria", APP_LOGO = "/logo.png")
+- [x] Atualizar index.html para usar valores fixos no favicon e title
+- [x] Remover todas as referências a %VITE_APP_LOGO% e %VITE_APP_TITLE%
+- [ ] Criar checkpoint para deploy em produção

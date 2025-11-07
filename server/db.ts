@@ -8,6 +8,7 @@ import {
   telegramConnections,
   messages,
   settings,
+  Settings,
   InsertWhatsappConnection,
   InsertTelegramConnection,
   InsertMessage,
@@ -219,7 +220,19 @@ export async function getUserSettings(userId: number) {
   if (!db) return undefined;
   
   const result = await db.select().from(settings).where(eq(settings.userId, userId)).limit(1);
-  return result.length > 0 ? result[0] : undefined;
+  
+  // Se não existir, criar registro default
+  if (result.length === 0) {
+    const defaultSettings: InsertSettings = {
+      userId,
+      resumeHourOfDay: 22,
+      enableGroupResume: false,
+    };
+    await db.insert(settings).values(defaultSettings);
+    return defaultSettings as Settings;
+  }
+  
+  return result[0];
 }
 
 export async function upsertUserSettings(userId: number, data: Partial<InsertSettings>) {
