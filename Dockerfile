@@ -1,8 +1,21 @@
 FROM node:20-alpine
 WORKDIR /usr/src/app
-COPY .env ./
-COPY deploy.zip ./
-RUN unzip deploy.zip
-RUN yarn install --production
+
+# Instalar dependências do sistema
+RUN apk add --no-cache python3 make g++
+
+# Copiar package.json e yarn.lock
+COPY package.json yarn.lock ./
+
+# Instalar dependências
+RUN yarn install
+
+# Copiar código fonte
+COPY . ./
+
+# Expor porta
 EXPOSE 3333
-CMD ["yarn", "start"]
+
+# Usar tsx para rodar TypeScript diretamente (sem build)
+CMD ["yarn", "dev"]
+
