@@ -1,30 +1,31 @@
 interface StoredMessage {
   sender: string;
-  text: string;
+  message: string;
   timestamp: number;
 }
 
-const MAX_MESSAGES_PER_GROUP = 100;
-
 class MessageStore {
-  private readonly messages = new Map<string, StoredMessage[]>();
+  private readonly messages: Map<string, StoredMessage[]> = new Map();
 
-  addMessage(groupId: string, sender: string, text: string, timestamp?: number): void {
-    const bucket = this.messages.get(groupId) ?? [];
-    bucket.unshift({
+  addMessage(
+    groupId: string,
+    sender: string,
+    message: string,
+    timestamp?: number,
+  ): void {
+    const existing = this.messages.get(groupId) ?? [];
+
+    const newMessage: StoredMessage = {
       sender,
-      text,
+      message,
       timestamp: timestamp ?? Date.now(),
-    });
+    };
 
-    if (bucket.length > MAX_MESSAGES_PER_GROUP) {
-      bucket.length = MAX_MESSAGES_PER_GROUP;
-    }
-
-    this.messages.set(groupId, bucket);
+    const updated = [...existing, newMessage].slice(-100);
+    this.messages.set(groupId, updated);
   }
 
-  list(groupId: string): StoredMessage[] {
+  getMessages(groupId: string): StoredMessage[] {
     return this.messages.get(groupId) ?? [];
   }
 }

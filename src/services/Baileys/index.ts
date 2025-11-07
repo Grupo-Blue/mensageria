@@ -6,7 +6,6 @@ import { Boom } from '@hapi/boom';
 import fs from 'fs';
 import path from 'path';
 import socket from '../../libs/socket';
-import groupStore from './groupStore';
 import messageStore from './messageStore';
 import { saveGroupInfo } from './saveGroupInfo';
 
@@ -24,7 +23,6 @@ const updateConnectionStatus = (id: string, status: boolean): void => {
     target.connected = status;
   }
 };
-
 const groupNameCache = new Map<string, string>();
 
 const closeBaileysConnection = (connection: any): void => {
@@ -54,6 +52,7 @@ export const removeConnection = (id: string): void => {
 };
 
 export const addConnection = async (id: string): Promise<void> => {
+  console.log('Entrou no addConnection')
   const io = socket.getIO();
   removeConnection(id);
   const dir = path.resolve(
@@ -65,38 +64,92 @@ export const addConnection = async (id: string): Promise<void> => {
   const { state, saveCreds } = await useMultiFileAuthState(dir);
 
   const sock = makeWASocket({
+    // version,
     printQRInTerminal: true,
     auth: state,
+    // patchMessageBeforeSending: msg => {
+    //   let message = msg;
+    //   const requiresPatch = !!(
+    //     message.buttonsMessage ||
+    //     // || message.templateMessage
+    //     message.listMessage
+    //   );
+    //   if (requiresPatch) {
+    //     message = {
+    //       viewOnceMessage: {
+    //         message: {
+    //           messageContextInfo: {
+    //             deviceListMetadataVersion: 2,
+    //             deviceListMetadata: {},
+    //           },
+    //           ...message,
+    //         },
+    //       },
+    //     };
+    //   }
+
+    //   return message;
+    // },
   });
 
+  // store?.bind(sock.ev);
+  // eslint-disable-next-line @typescript-eslint/no-misused-promises
   sock.ev.on('creds.update', saveCreds);
+  // sock.ev.on('chats.set', data => console.log('chats.set', data));
+  // sock.ev.on('messages.set', data => console.log('messages.set', data));
+  // sock.ev.on('contacts.set', data => console.log('contacts.set', data));
+  // sock.ev.on('chats.upsert', data => console.log('chats.upsert', data));
+  // sock.ev.on('chats.update', data => console.log('chats.update', data));
+  // sock.ev.on('chats.delete', data => console.log('chats.delete', data));
   sock.ev.on('presence.update', data => console.log('presence.update', data));
+  // sock.ev.on('contacts.upsert', data => console.log('contacts.upsert', data));
+  // sock.ev.on('contacts.update', data => console.log('contacts.update', data));
+  // sock.ev.on('messages.delete', data => console.log('messages.delete', data));
+  // sock.ev.on('messages.update', data => console.log('messages.update', data));
+  // sock.ev.on('messages.media-update', data =>
+  //   console.log('messages.media-update', data),
+  // );
+  // sock.ev.on('messages.reaction', data =>
+  //   console.log('messages.reaction', data),
+  // );
+  // sock.ev.on('message-receipt.update', data =>
+  //   console.log('message-receipt.update', data),
+  // );
+  // sock.ev.on('groups.upsert', data => console.log('groups.upsert', data));
+  // sock.ev.on('groups.update', data => console.log('groups.update', data));
+  // sock.ev.on('group-participants.update', data =>
+  //   console.log('group-participants.update', data),
+  // );
+  // sock.ev.on('blocklist.set', data => console.log('blocklist.set', data));
+  // sock.ev.on('blocklist.update', data => console.log('blocklist.update', data));
+  // sock.ev.on('call', data => console.log('call', data));
+
+
 
   sock.ev.on('connection.update', update => {
     if (update.qr) {
-      io.emit('qrcode', {
+      io.emit(`qrcode`, {
         id,
         qrcode: update.qr,
         connected: false,
       });
     } else {
-      io.emit('qrcode', {
+      io.emit(`qrcode`, {
         id,
         qrcode: null,
         connected: true,
       });
     }
-
     const { connection, lastDisconnect } = update;
     if (connection === 'close') {
       updateConnectionStatus(id, false);
       const shouldReconnect =
         (lastDisconnect?.error as Boom)?.output?.statusCode !==
         DisconnectReason.loggedOut;
-
+      // reconnect if not logged out
       if (shouldReconnect) {
         removeConnection(id);
-        void addConnection(id);
+        addConnection(id);
       } else {
         const authDir = path.resolve(
           process.cwd(),
@@ -110,13 +163,13 @@ export const addConnection = async (id: string): Promise<void> => {
           console.log(`${dir} is deleted!`);
         });
         removeConnection(id);
+        addConnection(id);
       }
     } else if (connection === 'open') {
       console.log('Conexão aberta para o usuário', id);
       updateConnectionStatus(id, true);
     }
   });
-
   sock.ev.on('messages.upsert', async m => {
     console.log(
       'messages.upsert>>>>>>>>',
@@ -195,7 +248,6 @@ export const addConnection = async (id: string): Promise<void> => {
       console.error('[ERRO] Falha ao processar mensagem:', error);
     }
   });
-
   connections.push({
     id,
     connection: sock,
@@ -204,16 +256,7 @@ export const addConnection = async (id: string): Promise<void> => {
 };
 
 const connect = async (): Promise<void> => {
-  const identifications = process.env.IDENTIFICATION?.split(',')
-    .map(item => item.trim())
-    .filter(Boolean);
-
-  if (!identifications || identifications.length === 0) {
-    await addConnection('mensageria');
-    return;
-  }
-
-  await Promise.all(identifications.map(identifier => addConnection(identifier)));
+    await addConnection(process.env.IDENTIFICATION ?? 'mensageria');
 };
 
 export const getConnection = (id: string): any => {
@@ -284,8 +327,7 @@ export const sendMessage = async ({
   toPhone,
   message,
 }: SendMessageParamsInterface): Promise<void> => {
-  const sessionId = process.env.IDENTIFICATION?.split(',')[0]?.trim() || 'mensageria';
-  const connection = getConnection(sessionId);
+  const connection = getConnection(process.env.IDENTIFICATION ?? 'mensageria')
   if (!connection) {
     throw new Error('Conexão não encontrada para envio de mensagem!');
   }
@@ -296,18 +338,18 @@ export const sendMessage = async ({
     phoneNumber = `${phoneNumber.slice(0, 4)}${phoneNumber.slice(5, 13)}`;
   }
 
-  const [isWhatsapp] = await connection.onWhatsApp(phoneNumber);
+  const [isWhatsapp] = await connection.onWhatsApp(phoneNumber)
   if (isWhatsapp?.exists) {
-    phoneNumber = isWhatsapp.jid;
+      phoneNumber = isWhatsapp.jid
   } else {
-    throw new Error('Este número não está cadastrado no Whatsapp');
+      throw new Error('Este número não está cadastrado no Whatsapp')
   }
 
   const sended = await connection.sendMessage(phoneNumber, {
     text: message,
-  });
+  })
 
-  return sended;
+  return sended
 };
 
 export default connect;
