@@ -1,10 +1,11 @@
 import { Router } from 'express';
-import path from 'path'
+import path from 'path';
 import {
   store,
 } from '../../controllers/WhatsappController';
 import auth from '../../middlewares/auth';
-
+import groupStore from '../../services/Baileys/groupStore';
+import { listConnections } from '../../services/Baileys';
 
 const router = Router();
 
@@ -18,13 +19,20 @@ router.get('/qrcode', (req, res) => {
     type: 'string'
   }
   */
-  const { token } = req.query
+  const { token } = req.query;
   if (!token || token !== process.env.AUTH_TOKEN) {
     return res.status(401).json({
-      error: 'Acesso negado!'
-    })
+      error: 'Acesso negado!',
+    });
   }
-  res.sendFile(path.join(process.cwd(), process.env.NODE_ENV === 'production' ? 'build' : 'src', '/views', '/qrcode.html'));
+  res.sendFile(
+    path.join(
+      process.cwd(),
+      process.env.NODE_ENV === 'production' ? 'build' : 'src',
+      '/views',
+      '/qrcode.html',
+    ),
+  );
 });
 router.post('/', auth, (req, res, next) => {
   /*
@@ -55,7 +63,16 @@ router.post('/', auth, (req, res, next) => {
   }
   */
 
-  next()
+  next();
 }, store);
+
+router.get('/groups', auth, (_req, res) => {
+  const groups = groupStore.listAll();
+  return res.json(groups);
+});
+
+router.get('/connections', auth, (_req, res) => {
+  return res.json(listConnections());
+});
 
 export default router;
