@@ -388,3 +388,11 @@
 - [x] Criar testador interativo na interface
 - [ ] Testar API com curl/Postman
 - [x] Documentar uso da API (exemplos de requisição)
+
+
+## Correções na API REST
+- [x] Adicionar campo de seleção de conexão no formulário de teste (já existia)
+- [x] Corrigir URL da API no frontend (usar proxy via mesmo domínio)
+- [x] Adicionar CORS no backend para permitir requisições do frontend
+- [x] Configurar proxy reverso no Apache (/api -> backend:5600)
+- [ ] Testar envio de mensagem com correções aplicadas

@@ -17,7 +17,7 @@ export default function API() {
   const [testResult, setTestResult] = useState("");
   const [testing, setTesting] = useState(false);
 
-  const apiEndpoint = "http://185.215.166.113:5600/api/whatsapp/send";
+  const apiEndpoint = "https://mensageria.grupoblue.com.br/api/whatsapp/send";
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
