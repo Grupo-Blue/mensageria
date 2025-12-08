@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/sidebar";
 import { APP_LOGO, APP_TITLE, getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, MessageSquare, Bot, Send, Settings as SettingsIcon } from "lucide-react";
+import { LayoutDashboard, LogOut, PanelLeft, MessageSquare, Bot, Send, Settings as SettingsIcon, Code } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -32,6 +32,7 @@ const menuItems = [
   { icon: MessageSquare, label: "WhatsApp", path: "/whatsapp" },
   { icon: Bot, label: "Telegram", path: "/telegram" },
   { icon: Send, label: "Enviar Mensagens", path: "/send" },
+  { icon: Code, label: "API", path: "/api" },
   { icon: SettingsIcon, label: "Configurações", path: "/settings" },
 ];
 

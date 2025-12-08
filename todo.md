@@ -379,3 +379,12 @@
 - [x] Atualizar index.html para usar valores fixos no favicon e title
 - [x] Remover todas as referências a %VITE_APP_LOGO% e %VITE_APP_TITLE%
 - [ ] Criar checkpoint para deploy em produção
+
+## API REST para envio de mensagens WhatsApp
+- [x] Criar endpoint POST /api/whatsapp/send no backend
+- [x] Implementar autenticação via API Key
+- [x] Adicionar validação de parâmetros (número, mensagem)
+- [x] Criar interface de documentação da API no frontend
+- [x] Criar testador interativo na interface
+- [ ] Testar API com curl/Postman
+- [x] Documentar uso da API (exemplos de requisição)
