@@ -486,3 +486,11 @@
 - [x] Adicionar visualização de logs de mensagens
 - [x] Configurar PM2 para micro-serviço webhook
 - [ ] Testar fluxo completo end-to-end com webhook real
+
+
+## Bug: Tabelas webhook não existem no banco de produção - RESOLVIDO ✅
+- [x] Criar tabela webhook_config no banco de produção
+- [x] Criar tabela webhook_logs no banco de produção
+- [x] Corrigir nome da coluna de 'from' para 'from_number'
+- [x] Atualizar schema e código para usar fromNumber
+- [x] Deploy e teste de salvamento de configuração

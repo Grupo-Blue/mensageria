@@ -284,7 +284,7 @@ export async function getWebhookLogs(userId: number, limit: number = 50) {
   const result = await db
     .select({
       id: webhookLogs.id,
-      from: webhookLogs.from,
+      fromNumber: webhookLogs.fromNumber,
       messageId: webhookLogs.messageId,
       text: webhookLogs.text,
       status: webhookLogs.status,

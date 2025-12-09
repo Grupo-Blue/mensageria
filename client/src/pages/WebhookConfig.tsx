@@ -294,7 +294,7 @@ Authorization: Bearer ${webhookSecret || "<seu-secret>"}
                     )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium">{log.from}</span>
+                        <span className="font-medium">{log.fromNumber}</span>
                         <span className="text-xs text-muted-foreground">
                           {new Date(log.createdAt).toLocaleString("pt-BR")}
                         </span>
