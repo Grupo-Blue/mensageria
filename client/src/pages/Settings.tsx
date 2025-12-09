@@ -383,28 +383,6 @@ export default function Settings() {
           </Card>
         )}
 
-        {/* Webhook Configuration */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Webhook de Mensagens Recebidas</CardTitle>
-            <CardDescription>
-              Configure um webhook externo para receber notificações de mensagens recebidas no WhatsApp
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button
-              onClick={() => window.location.href = '/webhook'}
-              variant="outline"
-              className="w-full"
-            >
-              Configurar Webhook
-            </Button>
-            <p className="text-xs text-gray-500 mt-2">
-              Integre com sistemas externos para processar mensagens recebidas automaticamente
-            </p>
-          </CardContent>
-        </Card>
-
         {/* Save Button */}
         <div className="flex justify-end">
           <Button
