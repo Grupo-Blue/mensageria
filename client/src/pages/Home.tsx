@@ -93,42 +93,42 @@ export default function Home() {
             </CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Link href="/whatsapp">
-              <Button variant="outline" className="w-full justify-start h-auto py-4">
+            <Button variant="outline" className="w-full justify-start h-auto py-4" asChild>
+              <Link href="/whatsapp">
                 <MessageSquare className="w-5 h-5 mr-3 text-green-600" />
                 <div className="text-left">
                   <div className="font-semibold">Conectar WhatsApp</div>
                   <div className="text-sm text-gray-500">Adicionar nova conexão</div>
                 </div>
-              </Button>
-            </Link>
-            <Link href="/telegram">
-              <Button variant="outline" className="w-full justify-start h-auto py-4">
+              </Link>
+            </Button>
+            <Button variant="outline" className="w-full justify-start h-auto py-4" asChild>
+              <Link href="/telegram">
                 <Bot className="w-5 h-5 mr-3 text-blue-600" />
                 <div className="text-left">
                   <div className="font-semibold">Conectar Telegram</div>
                   <div className="text-sm text-gray-500">Adicionar bot</div>
                 </div>
-              </Button>
-            </Link>
-            <Link href="/send">
-              <Button variant="outline" className="w-full justify-start h-auto py-4">
+              </Link>
+            </Button>
+            <Button variant="outline" className="w-full justify-start h-auto py-4" asChild>
+              <Link href="/send">
                 <Send className="w-5 h-5 mr-3 text-purple-600" />
                 <div className="text-left">
                   <div className="font-semibold">Enviar Mensagem</div>
                   <div className="text-sm text-gray-500">Enviar para WhatsApp ou Telegram</div>
                 </div>
-              </Button>
-            </Link>
-            <Link href="/settings">
-              <Button variant="outline" className="w-full justify-start h-auto py-4">
+              </Link>
+            </Button>
+            <Button variant="outline" className="w-full justify-start h-auto py-4" asChild>
+              <Link href="/settings">
                 <Clock className="w-5 h-5 mr-3 text-orange-600" />
                 <div className="text-left">
                   <div className="font-semibold">Configurações</div>
                   <div className="text-sm text-gray-500">Resumo de grupos e mais</div>
                 </div>
-              </Button>
-            </Link>
+              </Link>
+            </Button>
           </CardContent>
         </Card>
 

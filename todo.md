@@ -494,3 +494,27 @@
 - [x] Corrigir nome da coluna de 'from' para 'from_number'
 - [x] Atualizar schema e código para usar fromNumber
 - [x] Deploy e teste de salvamento de configuração
+
+
+## Feature: Implementar PR #7 - Teste de Webhook no Backend Docker - CONCLUÍDO ✅
+- [x] Clonar repositório mensageria (backend Docker)
+- [x] Fazer checkout da branch da PR #7
+- [x] Revisar alterações em trpc.ts e settingsStore.ts
+- [x] Aplicar alterações no backend Docker de produção (/root/mensageria)
+- [x] Copiar trpc.ts e settingsStore.ts para produção
+- [x] Reiniciar container Docker
+- [x] Fazer merge da PR #7 no GitHub (squash merge)
+
+
+## Bug: Erro de hydration - tags <a> aninhadas na página /api - RESOLVIDO ✅
+- [x] Identificar código com <a> aninhado em Home.tsx (Links com Buttons)
+- [x] Usar asChild no Button para permitir Link como elemento raiz
+- [x] Corrigir todos os 4 botões (WhatsApp, Telegram, Enviar, Configurações)
+
+
+## Bug: Erro 500 ao testar webhook - RESOLVIDO ✅
+- [x] Identificar causa do erro (TypeScript: fromNumber vs from)
+- [x] Corrigir server/db.ts linha 287 (fromNumber -> from)
+- [x] Build e commit da correção
+- [ ] Deploy para produção (pendente - SSH com problema)
+- [ ] Testar novamente após deploy
