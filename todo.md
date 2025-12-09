@@ -396,3 +396,63 @@
 - [x] Adicionar CORS no backend para permitir requisições do frontend
 - [x] Configurar proxy reverso no Apache (/api -> backend:5600)
 - [ ] Testar envio de mensagem com correções aplicadas
+
+
+## ✅ API REST - IMPLEMENTAÇÃO COMPLETA (Micro-serviço)
+- [x] Criar micro-serviço Node.js independente (porta 5601)
+- [x] Implementar endpoint POST /send com validação completa
+- [x] Adicionar autenticação via X-API-Key
+- [x] Configurar comunicação com backend Docker (porta 5600)
+- [x] Configurar token de autenticação do backend
+- [x] Corrigir mapeamento de parâmetros (phone, message)
+- [x] Configurar Apache para proxy /api/send-message → micro-serviço
+- [x] Atualizar frontend para usar novo endpoint
+- [x] Testar API via HTTPS com sucesso
+- [x] Deploy completo em produção
+
+### ENDPOINT FINAL
+**URL:** POST https://mensageria.grupoblue.com.br/api/send-message
+
+**Headers:**
+- Content-Type: application/json
+- X-API-Key: test-api-key-123
+
+**Body:**
+```json
+{
+  "connectionName": "mensageria",
+  "to": "5561986266334",
+  "message": "Sua mensagem aqui"
+}
+```
+
+**Resposta de Sucesso (200):**
+```json
+{
+  "success": true,
+  "message": "Mensagem enviada com sucesso",
+  "data": { ... }
+}
+```
+
+**Resposta de Erro:**
+```json
+{
+  "success": false,
+  "error": "Descrição do erro",
+  "details": { ... }
+}
+```
+
+### ARQUITETURA
+- **Micro-serviço:** /root/whatsapp-api-service/index.js (porta 5601)
+- **PM2:** whatsapp-api (gerenciamento do processo)
+- **Apache:** Proxy /api/send-message → localhost:5601/send
+- **Backend:** Docker mensageria (porta 5600) - Baileys WhatsApp
+- **Frontend:** https://mensageria.grupoblue.com.br/api (documentação)
+
+### OBSERVAÇÕES
+- API Key configurada: test-api-key-123 (alterar em produção)
+- Token de autenticação backend configurado automaticamente
+- Micro-serviço usa apenas módulos nativos do Node.js (sem dependências)
+- Proxy Apache configurado no arquivo -le-ssl.conf (Let's Encrypt)
