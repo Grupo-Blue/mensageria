@@ -456,3 +456,13 @@
 - Token de autenticação backend configurado automaticamente
 - Micro-serviço usa apenas módulos nativos do Node.js (sem dependências)
 - Proxy Apache configurado no arquivo -le-ssl.conf (Let's Encrypt)
+
+
+## Bug: Erro "Cannot GET /api/auth/google" ao fazer login - RESOLVIDO ✅
+- [x] Investigar configuração do Apache para rotas /api/auth/*
+- [x] Identificar conflito entre backend Node.js (porta 3000) e backend Docker (porta 5600)
+- [x] Atualizar Apache para redirecionar /api/auth/* para porta 3000
+- [x] Adicionar /api/trpc/* para porta 3000 (tRPC)
+- [x] Manter /api/send-message para porta 5601 (micro-serviço)
+- [x] Manter /api/* genérico para porta 5600 (backend Docker)
+- [x] Testar login OAuth completo - FUNCIONANDO
