@@ -25,6 +25,47 @@ const mapGroupRecord = () =>
     updated_at: group.lastMessageAt,
   }));
 
+const testWebhook = async (webhookUrl: string): Promise<{ success: boolean; status?: number; message: string }> => {
+  try {
+    const testPayload = {
+      event: 'test',
+      timestamp: new Date().toISOString(),
+      data: {
+        message: 'Teste de webhook do sistema de mensageria',
+      },
+    };
+
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(testPayload),
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (response.ok) {
+      return {
+        success: true,
+        status: response.status,
+        message: `Webhook respondeu com sucesso (status ${response.status})`,
+      };
+    }
+
+    return {
+      success: false,
+      status: response.status,
+      message: `Webhook respondeu com erro (status ${response.status})`,
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+    return {
+      success: false,
+      message: `Falha ao conectar com o webhook: ${errorMessage}`,
+    };
+  }
+};
+
 const executeProcedure = async (
   name: string,
   payload: BatchInputItem | undefined,
@@ -61,6 +102,27 @@ const executeProcedure = async (
         return {
           result: {
             data,
+          },
+        };
+      }
+      case 'webhooks.test': {
+        const input = payload?.json as Record<string, unknown> | undefined;
+        const userId = Number(input?.userId ?? 1) || 1;
+        const settings = await settingsStore.getSettings(userId);
+
+        if (!settings.webhook_url) {
+          return {
+            error: {
+              code: -32602,
+              message: 'URL do webhook não configurada',
+            },
+          };
+        }
+
+        const result = await testWebhook(settings.webhook_url);
+        return {
+          result: {
+            data: result,
           },
         };
       }

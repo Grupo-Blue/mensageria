@@ -11,6 +11,7 @@ export interface SettingsRecord {
   enable_group_resume: boolean;
   resume_prompt: string | null;
   resume_connection_id: string | null;
+  webhook_url: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -23,6 +24,7 @@ type SettingsInput = Partial<{
   enableGroupResume: boolean;
   resumePrompt: string | null;
   resumeConnectionId: string | number | null;
+  webhookUrl: string | null;
 }> & Partial<Omit<SettingsRecord, 'id' | 'user_id' | 'created_at' | 'updated_at'>>;
 
 const SETTINGS_FILE = path.resolve(process.cwd(), 'tmp', 'settings.json');
@@ -101,6 +103,7 @@ class SettingsStore {
       enable_group_resume: false,
       resume_prompt: null,
       resume_connection_id: null,
+      webhook_url: null,
       created_at: now,
       updated_at: now,
     };
@@ -156,6 +159,7 @@ class SettingsStore {
       resume_connection_id: normalizeString(
         payload.resume_connection_id ?? payload.resumeConnectionId,
       ),
+      webhook_url: normalizeString(payload.webhook_url ?? payload.webhookUrl),
     };
 
     const updated: SettingsRecord = {
