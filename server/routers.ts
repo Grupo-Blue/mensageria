@@ -211,6 +211,51 @@ export const appRouter = router({
       return await db.getMessages(ctx.user.id, input.limit);
     }),
   }),
+  webhook: router({
+    getConfig: protectedProcedure.query(async ({ ctx }) => {
+      return await db.getWebhookConfig(ctx.user.id);
+    }),
+    saveConfig: protectedProcedure
+      .input(z.object({
+        webhookUrl: z.string().url(),
+        webhookSecret: z.string().min(1),
+        enabled: z.boolean(),
+        connectionName: z.string().min(1),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await db.upsertWebhookConfig(ctx.user.id, input);
+        return { success: true };
+      }),
+    getLogs: protectedProcedure
+      .input(z.object({ limit: z.number().optional().default(50) }))
+      .query(async ({ ctx, input }) => {
+        return await db.getWebhookLogs(ctx.user.id, input.limit);
+      }),
+    testWebhook: protectedProcedure
+      .input(z.object({ webhookUrl: z.string().url(), webhookSecret: z.string() }))
+      .mutation(async ({ input }) => {
+        try {
+          const testPayload = {
+            from: "+5561999999999",
+            message_id: "test-" + Date.now(),
+            timestamp: new Date().toISOString(),
+            text: "Mensagem de teste do sistema Mensageria"
+          };
+          
+          const response = await axios.post(input.webhookUrl, testPayload, {
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${input.webhookSecret}`
+            },
+            timeout: 10000
+          });
+          
+          return { success: true, response: response.data };
+        } catch (error: any) {
+          throw new Error(error.response?.data?.message || error.message || "Erro ao testar webhook");
+        }
+      }),
+  }),
   settings: router({
     get: protectedProcedure.query(async ({ ctx }) => {
       return await db.getUserSettings(ctx.user.id);

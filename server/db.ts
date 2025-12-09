@@ -247,3 +247,56 @@ export async function upsertUserSettings(userId: number, data: Partial<InsertSet
     await db.insert(settings).values({ userId, ...data });
   }
 }
+
+// Webhook Configuration
+export async function getWebhookConfig(userId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  
+  const { webhookConfig } = await import("../drizzle/schema");
+  const result = await db.select().from(webhookConfig).where(eq(webhookConfig.userId, userId)).limit(1);
+  
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function upsertWebhookConfig(userId: number, data: { webhookUrl: string; webhookSecret: string; enabled: boolean; connectionName: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const { webhookConfig } = await import("../drizzle/schema");
+  const existing = await getWebhookConfig(userId);
+  
+  if (existing) {
+    await db.update(webhookConfig).set(data).where(eq(webhookConfig.userId, userId));
+  } else {
+    await db.insert(webhookConfig).values({ userId, ...data });
+  }
+}
+
+// Webhook Logs
+export async function getWebhookLogs(userId: number, limit: number = 50) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const { webhookLogs, webhookConfig } = await import("../drizzle/schema");
+  
+  // Join com webhook_config para filtrar por userId
+  const result = await db
+    .select({
+      id: webhookLogs.id,
+      from: webhookLogs.from,
+      messageId: webhookLogs.messageId,
+      text: webhookLogs.text,
+      status: webhookLogs.status,
+      response: webhookLogs.response,
+      errorMessage: webhookLogs.errorMessage,
+      createdAt: webhookLogs.createdAt,
+    })
+    .from(webhookLogs)
+    .innerJoin(webhookConfig, eq(webhookLogs.webhookConfigId, webhookConfig.id))
+    .where(eq(webhookConfig.userId, userId))
+    .orderBy(desc(webhookLogs.createdAt))
+    .limit(limit);
+  
+  return result;
+}

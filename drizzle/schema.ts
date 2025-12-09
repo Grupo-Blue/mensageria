@@ -111,3 +111,38 @@ export const whatsappGroups = mysqlTable("whatsapp_groups", {
 
 export type WhatsappGroup = typeof whatsappGroups.$inferSelect;
 export type InsertWhatsappGroup = typeof whatsappGroups.$inferInsert;
+
+/**
+ * Webhook configuration table
+ */
+export const webhookConfig = mysqlTable("webhook_config", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("user_id").notNull(),
+  webhookUrl: varchar("webhook_url", { length: 500 }).notNull(),
+  webhookSecret: varchar("webhook_secret", { length: 255 }).notNull(),
+  enabled: boolean("enabled").default(false).notNull(),
+  connectionName: varchar("connection_name", { length: 100 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+
+export type WebhookConfig = typeof webhookConfig.$inferSelect;
+export type InsertWebhookConfig = typeof webhookConfig.$inferInsert;
+
+/**
+ * Webhook logs table for audit trail
+ */
+export const webhookLogs = mysqlTable("webhook_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  webhookConfigId: int("webhook_config_id").notNull(),
+  from: varchar("from", { length: 50 }).notNull(),
+  messageId: varchar("message_id", { length: 255 }).notNull(),
+  text: text("text").notNull(),
+  status: mysqlEnum("status", ["success", "error"]).notNull(),
+  response: text("response"), // JSON string
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type WebhookLog = typeof webhookLogs.$inferSelect;
+export type InsertWebhookLog = typeof webhookLogs.$inferInsert;

@@ -466,3 +466,23 @@
 - [x] Manter /api/send-message para porta 5601 (micro-serviço)
 - [x] Manter /api/* genérico para porta 5600 (backend Docker)
 - [x] Testar login OAuth completo - FUNCIONANDO
+
+
+## Feature: Sistema de Webhook para Mensagens Recebidas - IMPLEMENTADO ✅
+- [x] Criar tabela webhook_config no banco de dados
+- [x] Criar tabela webhook_logs no banco de dados
+- [x] Fazer push do schema para o banco
+- [x] Criar micro-serviço webhook (porta 5602)
+- [x] Implementar endpoint POST /inbound no micro-serviço
+- [x] Implementar formatação de payload para Supabase
+- [x] Implementar retry automático em caso de falha
+- [x] Implementar conversão de formato de número (Baileys → +55...)
+- [x] Modificar Baileys para capturar mensagens recebidas
+- [x] Integrar Baileys com micro-serviço webhook
+- [x] Criar rotas tRPC para webhook_config (get, save, getLogs, testWebhook)
+- [x] Criar interface de configuração no frontend (/webhook)
+- [x] Adicionar formulário de webhook nas Configurações
+- [x] Implementar testador de webhook
+- [x] Adicionar visualização de logs de mensagens
+- [x] Configurar PM2 para micro-serviço webhook
+- [ ] Testar fluxo completo end-to-end com webhook real
