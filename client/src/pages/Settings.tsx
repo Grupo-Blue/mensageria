@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { trpc } from "@/lib/trpc";
 import { Loader2, Save, MessageSquare, Send } from "lucide-react";
+import { Link } from "wouter";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -382,6 +383,24 @@ export default function Settings() {
             </CardContent>
           </Card>
         )}
+
+        {/* Webhook Configuration Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Webhook de Mensagens Recebidas</CardTitle>
+            <CardDescription>
+              Configure webhook para encaminhar mensagens recebidas para sistemas externos
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground mb-4">
+              Quando alguém enviar uma mensagem para o WhatsApp conectado, o sistema pode encaminhar automaticamente para uma URL externa (webhook).
+            </p>
+            <Button asChild variant="outline">
+              <Link href="/webhook">Configurar Webhook</Link>
+            </Button>
+          </CardContent>
+        </Card>
 
         {/* Save Button */}
         <div className="flex justify-end">

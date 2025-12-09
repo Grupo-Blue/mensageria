@@ -518,3 +518,12 @@
 - [x] Build e commit da correção
 - [ ] Deploy para produção (pendente - SSH com problema)
 - [ ] Testar novamente após deploy
+
+
+## Bug: Card de Webhook ausente na página de Configurações - RESOLVIDO ✅
+- [x] Adicionar card "Webhook de Mensagens Recebidas" no Settings.tsx
+- [x] Card tem link para /webhook com Button asChild
+- [x] Posicionado antes do botão "Salvar Configurações"
+- [x] Adicionar import do Link do wouter
+- [x] Teste local no Preview - FUNCIONANDO
+- [ ] Deploy completo para produção (pendente)
