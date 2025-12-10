@@ -276,6 +276,7 @@ export const listConnections = (): Array<{ id: string; connected: boolean }> =>
 interface SendMessageParamsInterface {
   toPhone: string;
   message: string;
+  identification?: string;
 }
 interface TemplateButtonInterface {
   index: number;
@@ -326,8 +327,10 @@ export interface TemplateMessageInterface {
 export const sendMessage = async ({
   toPhone,
   message,
+  identification,
 }: SendMessageParamsInterface): Promise<void> => {
-  const connection = getConnection(process.env.IDENTIFICATION ?? 'mensageria')
+  const connectionId = identification || process.env.IDENTIFICATION || 'mensageria';
+  const connection = getConnection(connectionId)
   if (!connection) {
     throw new Error('Conexão não encontrada para envio de mensagem!');
   }

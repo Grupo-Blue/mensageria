@@ -13,9 +13,13 @@ const store = async (req: Request, res: Response): Promise<Response> => {
 
   const { phone, message } = validation.data;
 
+  // Extrair token (identificação da conexão) da query string
+  const token = req.query.token as string | undefined;
+
   const data = await sendMessage({
     toPhone: phone,
     message,
+    identification: token,
   });
 
   return res.status(200).json(data);
