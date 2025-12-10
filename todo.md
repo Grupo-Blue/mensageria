@@ -562,3 +562,15 @@
 - [x] Corrigir schema.ts para usar fromNumber (from_number no banco)
 - [x] Corrigir db.ts para usar webhookLogs.fromNumber
 - [x] Testar página /webhook - FUNCIONANDO
+
+
+## Análise Sistemática: Erro 500 persistente na página /webhook - CONCLUÍDA ✅
+- [x] Verificar qual rota tRPC exatamente está retornando 500 - webhook.getConfig ou getLogs
+- [x] Verificar estrutura da tabela webhook_config no banco (dev vs prod) - Não acessível via SSH
+- [x] Verificar estrutura da tabela webhook_logs no banco (dev vs prod) - Não acessível via SSH
+- [x] Testar em dev - FUNCIONA PERFEITAMENTE (sem erro 500)
+- [x] Identificar causa raiz exata - Código em produção está desatualizado
+- [x] Build atualizado gerado - dist/index.js (48.9 KB) com fromNumber
+- [x] Pacote de deploy preparado - webhook-fix-deploy.zip (925 KB)
+- [ ] Deploy manual necessário (SSH bloqueado)
+- [ ] Testar em produção após deploy
