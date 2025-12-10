@@ -135,7 +135,7 @@ export type InsertWebhookConfig = typeof webhookConfig.$inferInsert;
 export const webhookLogs = mysqlTable("webhook_logs", {
   id: int("id").autoincrement().primaryKey(),
   webhookConfigId: int("webhook_config_id").notNull(),
-  from: varchar("from", { length: 50 }).notNull(),
+  fromNumber: varchar("from_number", { length: 50 }).notNull(),
   messageId: varchar("message_id", { length: 255 }).notNull(),
   text: text("text").notNull(),
   status: mysqlEnum("status", ["success", "error"]).notNull(),

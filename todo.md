@@ -547,3 +547,18 @@
 - [x] Corrigir log.from para log.fromNumber no WebhookConfig.tsx
 - [x] Testar acesso a /api - FUNCIONANDO
 - [x] Testar acesso a /webhook - FUNCIONANDO
+
+
+## Bug: Erro 500 na página /webhook ao carregar
+- [ ] Verificar logs do servidor de desenvolvimento
+- [ ] Identificar qual rota tRPC está falhando
+- [ ] Verificar se é problema de banco de dados ou código
+- [ ] Corrigir problema identificado
+- [ ] Testar página /webhook novamente
+
+
+## Bug: Erro 500 na página /webhook - RESOLVIDO ✅
+- [x] Identificar causa do erro (incompatibilidade from vs fromNumber)
+- [x] Corrigir schema.ts para usar fromNumber (from_number no banco)
+- [x] Corrigir db.ts para usar webhookLogs.fromNumber
+- [x] Testar página /webhook - FUNCIONANDO
