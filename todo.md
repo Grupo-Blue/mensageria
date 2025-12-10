@@ -604,3 +604,11 @@
 - [x] Verificar logs - QR Code gerado com sucesso
 - [x] Testar health check - {"status":"healthy","database":"connected"}
 - [x] Containers rodando: mensageria (healthy) + redis (healthy)
+
+## Commit 748385d: Corrigir erro 500 no teste de webhook
+- [x] Atualizar WebhookConfig.tsx para tratar success/error adequadamente
+- [x] Melhorar tratamento de erros no testWebhook procedure (routers.ts)
+- [x] Adicionar validateStatus para não lançar exceção em erros HTTP
+- [x] Retornar mensagens amigáveis para erros de rede (ECONNREFUSED, ETIMEDOUT, ENOTFOUND)
+- [x] TypeScript sem erros - tipos corrigidos automaticamente
+- [x] Implementação completa do commit 748385d
