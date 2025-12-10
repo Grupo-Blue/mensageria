@@ -693,3 +693,21 @@
 - Adicionado `refetchInterval: false` nas 3 queries
 - Adicionado `refetchOnWindowFocus: false` para evitar refetch ao voltar para a aba
 - Performance melhorada significativamente
+
+## Bug: Erro 500 em /api/trpc/settings.get impedindo envio de mensagens - RESOLVIDO ✅
+- [x] Analisar erro 500 retornado pela API
+- [x] Verificar logs do servidor para identificar causa
+- [x] Verificar se tabela settings existe no banco de dados - EXISTE
+- [x] Verificar se há problema no procedure settings.get - FUNCIONA
+- [x] Identificar causa raiz - SESSÃO EXPIRADA (401 UNAUTHORIZED)
+
+**CAUSA RAIZ:**
+- Erro 500 no console era na verdade erro 401 (UNAUTHORIZED)
+- Sessão do usuário havia expirado
+- Backend retornou corretamente: "Please login (10001)"
+- Frontend tem tratamento correto de erro 401 (redireciona para login)
+
+**SOLUÇÃO:**
+- Não é um bug! É comportamento esperado quando sessão expira
+- Usuário precisa fazer login novamente
+- Sistema funciona corretamente
