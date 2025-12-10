@@ -527,3 +527,23 @@
 - [x] Adicionar import do Link do wouter
 - [x] Teste local no Preview - FUNCIONANDO
 - [ ] Deploy completo para produção (pendente)
+
+
+## Deploy para Produção
+- [ ] Conectar ao servidor via SSH/SFTP
+- [ ] Copiar dist/index.js (backend) para /var/www/mensageria-frontend/dist/
+- [ ] Copiar dist/public/* (frontend) para /var/www/mensageria-frontend/dist/public/
+- [ ] Reiniciar PM2: pm2 restart mensageria-frontend
+- [ ] Validar em https://mensageria.grupoblue.com.br/settings
+- [ ] Testar webhook em https://mensageria.grupoblue.com.br/webhook
+
+
+## Bug: Erro 404 na rota /api - RESOLVIDO ✅
+- [x] Verificar se rota /api está definida no App.tsx - FALTAVA
+- [x] Verificar se componente API.tsx existe - OK
+- [x] Verificar se componente WebhookConfig.tsx existe - ESTAVA VAZIO
+- [x] Recuperar WebhookConfig.tsx do Git (commit dff8cb4)
+- [x] Adicionar rotas /api e /webhook no App.tsx
+- [x] Corrigir log.from para log.fromNumber no WebhookConfig.tsx
+- [x] Testar acesso a /api - FUNCIONANDO
+- [x] Testar acesso a /webhook - FUNCIONANDO

@@ -9,6 +9,8 @@ import WhatsApp from "./pages/WhatsApp";
 import Telegram from "./pages/Telegram";
 import SendMessage from "./pages/SendMessage";
 import Settings from "./pages/Settings";
+import API from "./pages/API";
+import WebhookConfig from "./pages/WebhookConfig";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -19,6 +21,8 @@ function Router() {
       <Route path={"/telegram"} component={Telegram} />
       <Route path={"/send"} component={SendMessage} />
       <Route path={"/settings"} component={Settings} />
+      <Route path={"/api"} component={API} />
+      <Route path={"/webhook"} component={WebhookConfig} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />
