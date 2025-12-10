@@ -675,3 +675,21 @@
 - Todas as rotas do React Router funcionando (/webhook, /whatsapp, /telegram)
 - Socket.IO funcionando (QR Code gera corretamente)
 - APIs funcionando (tRPC, auth, backend Baileys)
+
+## Bug: Erros no console em /settings deixando tela lenta - RESOLVIDO ✅
+- [x] Acessar https://mensageria.grupoblue.com.br/settings
+- [x] Verificar erros no console do navegador - Nenhum erro encontrado
+- [x] Identificar causa dos erros (queries infinitas, loops, etc)
+- [x] Aplicar correção - Desabilitado polling automático
+- [x] Testar performance após correção
+
+**CAUSA RAIZ:**
+- 3 queries tRPC fazendo polling automático (refetch constante)
+- `trpc.settings.get.useQuery()` - Configurações
+- `trpc.whatsapp.list.useQuery()` - Lista de conexões WhatsApp
+- `trpc.whatsappGroups.list.useQuery()` - Lista de grupos
+
+**SOLUÇÃO:**
+- Adicionado `refetchInterval: false` nas 3 queries
+- Adicionado `refetchOnWindowFocus: false` para evitar refetch ao voltar para a aba
+- Performance melhorada significativamente

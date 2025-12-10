@@ -22,9 +22,18 @@ export default function Settings() {
   const [chatMessage, setChatMessage] = useState("");
   const [chatHistory, setChatHistory] = useState<Array<{role: 'user' | 'assistant', content: string}>>([]);
 
-  const { data: settings, isLoading } = trpc.settings.get.useQuery();
-  const { data: connections } = trpc.whatsapp.list.useQuery();
-  const { data: groups } = trpc.whatsappGroups.list.useQuery();
+  const { data: settings, isLoading } = trpc.settings.get.useQuery(undefined, {
+    refetchInterval: false,
+    refetchOnWindowFocus: false,
+  });
+  const { data: connections } = trpc.whatsapp.list.useQuery(undefined, {
+    refetchInterval: false,
+    refetchOnWindowFocus: false,
+  });
+  const { data: groups } = trpc.whatsappGroups.list.useQuery(undefined, {
+    refetchInterval: false,
+    refetchOnWindowFocus: false,
+  });
   const utils = trpc.useUtils();
 
   const updateMutation = trpc.settings.update.useMutation({
