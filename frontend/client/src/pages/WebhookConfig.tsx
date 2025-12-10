@@ -45,9 +45,12 @@ export default function WebhookConfig() {
 
   const testWebhookMutation = trpc.webhook.testWebhook.useMutation({
     onSuccess: (data) => {
-      toast.success("Webhook testado com sucesso!");
-      console.log("Resposta do webhook:", data.response);
-      refetchLogs();
+      if (data.success) {
+        toast.success(`Webhook testado com sucesso! Status: ${data.status || 200}`);
+        refetchLogs();
+      } else {
+        toast.error(data.message || "Falha ao testar webhook");
+      }
     },
     onError: (error) => {
       toast.error(`Erro ao testar webhook: ${error.message}`);

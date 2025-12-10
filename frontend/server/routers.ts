@@ -234,25 +234,50 @@ export const appRouter = router({
     testWebhook: protectedProcedure
       .input(z.object({ webhookUrl: z.string().url(), webhookSecret: z.string() }))
       .mutation(async ({ input }) => {
+        const testPayload = {
+          from: "+5561999999999",
+          message_id: "test-" + Date.now(),
+          timestamp: new Date().toISOString(),
+          text: "Mensagem de teste do sistema Mensageria"
+        };
+
         try {
-          const testPayload = {
-            from: "+5561999999999",
-            message_id: "test-" + Date.now(),
-            timestamp: new Date().toISOString(),
-            text: "Mensagem de teste do sistema Mensageria"
-          };
-          
           const response = await axios.post(input.webhookUrl, testPayload, {
             headers: {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${input.webhookSecret}`
             },
-            timeout: 10000
+            timeout: 10000,
+            validateStatus: () => true, // Aceita qualquer status para não lançar exceção
           });
-          
-          return { success: true, response: response.data };
-        } catch (error: any) {
-          throw new Error(error.response?.data?.message || error.message || "Erro ao testar webhook");
+
+          if (response.status >= 200 && response.status < 300) {
+            return { success: true, response: response.data, status: response.status };
+          } else {
+            return {
+              success: false,
+              response: response.data,
+              status: response.status,
+              message: `Webhook retornou status ${response.status}`
+            };
+          }
+        } catch (error: unknown) {
+          // Erros de rede, timeout, etc.
+          if (axios.isAxiosError(error)) {
+            if (error.code === 'ECONNREFUSED') {
+              return { success: false, message: 'Conexão recusada. Verifique se a URL está correta e acessível.' };
+            }
+            if (error.code === 'ETIMEDOUT' || error.code === 'ECONNABORTED') {
+              return { success: false, message: 'Timeout. O servidor demorou muito para responder.' };
+            }
+            if (error.code === 'ENOTFOUND') {
+              return { success: false, message: 'Host não encontrado. Verifique a URL do webhook.' };
+            }
+            return { success: false, message: `Erro de rede: ${error.message}` };
+          }
+
+          const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+          return { success: false, message: `Erro ao testar webhook: ${errorMessage}` };
         }
       }),
   }),
