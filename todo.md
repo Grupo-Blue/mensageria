@@ -711,3 +711,13 @@
 - Não é um bug! É comportamento esperado quando sessão expira
 - Usuário precisa fazer login novamente
 - Sistema funciona corretamente
+
+## Bug: Erro ao enviar mensagem em produção
+- [ ] Acessar https://mensageria.grupoblue.com.br e fazer login
+- [ ] Tentar enviar mensagem de teste para 5561999170587
+- [ ] Capturar erro exato (console, logs, resposta da API)
+- [ ] Verificar logs do backend Baileys
+- [ ] Verificar logs do frontend
+- [ ] Identificar causa raiz
+- [ ] Aplicar correção
+- [ ] Testar envio de mensagem novamente
