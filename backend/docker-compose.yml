@@ -1,0 +1,16 @@
+version: '3'
+services:
+  mensageria:
+    container_name: mensageria
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "5600:3333"
+    volumes:
+      - ../data:/usr/src/app/data
+    environment:
+      - WHATSAPP_GROUPS_CALLBACK_URL=http://172.17.0.1:3000/api/whatsapp/groups
+      - X_AUTH_API=cd739c87f3f7a8a6a69407b639a6d7c6db3090e0d6bbe4cbd4176950a1d9ab27
+      - AUTH_TOKEN=cd739c87f3f7a8a6a69407b639a6d7c6db3090e0d6bbe4cbd4176950a1d9ab27
