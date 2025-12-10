@@ -197,15 +197,27 @@ export const appRouter = router({
       await db.createMessage({ userId: ctx.user.id, platform: "whatsapp", connectionId: input.connectionId, recipient: input.recipient, content: input.message, status: "pending" });
       try {
         const apiToken = process.env.BACKEND_API_TOKEN;
-        if (!apiToken) throw new Error('BACKEND_API_TOKEN não configurado');
-        
-        await axios.post(`${BACKEND_API_URL}/whatsapp?token=${input.identification}`, 
+        if (!apiToken) throw new Error('BACKEND_API_TOKEN não configurado no servidor');
+
+        console.log('[whatsapp.sendMessage] Enviando para:', `${BACKEND_API_URL}/whatsapp?token=${input.identification}`);
+
+        await axios.post(`${BACKEND_API_URL}/whatsapp?token=${input.identification}`,
           { phone: input.recipient, message: input.message },
-          { headers: { 'x-auth-api': apiToken } }
+          { headers: { 'x-auth-api': apiToken }, timeout: 30000 }
         );
         return { success: true };
       } catch (error: any) {
-        throw new Error(error.response?.data?.message || "Erro ao enviar mensagem");
+        console.error('[whatsapp.sendMessage] Erro:', error.code, error.message, error.response?.status, error.response?.data);
+        if (error.code === 'ECONNREFUSED') {
+          throw new Error(`Backend não acessível em ${BACKEND_API_URL}. Verifique se o backend Docker está rodando.`);
+        }
+        if (error.code === 'ETIMEDOUT' || error.code === 'ECONNABORTED') {
+          throw new Error('Timeout ao conectar com o backend. Verifique a conexão.');
+        }
+        if (error.response?.status === 401) {
+          throw new Error('Acesso negado pelo backend. Verifique BACKEND_API_TOKEN.');
+        }
+        throw new Error(error.response?.data?.message || error.response?.data?.error || error.message || "Erro ao enviar mensagem");
       }
     }),
   }),
