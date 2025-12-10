@@ -626,3 +626,38 @@
 - Endpoint tRPC está funcionando, mas retorna 401 UNAUTHORIZED quando usuário não está autenticado
 - Erro 500 ocorre quando frontend não trata adequadamente erro 401 do backend
 - Commit 748385d foi aplicado com sucesso no servidor
+
+## BUG: QR Code do WhatsApp travado em 33%
+- [ ] Acessar https://mensageria.grupoblue.com.br/whatsapp e reproduzir problema
+- [ ] Verificar console do navegador para erros JavaScript
+- [ ] Analisar logs do frontend (PM2)
+- [ ] Verificar logs do backend Baileys (Docker)
+- [ ] Testar endpoint de geração de QR Code diretamente
+- [ ] Identificar causa raiz (timeout, erro de API, problema de conexão)
+- [ ] Aplicar correção
+- [ ] Validar que QR Code é gerado corretamente
+
+## Bug: QR Code do WhatsApp travado em 33% - RESOLVIDO ✅
+- [x] Acessar página /whatsapp e reproduzir problema
+- [x] Verificar logs do frontend e backend
+- [x] Analisar código Socket.IO no frontend
+- [x] Verificar configuração do backend Baileys
+- [x] Identificar causa raiz (Socket.IO não conectando)
+- [x] Configurar Apache para fazer proxy do Socket.IO
+- [x] Habilitar módulos proxy_wstunnel no Apache
+- [x] Remover VirtualHost duplicado (mensageria.grupoblue.com.br.conf)
+- [x] Criar configuração SSL limpa sem loops de redirect
+- [x] Testar e validar correção - QR Code funcionando!
+
+**CAUSA RAIZ:**
+- Apache não tinha proxy configurado para /socket.io
+- Havia dois VirtualHosts na porta 443 causando conflito
+- Configurações antigas tinham loops de redirect
+
+**SOLUÇÃO:**
+- Configurado ProxyPass /socket.io http://localhost:5600/socket.io
+- Desabilitado site duplicado (a2dissite mensageria.grupoblue.com.br.conf)
+- Criado configuração SSL limpa em mensageria.grupoblue.com.br-le-ssl.conf
+- QR Code agora gera e exibe corretamente
+- Testado e validado pelo usuário ✅
+
