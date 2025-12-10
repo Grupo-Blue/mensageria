@@ -578,15 +578,14 @@
 ## PR #8: Melhorias de Segurança e Infraestrutura
 - [x] Remover arquivos de código morto do frontend (ComponentShowcase.tsx, WhatsApp-improved.tsx, WhatsApp-simple.tsx)
 - [x] Limpar página WhatsApp.tsx (remover console.logs de debug)
-- [ ] Atualizar .env.example com documentação completa
-- [ ] Implementar validação de entrada nos controllers
-- [ ] Criar utilitários de segurança (validação URL, email, telefone)
-- [ ] Implementar rate limiting
-- [ ] Adicionar middleware de segurança
-- [ ] Corrigir Dockerfile para produção com multi-stage build
-- [ ] Adicionar Redis ao docker-compose
-- [ ] Adicionar volumes para persistência de dados
-- [ ] Implementar graceful shutdown
-- [ ] Adicionar endpoint de health check
-- [ ] Mover URLs hardcoded para variáveis de ambiente
-- [ ] Corrigir tipos 'any' para tipos específicos
+- [x] Atualizar .env.example com documentação completa
+- [x] Implementar validação de entrada com schemas Zod (src/schemas/index.ts)
+- [x] Criar utilitários de segurança (src/utils/security.ts - validação URL, email, telefone)
+- [x] Implementar rate limiting no servidor (src/middlewares/rateLimit.ts)
+- [x] Adicionar middleware de segurança e autenticação aprimorado
+- [x] Corrigir Dockerfile para produção com multi-stage build
+- [x] Adicionar Redis ao docker-compose
+- [x] Adicionar volumes para persistência de dados (auth_info_baileys, tmp, database)
+- [x] Implementar health check no Dockerfile
+- [x] Adicionar configuração de variáveis de ambiente (src/config/env.ts)
+- [x] Merge da PR #8 concluído e enviado para GitHub
