@@ -721,3 +721,12 @@
 - [ ] Identificar causa raiz
 - [ ] Aplicar correção
 - [ ] Testar envio de mensagem novamente
+
+
+## Bug CRÍTICO: Envio de mensagens pela interface web não funciona
+- [x] Investigar por que botão "Enviar Mensagem" não dispara requisição HTTP
+- [x] CAUSA RAIZ: Tabela whatsappConnections não existe no banco do frontend Manus
+- [x] Frontend tenta buscar conexões do seu próprio banco, mas elas estão no backend Docker
+- [x] Criar schema de tabelas whatsappConnections e telegramConnections no banco do frontend
+- [x] Implementar sincronização automática de conexões do backend Docker para o banco do frontend
+- [ ] Testar envio de mensagens WhatsApp pela interface web em produção

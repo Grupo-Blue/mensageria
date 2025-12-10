@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { Bot, Loader2, MessageSquare, Send } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 
 export default function SendMessage() {
@@ -16,8 +16,19 @@ export default function SendMessage() {
   const [recipient, setRecipient] = useState("");
   const [message, setMessage] = useState("");
 
-  const { data: whatsappConnections } = trpc.whatsapp.list.useQuery();
+  const { data: whatsappConnections, refetch: refetchWhatsapp } = trpc.whatsapp.list.useQuery();
   const { data: telegramConnections } = trpc.telegram.list.useQuery();
+  
+  const syncWhatsappMutation = trpc.whatsapp.sync.useMutation({
+    onSuccess: () => {
+      refetchWhatsapp();
+    },
+  });
+  
+  // Sincronizar conexões ao carregar a página
+  useEffect(() => {
+    syncWhatsappMutation.mutate();
+  }, []);
 
   const sendWhatsappMutation = trpc.whatsapp.sendMessage.useMutation({
     onSuccess: () => {

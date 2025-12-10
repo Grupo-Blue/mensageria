@@ -43,6 +43,13 @@
       "when": 1765309162853,
       "tag": "0005_bizarre_quasar",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1765340110021,
+      "tag": "0006_perpetual_gambit",
+      "breakpoints": true
     }
   ]
 }

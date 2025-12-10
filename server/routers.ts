@@ -147,6 +147,52 @@ export const appRouter = router({
           throw new Error("Erro ao salvar conexão");
         }
       }),
+    sync: protectedProcedure.mutation(async ({ ctx }) => {
+      try {
+        const apiToken = process.env.BACKEND_API_TOKEN;
+        if (!apiToken) throw new Error('BACKEND_API_TOKEN não configurado');
+        
+        // Buscar conexões do backend Docker
+        const response = await axios.get(`${BACKEND_API_URL}/whatsapp/connections`, {
+          headers: { 'x-auth-api': apiToken }
+        });
+        
+        const connections = response.data;
+        console.log('[whatsapp.sync] Conexões do backend:', connections);
+        
+        // Sincronizar cada conexão com o banco do frontend
+        for (const conn of connections) {
+          // Mapear campos da API do backend para o schema do frontend
+          const identification = conn.id; // Backend usa 'id', frontend usa 'identification'
+          const status = conn.connected ? 'connected' : 'disconnected';
+          const phoneNumber = conn.phoneNumber || null;
+          
+          const existing = await db.getWhatsappConnectionByIdentification(identification);
+          if (existing) {
+            // Atualizar conexão existente
+            await db.updateWhatsappConnection(existing.id, {
+              status,
+              phoneNumber,
+              lastConnectedAt: conn.connected ? new Date() : existing.lastConnectedAt,
+            });
+          } else {
+            // Criar nova conexão
+            await db.createWhatsappConnection({
+              userId: ctx.user.id,
+              identification,
+              status,
+              phoneNumber,
+              lastConnectedAt: conn.connected ? new Date() : undefined,
+            });
+          }
+        }
+        
+        return { success: true, synced: connections.length };
+      } catch (error: any) {
+        console.error('[whatsapp.sync] Erro:', error.message);
+        throw new Error('Erro ao sincronizar conexões');
+      }
+    }),
     sendMessage: protectedProcedure.input(z.object({ connectionId: z.number(), identification: z.string(), recipient: z.string(), message: z.string() })).mutation(async ({ ctx, input }) => {
       await db.createMessage({ userId: ctx.user.id, platform: "whatsapp", connectionId: input.connectionId, recipient: input.recipient, content: input.message, status: "pending" });
       try {
