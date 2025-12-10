@@ -1,0 +1,270 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "version": "1.0.0",
+    "title": "API de Mensageria",
+    "description": "API para envio de mensagens via Whatsapp"
+  },
+  "host": "localhost:3333",
+  "basePath": "/",
+  "tags": [
+    {
+      "name": "Whatsapp",
+      "description": "Endpoints"
+    }
+  ],
+  "schemes": [
+    "http",
+    "https"
+  ],
+  "securityDefinitions": {
+    "apiKeyAuth": {
+      "type": "apiKey",
+      "in": "header",
+      "name": "x-auth-api",
+      "description": "API Key para ter acesso ao endpoint"
+    }
+  },
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/telegram": {
+      "post": {
+        "tags": [
+          "Telegram"
+        ],
+        "description": "Endpoint para envio de mensagem via Telegram.",
+        "parameters": [
+          {
+            "name": "data",
+            "in": "body",
+            "description": "Número de telefone do destinatário, com DDD e mensagem que deseja enviar",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/SendTelegramMessage"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "schema": {
+              "$ref": "#/definitions/SendedTelegramMessage"
+            },
+            "description": "Mensagem enviada com sucesso"
+          },
+          "400": {
+            "schema": {
+              "$ref": "#/definitions/IsNotTelegramNumber"
+            },
+            "description": "Este número não está cadastrado no Telegram"
+          }
+        },
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ]
+      }
+    },
+    "/whatsapp/qrcode": {
+      "get": {
+        "tags": [
+          "Whatsapp"
+        ],
+        "description": "Endpoint que deve ser acessado via browser para escanear o QR Code e conectar o número de Whatsapp.",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "description": "Token de acesso",
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/whatsapp": {
+      "post": {
+        "tags": [
+          "Whatsapp"
+        ],
+        "description": "Endpoint para envio de mensagem via whatsapp.",
+        "parameters": [
+          {
+            "name": "data",
+            "in": "body",
+            "description": "Número de telefone do destinatário, com DDD e mensagem que deseja enviar",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/SendWhatsappMessage"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "schema": {
+              "$ref": "#/definitions/SendedWhatsappMessage"
+            },
+            "description": "Mensagem enviada com sucesso"
+          },
+          "400": {
+            "schema": {
+              "$ref": "#/definitions/IsNotWhatsappNumber"
+            },
+            "description": "Este número não está cadastrado no Whatsapp"
+          }
+        },
+        "security": [
+          {
+            "apiKeyAuth": []
+          }
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "SendWhatsappMessage": {
+      "type": "object",
+      "properties": {
+        "phone": {
+          "type": "string",
+          "example": "71999998888"
+        },
+        "message": {
+          "type": "string",
+          "example": "Mensagem que deseja enviar"
+        }
+      }
+    },
+    "SendedWhatsappMessage": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "object",
+          "properties": {
+            "remoteJid": {
+              "type": "string",
+              "example": "5571999998888@s.whatsapp.net"
+            },
+            "fromMe": {
+              "type": "boolean",
+              "example": true
+            },
+            "id": {
+              "type": "string",
+              "example": "abcdefgh"
+            }
+          }
+        },
+        "message": {
+          "type": "object",
+          "properties": {
+            "extendedTextMessage": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "example": "Mensagem enviada"
+                }
+              }
+            }
+          }
+        },
+        "messageTimestamp": {
+          "type": "string",
+          "example": "2342424"
+        },
+        "status": {
+          "type": "string",
+          "example": "PENDING"
+        }
+      }
+    },
+    "IsNotWhatsappNumber": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "type": "string",
+          "example": "Este número não está cadastrado no Whatsapp"
+        }
+      }
+    },
+    "SendTelegramMessage": {
+      "type": "object",
+      "properties": {
+        "phone": {
+          "type": "string",
+          "example": "71999998888"
+        },
+        "message": {
+          "type": "string",
+          "example": "Mensagem que deseja enviar"
+        }
+      }
+    },
+    "SendedTelegramMessage": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "object",
+          "properties": {
+            "remoteJid": {
+              "type": "string",
+              "example": "5571999998888@s.telegram.net"
+            },
+            "fromMe": {
+              "type": "boolean",
+              "example": true
+            },
+            "id": {
+              "type": "string",
+              "example": "abcdefgh"
+            }
+          }
+        },
+        "message": {
+          "type": "object",
+          "properties": {
+            "extendedTextMessage": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "example": "Mensagem enviada"
+                }
+              }
+            }
+          }
+        },
+        "messageTimestamp": {
+          "type": "string",
+          "example": "2342424"
+        },
+        "status": {
+          "type": "string",
+          "example": "PENDING"
+        }
+      }
+    },
+    "IsNotTelegramNumber": {
+      "type": "object",
+      "properties": {
+        "error": {
+          "type": "string",
+          "example": "Este número não está cadastrado no Whatsapp"
+        }
+      }
+    }
+  }
+}
