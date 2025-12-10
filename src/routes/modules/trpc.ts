@@ -1,6 +1,8 @@
 import { Request, Response, Router } from 'express';
 import groupStore from '../../services/Baileys/groupStore';
 import settingsStore from '../../services/settingsStore';
+import { isValidWebhookUrl } from '../../utils/security';
+import { settingsSchema, validateSchema } from '../../schemas';
 
 interface BatchInputItem {
   json?: unknown;
@@ -26,6 +28,15 @@ const mapGroupRecord = () =>
   }));
 
 const testWebhook = async (webhookUrl: string): Promise<{ success: boolean; status?: number; message: string }> => {
+  // Validação de segurança contra SSRF
+  const urlValidation = isValidWebhookUrl(webhookUrl);
+  if (!urlValidation.valid) {
+    return {
+      success: false,
+      message: `URL inválida: ${urlValidation.error}`,
+    };
+  }
+
   try {
     const testPayload = {
       event: 'test',
@@ -96,9 +107,33 @@ const executeProcedure = async (
             },
           };
         }
-        const input = payload.json as Record<string, unknown>;
-        const userId = Number(input.userId ?? 1) || 1;
-        const data = await settingsStore.updateSettings(userId, input);
+
+        // Validação com Zod
+        const validation = validateSchema(settingsSchema, payload.json);
+        if (!validation.success) {
+          return {
+            error: {
+              code: -32602,
+              message: validation.error,
+            },
+          };
+        }
+
+        // Validação de URL de webhook contra SSRF
+        if (validation.data.webhook_url) {
+          const urlValidation = isValidWebhookUrl(validation.data.webhook_url);
+          if (!urlValidation.valid) {
+            return {
+              error: {
+                code: -32602,
+                message: `URL do webhook inválida: ${urlValidation.error}`,
+              },
+            };
+          }
+        }
+
+        const userId = validation.data.userId ?? 1;
+        const data = await settingsStore.updateSettings(userId, validation.data);
         return {
           result: {
             data,
