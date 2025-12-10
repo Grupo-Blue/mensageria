@@ -612,3 +612,17 @@
 - [x] Retornar mensagens amigáveis para erros de rede (ECONNREFUSED, ETIMEDOUT, ENOTFOUND)
 - [x] TypeScript sem erros - tipos corrigidos automaticamente
 - [x] Implementação completa do commit 748385d
+
+## BUG: Erro 500 persiste no teste de webhook - INVESTIGADO
+- [x] Acessar https://mensageria.grupoblue.com.br/webhook e reproduzir erro
+- [x] Analisar logs do servidor em tempo real durante o teste
+- [x] Verificar se código atualizado está realmente no servidor
+- [x] Comparar código no servidor vs código local
+- [x] Identificar causa raiz do erro 500
+
+**CAUSA RAIZ IDENTIFICADA:**
+- Arquivos foram copiados para diretórios errados no primeiro deploy (rsync sem especificar subpastas)
+- Código atualizado foi aplicado corretamente no segundo deploy
+- Endpoint tRPC está funcionando, mas retorna 401 UNAUTHORIZED quando usuário não está autenticado
+- Erro 500 ocorre quando frontend não trata adequadamente erro 401 do backend
+- Commit 748385d foi aplicado com sucesso no servidor
