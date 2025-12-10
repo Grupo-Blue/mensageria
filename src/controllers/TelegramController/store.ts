@@ -1,28 +1,27 @@
 import { Request, Response } from 'express';
 import { sendMessage } from '../../services/Telegram';
+import { sendTelegramSchema, validateSchema } from '../../schemas';
+import AppError from '../../errors/AppError';
 
 const store = async (req: Request, res: Response): Promise<Response> => {
-  try {
-    const { telegramUserId, message } = req.body;
-    if (!telegramUserId || !message) {
-      throw new Error('Necessário enviar os campos telegramUserId e message');
-    }
-    await sendMessage({
-      telegramUserId,
-      message
-    })
+  // Validação com Zod
+  const validation = validateSchema(sendTelegramSchema, req.body);
 
-    return res.json({
-      message: 'Mensagem enviada com sucesso!'
-    });
-  } catch (err) {
-    if (err instanceof Error) {
-      return res.status(400).json({ error: err.message });
-    }
-    return res.status(500).json({
-      error: 'Erro no servidor'
-    });
+  if (!validation.success) {
+    throw new AppError(validation.error, 400);
   }
+
+  const { telegramUserId, message } = validation.data;
+
+  await sendMessage({
+    telegramUserId: String(telegramUserId),
+    message,
+  });
+
+  return res.status(200).json({
+    success: true,
+    message: 'Mensagem enviada com sucesso!',
+  });
 };
 
 export default store;

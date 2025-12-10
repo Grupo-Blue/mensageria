@@ -27,18 +27,19 @@ export default function WhatsApp() {
   const { data: connections, isLoading } = trpc.whatsapp.list.useQuery();
   const saveConnectionMutation = trpc.whatsapp.saveConnection.useMutation();
 
-  const connectToSocket = (forceNew: boolean = false) => {
+  const connectToSocket = (_forceNew: boolean = false) => {
     setConnectionStatus("generating");
     setProgress(33);
     setQrCodeTimeout(false);
-    
+
     // Limpa timeout anterior se existir
     if (qrTimeoutRef.current) {
       clearTimeout(qrTimeoutRef.current);
     }
-    
-    // Conecta ao Socket.IO via HTTPS
-    const socket = io("https://mensageria.grupoblue.com.br", {
+
+    // Conecta ao Socket.IO usando variável de ambiente
+    const socketUrl = import.meta.env.VITE_SOCKET_URL || "https://mensageria.grupoblue.com.br";
+    const socket = io(socketUrl, {
       path: "/socket.io",
       transports: ["polling", "websocket"],
       reconnection: true,
@@ -48,38 +49,20 @@ export default function WhatsApp() {
     socketRef.current = socket;
 
     socket.on("connect", () => {
-      console.log("WebSocket conectado", socket.id);
-      
       // Solicita QR Code ao backend
       socket.emit("requestQRCode", { identification });
-      console.log("Evento requestQRCode emitido para:", identification);
-      
       setConnectionStatus("waiting");
       setProgress(66);
-      
-      // Timeout desativado temporariamente para permitir QR Code carregar
-      // qrTimeoutRef.current = setTimeout(() => {
-      //   console.log("Timeout: QR Code não recebido em 8 segundos");
-      //   setQrCodeTimeout(true);
-      //   setConnectionStatus("already_connected");
-      // }, 8000);
-    });
-    
-    // Debug: escuta TODOS os eventos
-    socket.onAny((eventName, ...args) => {
-      console.log("Evento recebido:", eventName, args);
     });
 
     socket.on("qrcode", (qrData: { connected: boolean; qrcode?: string }) => {
-      console.log("QR Code recebido:", qrData);
-      
       // Limpa o timeout pois recebemos resposta
       if (qrTimeoutRef.current) {
         clearTimeout(qrTimeoutRef.current);
         qrTimeoutRef.current = null;
       }
       setQrCodeTimeout(false);
-      
+
       if (!qrData.connected && qrData.qrcode && canvasRef.current) {
         // Renderiza o QR Code no canvas
         new QRious({
@@ -94,24 +77,22 @@ export default function WhatsApp() {
         setConnectionStatus("connected");
         setProgress(100);
         toast.success("WhatsApp conectado com sucesso!");
-        
+
         // Salva a conexão no banco de dados
-        console.log("Tentando salvar conexão:", identification);
         saveConnectionMutation.mutate(
           { identification },
           {
-            onSuccess: (data) => {
-              console.log("Conexão salva no banco de dados com sucesso!", data);
+            onSuccess: () => {
               utils.whatsapp.list.invalidate();
               toast.success("Conexão salva com sucesso!");
             },
             onError: (error) => {
-              console.error("Erro ao salvar conexão:", error);
-              toast.error("Erro ao salvar conexão: " + (error as any).message);
+              const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
+              toast.error("Erro ao salvar conexão: " + errorMessage);
             }
           }
         );
-        
+
         setTimeout(() => {
           setIsDialogOpen(false);
           setIdentification("");
@@ -123,11 +104,10 @@ export default function WhatsApp() {
     });
 
     socket.on("disconnect", () => {
-      console.log("WebSocket desconectado");
+      // Socket desconectado
     });
 
-    socket.on("error", (error: Error) => {
-      console.error("Erro no WebSocket:", error);
+    socket.on("error", (_error: Error) => {
       toast.error("Erro na conexão com o servidor");
     });
   };
@@ -143,10 +123,11 @@ export default function WhatsApp() {
   const handleForceNew = async () => {
     try {
       toast.info("Desconectando sessão ativa...");
-      
+
       // Chama endpoint REST do backend para forçar logout
       const apiToken = import.meta.env.VITE_BACKEND_API_TOKEN;
-      const response = await fetch("https://mensageria.grupoblue.com.br/whatsapp/disconnect", {
+      const apiUrl = import.meta.env.VITE_API_URL || "https://mensageria.grupoblue.com.br";
+      const response = await fetch(`${apiUrl}/whatsapp/disconnect`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -156,21 +137,21 @@ export default function WhatsApp() {
           identification: identification || "mensageria"
         })
       });
-      
+
       if (!response.ok) {
         throw new Error("Erro ao desconectar");
       }
-      
+
       toast.success("Sessão desconectada! Gerando novo QR Code...");
-      
+
       // Aguarda 1 segundo para garantir que o backend processou o logout
       await new Promise(resolve => setTimeout(resolve, 1000));
-      
+
       // Agora solicita novo QR Code
       connectToSocket(true);
-    } catch (error: any) {
-      console.error("Erro ao desconectar:", error);
-      toast.error("Erro ao desconectar. Tente novamente.");
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
+      toast.error(`Erro ao desconectar: ${errorMessage}`);
     }
   };
 

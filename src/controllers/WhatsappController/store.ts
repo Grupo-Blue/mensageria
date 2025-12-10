@@ -1,26 +1,24 @@
 import { Request, Response } from 'express';
 import { sendMessage } from '../../services/Baileys';
+import { sendWhatsappSchema, validateSchema } from '../../schemas';
+import AppError from '../../errors/AppError';
 
 const store = async (req: Request, res: Response): Promise<Response> => {
-  try {
-    const { phone, message } = req.body;
-    if (!phone || !message) {
-      throw new Error('Necessário enviar os campos phone e message');
-    }
-    const data = await sendMessage({
-      toPhone: phone,
-      message
-    })
+  // Validação com Zod
+  const validation = validateSchema(sendWhatsappSchema, req.body);
 
-    return res.json(data);
-  } catch (err) {
-    if (err instanceof Error) {
-      return res.status(400).json({ error: err.message });
-    }
-    return res.status(500).json({
-      error: 'Erro no servidor'
-    });
+  if (!validation.success) {
+    throw new AppError(validation.error, 400);
   }
+
+  const { phone, message } = validation.data;
+
+  const data = await sendMessage({
+    toPhone: phone,
+    message,
+  });
+
+  return res.status(200).json(data);
 };
 
 export default store;
