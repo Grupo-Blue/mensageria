@@ -661,3 +661,17 @@
 - QR Code agora gera e exibe corretamente
 - Testado e validado pelo usuário ✅
 
+
+## Bug: Erro 404 na rota /webhook - RESOLVIDO ✅
+- [x] Verificar configuração atual do Apache (mensageria.grupoblue.com.br-le-ssl.conf)
+- [x] Adicionar RewriteRule para React Router SEM tocar em proxies
+- [x] Testar /webhook, /whatsapp, /telegram - FUNCIONANDO
+- [x] Validar que Socket.IO ainda funciona (QR Code) - FUNCIONANDO
+- [x] Validar que APIs ainda funcionam (/api/trpc, /api/auth) - FUNCIONANDO
+
+**SOLUÇÃO:**
+- Adicionado RewriteRule ANTES dos ProxyPass
+- Condições: Não aplicar para /api, /socket.io, arquivos existentes
+- Todas as rotas do React Router funcionando (/webhook, /whatsapp, /telegram)
+- Socket.IO funcionando (QR Code gera corretamente)
+- APIs funcionando (tRPC, auth, backend Baileys)
