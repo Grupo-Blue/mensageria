@@ -48,11 +48,8 @@ export default function WhatsApp() {
     socketRef.current = socket;
 
     socket.on("connect", () => {
-      console.log("WebSocket conectado", socket.id);
-      
       // Solicita QR Code ao backend
       socket.emit("requestQRCode", { identification });
-      console.log("Evento requestQRCode emitido para:", identification);
       
       setConnectionStatus("waiting");
       setProgress(66);
@@ -65,13 +62,9 @@ export default function WhatsApp() {
       // }, 8000);
     });
     
-    // Debug: escuta TODOS os eventos
-    socket.onAny((eventName, ...args) => {
-      console.log("Evento recebido:", eventName, args);
-    });
+
 
     socket.on("qrcode", (qrData: { connected: boolean; qrcode?: string }) => {
-      console.log("QR Code recebido:", qrData);
       
       // Limpa o timeout pois recebemos resposta
       if (qrTimeoutRef.current) {
@@ -96,12 +89,10 @@ export default function WhatsApp() {
         toast.success("WhatsApp conectado com sucesso!");
         
         // Salva a conexão no banco de dados
-        console.log("Tentando salvar conexão:", identification);
         saveConnectionMutation.mutate(
           { identification },
           {
-            onSuccess: (data) => {
-              console.log("Conexão salva no banco de dados com sucesso!", data);
+            onSuccess: () => {
               utils.whatsapp.list.invalidate();
               toast.success("Conexão salva com sucesso!");
             },
@@ -123,11 +114,10 @@ export default function WhatsApp() {
     });
 
     socket.on("disconnect", () => {
-      console.log("WebSocket desconectado");
+      // WebSocket desconectado
     });
 
-    socket.on("error", (error: Error) => {
-      console.error("Erro no WebSocket:", error);
+    socket.on("error", () => {
       toast.error("Erro na conexão com o servidor");
     });
   };
@@ -168,8 +158,7 @@ export default function WhatsApp() {
       
       // Agora solicita novo QR Code
       connectToSocket(true);
-    } catch (error: any) {
-      console.error("Erro ao desconectar:", error);
+    } catch (error) {
       toast.error("Erro ao desconectar. Tente novamente.");
     }
   };

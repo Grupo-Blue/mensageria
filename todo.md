@@ -574,3 +574,19 @@
 - [x] Pacote de deploy preparado - webhook-fix-deploy.zip (925 KB)
 - [ ] Deploy manual necessário (SSH bloqueado)
 - [ ] Testar em produção após deploy
+
+## PR #8: Melhorias de Segurança e Infraestrutura
+- [x] Remover arquivos de código morto do frontend (ComponentShowcase.tsx, WhatsApp-improved.tsx, WhatsApp-simple.tsx)
+- [x] Limpar página WhatsApp.tsx (remover console.logs de debug)
+- [ ] Atualizar .env.example com documentação completa
+- [ ] Implementar validação de entrada nos controllers
+- [ ] Criar utilitários de segurança (validação URL, email, telefone)
+- [ ] Implementar rate limiting
+- [ ] Adicionar middleware de segurança
+- [ ] Corrigir Dockerfile para produção com multi-stage build
+- [ ] Adicionar Redis ao docker-compose
+- [ ] Adicionar volumes para persistência de dados
+- [ ] Implementar graceful shutdown
+- [ ] Adicionar endpoint de health check
+- [ ] Mover URLs hardcoded para variáveis de ambiente
+- [ ] Corrigir tipos 'any' para tipos específicos
