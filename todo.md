@@ -589,3 +589,18 @@
 - [x] Implementar health check no Dockerfile
 - [x] Adicionar configuração de variáveis de ambiente (src/config/env.ts)
 - [x] Merge da PR #8 concluído e enviado para GitHub
+
+## Deploy PR #8 em Produção
+- [x] Conectar ao servidor de produção (185.215.166.113)
+- [x] Fazer rsync dos arquivos atualizados
+- [x] Gerar SECRET_KEY segura (99dc741b9bc23889045a...)
+- [x] Atualizar .env com novas variáveis (SECRET_KEY, ALLOWED_ORIGINS, REDIS_*)
+- [x] Parar containers atuais (docker-compose down)
+- [x] Fazer backup dos dados (backup-20251209-224316)
+- [x] Corrigir tsup.config.ts (excluir .sqlite do build)
+- [x] Rebuild dos containers com Dockerfile multi-stage (docker-compose build --no-cache)
+- [x] Corrigir permissões dos volumes (chown 1001:1001 data/)
+- [x] Subir containers com Redis (docker-compose up -d)
+- [x] Verificar logs - QR Code gerado com sucesso
+- [x] Testar health check - {"status":"healthy","database":"connected"}
+- [x] Containers rodando: mensageria (healthy) + redis (healthy)
