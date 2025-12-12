@@ -8,6 +8,7 @@ import path from 'path';
 import socket from '../../libs/socket';
 import messageStore from './messageStore';
 import { saveGroupInfo } from './saveGroupInfo';
+import settingsStore from '../settingsStore';
 
 interface ConnectionInterface {
   id: string;
@@ -19,53 +20,43 @@ interface ConnectionInterface {
 // Função para encaminhar mensagem recebida ao webhook
 const forwardToWebhook = async (connectionName: string, from: string, messageId: string, text: string) => {
   try {
-    const http = require('http');
+    // Buscar configuração do webhook
+    const settings = await settingsStore.getSettings();
+    const webhookUrl = settings.webhook_url;
+    
+    if (!webhookUrl) {
+      console.log('[Webhook] URL não configurada, ignorando mensagem');
+      return;
+    }
+    
+    console.log('[Webhook] Enviando para:', webhookUrl);
     
     const payload = JSON.stringify({
-      connectionName,
       from,
       message_id: messageId,
       timestamp: new Date().toISOString(),
       text
     });
     
-    const options = {
-      hostname: 'localhost',
-      port: 5602,
-      path: '/inbound',
+    // Usar fetch para suportar HTTP e HTTPS
+    const response = await fetch(webhookUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(payload)
+        'Authorization': 'Bearer zwjahvtgb9qfu4JWX'
       },
-      timeout: 5000
-    };
-    
-    const req = http.request(options, (res: any) => {
-      let body = '';
-      res.on('data', (chunk: any) => { body += chunk; });
-      res.on('end', () => {
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          console.log('[Webhook] Mensagem encaminhada:', from);
-        } else {
-          console.log('[Webhook] Erro HTTP', res.statusCode, body);
-        }
-      });
+      body: payload,
+      signal: AbortSignal.timeout(10000)
     });
     
-    req.on('error', (error: any) => {
-      console.log('[Webhook] Erro ao encaminhar:', error.message);
-    });
-    
-    req.on('timeout', () => {
-      req.destroy();
-      console.log('[Webhook] Timeout');
-    });
-    
-    req.write(payload);
-    req.end();
-  } catch (error) {
-    console.error('[Webhook] Erro:', error);
+    if (response.ok) {
+      console.log('[Webhook] Mensagem encaminhada com sucesso:', from);
+    } else {
+      const errorText = await response.text();
+      console.log('[Webhook] Erro HTTP', response.status, errorText);
+    }
+  } catch (error: any) {
+    console.error('[Webhook] Erro ao encaminhar:', error.message);
   }
 };
 
@@ -404,30 +395,77 @@ export const sendMessage = async ({
   message,
   identification,
 }: SendMessageParamsInterface): Promise<void> => {
+  console.log('[sendMessage] Iniciando envio:', { toPhone, identification });
+  
   const connectionId = identification || process.env.IDENTIFICATION || 'mensageria';
   const connection = getConnection(connectionId)
+  
   if (!connection) {
+    console.error('[sendMessage] Conexão não encontrada:', connectionId);
     throw new Error('Conexão não encontrada para envio de mensagem!');
   }
+  
+  console.log('[sendMessage] Conexão encontrada:', connectionId);
+  
   let phoneNumber = toPhone.replace(/[^0-9]+/g, '');
   if (phoneNumber.length === 11) {
     phoneNumber = `55${phoneNumber.slice(0, 2)}${phoneNumber.slice(3, 11)}`;
   } else if (phoneNumber.length === 13) {
     phoneNumber = `${phoneNumber.slice(0, 4)}${phoneNumber.slice(5, 13)}`;
   }
+  
+  console.log('[sendMessage] Número formatado:', phoneNumber);
 
-  const [isWhatsapp] = await connection.onWhatsApp(phoneNumber)
-  if (isWhatsapp?.exists) {
+  // Tentar verificar se o número está no WhatsApp com timeout
+  try {
+    console.log('[sendMessage] Verificando se número está no WhatsApp...');
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('TIMEOUT_CHECK')), 10000);
+    });
+    
+    const [isWhatsapp] = await Promise.race([
+      connection.onWhatsApp(phoneNumber),
+      timeoutPromise
+    ]);
+    
+    console.log('[sendMessage] Resultado verificação:', isWhatsapp);
+    
+    if (isWhatsapp?.exists) {
       phoneNumber = isWhatsapp.jid
-  } else {
+      console.log('[sendMessage] Número válido, JID:', phoneNumber);
+    } else {
+      console.error('[sendMessage] Número não cadastrado:', phoneNumber);
       throw new Error('Este número não está cadastrado no Whatsapp')
+    }
+  } catch (error: any) {
+    if (error.message === 'TIMEOUT_CHECK') {
+      // Se timeout na verificação, tenta enviar mesmo assim com formato padrão
+      console.warn('[sendMessage] Timeout na verificação, tentando enviar sem validação...');
+      phoneNumber = `${phoneNumber}@s.whatsapp.net`;
+    } else {
+      throw error;
+    }
   }
 
-  const sended = await connection.sendMessage(phoneNumber, {
-    text: message,
-  })
-
-  return sended
+  // Enviar mensagem com timeout
+  try {
+    console.log('[sendMessage] Enviando mensagem para:', phoneNumber);
+    const sendTimeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('Timeout ao enviar mensagem')), 15000);
+    });
+    
+    const sended = await Promise.race([
+      connection.sendMessage(phoneNumber, { text: message }),
+      sendTimeoutPromise
+    ]);
+    
+    console.log('[sendMessage] Mensagem enviada com sucesso:', sended);
+    return sended;
+    
+  } catch (error: any) {
+    console.error('[sendMessage] Erro ao enviar:', error.message);
+    throw error;
+  }
 };
 
 export default connect;
