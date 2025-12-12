@@ -9,8 +9,18 @@ services:
     ports:
       - "5600:3333"
     volumes:
+      # Data directory for general files
       - ../data:/usr/src/app/data
+      # Persist WhatsApp sessions (Baileys auth state)
+      - ../data/auth_info_baileys:/usr/src/app/auth_info_baileys
+      # Persist temporary files (settings, groups cache)
+      - ../data/tmp:/usr/src/app/tmp
     environment:
-      - WHATSAPP_GROUPS_CALLBACK_URL=http://172.17.0.1:3000/api/whatsapp/groups
+      # Legacy authentication (kept for backward compatibility)
       - X_AUTH_API=cd739c87f3f7a8a6a69407b639a6d7c6db3090e0d6bbe4cbd4176950a1d9ab27
       - AUTH_TOKEN=cd739c87f3f7a8a6a69407b639a6d7c6db3090e0d6bbe4cbd4176950a1d9ab27
+      # Callback URLs
+      - WHATSAPP_GROUPS_CALLBACK_URL=http://172.17.0.1:3000/api/whatsapp/groups
+      # Multi-tenant configuration
+      - FRONTEND_API_URL=http://172.17.0.1:3000
+      - INTERNAL_SYNC_TOKEN=cd739c87f3f7a8a6a69407b639a6d7c6db3090e0d6bbe4cbd4176950a1d9ab27

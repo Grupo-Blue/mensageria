@@ -57,22 +57,59 @@ export const appRouter = router({
           const existing = await db.getWhatsappConnectionByIdentification(input.identification);
           console.log('[whatsapp.create] Existing check:', existing);
           if (existing) throw new Error("Identificação já existe");
-          
-          console.log('[whatsapp.create] Creating connection in DB');
-          await db.createWhatsappConnection({ userId: ctx.user.id, identification: input.identification, status: "connecting" });
-          
+
+          // Generate API key for the new connection
+          const apiKey = db.generateApiKey('conn');
+
+          console.log('[whatsapp.create] Creating connection in DB with API key');
+          await db.createWhatsappConnection({
+            userId: ctx.user.id,
+            identification: input.identification,
+            apiKey,
+            status: "connecting"
+          });
+
           const apiToken = process.env.BACKEND_API_TOKEN;
           if (!apiToken) throw new Error('BACKEND_API_TOKEN não configurado');
-          
+
           // Retorna URL para o usuário acessar e escanear o QR Code
           const qrCodeUrl = `${BACKEND_API_URL}/whatsapp/qrcode?token=${apiToken}`;
           console.log('[whatsapp.create] QR Code URL:', qrCodeUrl);
-          
-          return { success: true, qrCodeUrl };
+
+          return { success: true, qrCodeUrl, apiKey };
         } catch (error: any) {
           console.error('[whatsapp.create] Error:', error.message, error.response?.data);
           throw new Error(error.response?.data?.message || error.message || "Erro ao gerar QR Code");
         }
+      }),
+    generateApiKey: protectedProcedure
+      .input(z.object({ connectionId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        // Verify user owns this connection
+        const connections = await db.getWhatsappConnections(ctx.user.id);
+        const connection = connections.find(c => c.id === input.connectionId);
+        if (!connection) throw new Error("Conexão não encontrada");
+
+        const apiKey = await db.generateConnectionApiKey(input.connectionId);
+        return { success: true, apiKey };
+      }),
+    updateWebhook: protectedProcedure
+      .input(z.object({
+        connectionId: z.number(),
+        webhookUrl: z.string().url().optional(),
+        webhookSecret: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        // Verify user owns this connection
+        const connections = await db.getWhatsappConnections(ctx.user.id);
+        const connection = connections.find(c => c.id === input.connectionId);
+        if (!connection) throw new Error("Conexão não encontrada");
+
+        await db.updateConnectionWebhook(input.connectionId, {
+          webhookUrl: input.webhookUrl,
+          webhookSecret: input.webhookSecret,
+        });
+        return { success: true };
       }),
     getQRCode: protectedProcedure.input(z.object({ identification: z.string() })).query(async ({ input }) => {
       const connection = await db.getWhatsappConnectionByIdentification(input.identification);
