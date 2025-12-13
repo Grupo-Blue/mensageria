@@ -1,0 +1,21 @@
+{
+  "query": "SELECT * FROM whatsapp_connections LIMIT 5;",
+  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2Qbe3HsW4wtpjFA.de6c779173ba --database 4JGtbNF32VHe8qDcDW4RHj --execute SELECT * FROM whatsapp_connections LIMIT 5;",
+  "rows": [
+    {
+      "id": "1",
+      "user_id": "1",
+      "identification": "teste-qrcode",
+      "status": "disconnected",
+      "qr_code": "NULL",
+      "phone_number": "NULL",
+      "created_at": "2025-11-04 14:06:20",
+      "updated_at": "2025-11-04 14:09:41",
+      "last_connected_at": "NULL"
+    }
+  ],
+  "messages": [],
+  "stdout": "id\tuser_id\tidentification\tstatus\tqr_code\tphone_number\tcreated_at\tupdated_at\tlast_connected_at\n1\t1\tteste-qrcode\tdisconnected\tNULL\tNULL\t2025-11-04 14:06:20\t2025-11-04 14:09:41\tNULL\n",
+  "stderr": "",
+  "execution_time_ms": 53
+}

@@ -27,11 +27,19 @@ if ! command_exists brew; then
     
     # Adicionar Homebrew ao PATH (para Apple Silicon)
     if [[ -f "/opt/homebrew/bin/brew" ]]; then
-        echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zshrc
+        BREW_LINE='eval "$(/opt/homebrew/bin/brew shellenv)"'
+        # Verificar se a linha já existe no .zshrc antes de adicionar
+        if ! grep -qF "$BREW_LINE" ~/.zshrc 2>/dev/null; then
+            echo "$BREW_LINE" >> ~/.zshrc
+        fi
         eval "$(/opt/homebrew/bin/brew shellenv)"
     # Para Intel Mac
     elif [[ -f "/usr/local/bin/brew" ]]; then
-        echo 'eval "$(/usr/local/bin/brew shellenv)"' >> ~/.zshrc
+        BREW_LINE='eval "$(/usr/local/bin/brew shellenv)"'
+        # Verificar se a linha já existe no .zshrc antes de adicionar
+        if ! grep -qF "$BREW_LINE" ~/.zshrc 2>/dev/null; then
+            echo "$BREW_LINE" >> ~/.zshrc
+        fi
         eval "$(/usr/local/bin/brew shellenv)"
     fi
     echo -e "${GREEN}✓ Homebrew instalado com sucesso!${NC}"

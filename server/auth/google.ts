@@ -14,17 +14,27 @@ if (!ENV.googleClientId || !ENV.googleClientSecret) {
   throw new Error('Google OAuth credentials not configured');
 }
 
-// Determinar URL base correta
-const baseUrl = ENV.isProduction 
-  ? 'https://mensageria.grupoblue.com.br'
-  : ENV.backendApiUrl;
+// Função para obter a URL base do callback
+// Em desenvolvimento, usar a URL do frontend (porta 3000 por padrão)
+// Em produção, usar a URL de produção
+function getCallbackBaseUrl(): string {
+  if (ENV.isProduction) {
+    return 'https://mensageria.grupoblue.com.br';
+  }
+  
+  // Em desenvolvimento, usar FRONTEND_URL ou padrão localhost:3000
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  return frontendUrl;
+}
 
+const baseUrl = getCallbackBaseUrl();
 const callbackURL = `${baseUrl}/api/auth/google/callback`;
 
 console.log('[Google OAuth] Initializing with:', {
   clientId: ENV.googleClientId.substring(0, 20) + '...',
   callbackURL,
   isProduction: ENV.isProduction,
+  baseUrl,
 });
 
 // Configurar estratégia do Google OAuth

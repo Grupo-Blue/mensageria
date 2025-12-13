@@ -114,12 +114,21 @@
 }
 
 @layer base {
-  * {
-    @apply border-border outline-ring/50;
+  *,
+  *::before,
+  *::after {
+    @apply border-border;
   }
+  
+  *:focus-visible {
+    @apply outline-ring/50;
+  }
+  
   body {
     @apply bg-background text-foreground;
+    cursor: default;
   }
+  
   button:not(:disabled),
   [role="button"]:not([aria-disabled="true"]),
   [type="button"]:not(:disabled),
@@ -155,10 +164,8 @@
     padding-right: 1rem;
   }
 
-  .flex {
-    min-height: 0;
-    min-width: 0;
-  }
+  /* Remover override da classe .flex do Tailwind para evitar conflitos */
+  /* A classe .flex do Tailwind já tem display: flex, não precisamos sobrescrever */
 
   @media (min-width: 640px) {
     .container {

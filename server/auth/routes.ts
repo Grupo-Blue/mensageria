@@ -8,18 +8,29 @@ import { sdk } from '../_core/sdk';
 const router = Router();
 
 // Rota para iniciar autenticação Google
-router.get('/google', passport.authenticate('google', { 
-  scope: ['profile', 'email'],
-  session: false 
-}));
+router.get('/google', (req, res, next) => {
+  console.log('[Auth] Iniciando autenticação Google OAuth');
+  passport.authenticate('google', { 
+    scope: ['profile', 'email'],
+    session: false 
+  })(req, res, next);
+});
 
 // Callback do Google OAuth
 router.get(
   '/google/callback',
-  passport.authenticate('google', { 
-    session: false,
-    failureRedirect: '/?error=auth_failed' 
-  }),
+  (req, res, next) => {
+    console.log('[Auth] Recebendo callback do Google OAuth', {
+      query: req.query,
+      url: req.url,
+      host: req.get('host'),
+      protocol: req.protocol
+    });
+    passport.authenticate('google', { 
+      session: false,
+      failureRedirect: '/?error=auth_failed' 
+    })(req, res, next);
+  },
   async (req, res) => {
     try {
       const user = req.user as any;

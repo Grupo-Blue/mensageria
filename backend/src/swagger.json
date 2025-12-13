@@ -5,7 +5,7 @@
     "title": "API de Mensageria",
     "description": "API para envio de mensagens via Whatsapp"
   },
-  "host": "localhost:3333",
+  "host": "http://localhost:3333",
   "basePath": "/",
   "tags": [
     {
@@ -70,6 +70,50 @@
         ]
       }
     },
+    "/{procedures}": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "procedures",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "input",
+            "in": "query",
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "procedures",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "input",
+            "in": "query",
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/whatsapp/qrcode": {
       "get": {
         "tags": [
@@ -130,6 +174,26 @@
             "apiKeyAuth": []
           }
         ]
+      }
+    },
+    "/groups": {
+      "get": {
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/connections": {
+      "get": {
+        "description": "",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
       }
     }
   },

@@ -61,8 +61,15 @@ async function startServer() {
   app.use(passport.initialize());
   app.use(passport.session());
   
+  // Debug: Adicionar middleware para logar todas as requisições à API (ANTES das rotas)
+  app.use('/api/*', (req, res, next) => {
+    console.log('[API Request]', req.method, req.originalUrl, 'Path:', req.path);
+    next();
+  });
+  
   // Google OAuth routes
   app.use('/api/auth', authRoutes);
+  console.log('[Server] Rotas de autenticação registradas em /api/auth');
   
   // WhatsApp routes
   app.use('/api/whatsapp', whatsappRoutes);
@@ -84,6 +91,16 @@ async function startServer() {
     serveStatic(app);
   }
 
+  // Handler para rotas não encontradas (404) - deve ser o último middleware
+  app.use((req, res, next) => {
+    if (req.originalUrl.startsWith("/api/")) {
+      console.error('[404] Rota da API não encontrada:', req.method, req.originalUrl);
+      res.status(404).json({ error: `Cannot ${req.method} ${req.originalUrl}` });
+    } else {
+      next();
+    }
+  });
+
   const preferredPort = parseInt(process.env.PORT || "3000");
   const port = await findAvailablePort(preferredPort);
 
@@ -93,6 +110,11 @@ async function startServer() {
 
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
+    console.log('[Server] Rotas disponíveis:');
+    console.log('  - GET  /api/auth/google');
+    console.log('  - GET  /api/auth/google/callback');
+    console.log('  - POST /api/auth/logout');
+    console.log('  - GET  /api/auth/me');
   });
 }
 
