@@ -596,6 +596,21 @@ export async function getWhatsappTemplates(businessAccountId: number) {
   return await db.select().from(whatsappTemplates).where(eq(whatsappTemplates.businessAccountId, businessAccountId));
 }
 
+export async function getWhatsappTemplateByName(businessAccountId: number, templateName: string) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const results = await db.select()
+    .from(whatsappTemplates)
+    .where(and(
+      eq(whatsappTemplates.businessAccountId, businessAccountId),
+      eq(whatsappTemplates.name, templateName)
+    ))
+    .limit(1);
+  
+  return results[0] || null;
+}
+
 export async function upsertWhatsappTemplates(businessAccountId: number, templates: Omit<InsertWhatsappTemplate, "businessAccountId">[]) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");

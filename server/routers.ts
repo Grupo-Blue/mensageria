@@ -5,7 +5,31 @@ import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import * as db from "./db";
 import axios from "axios";
-import { MetaWhatsAppApi } from "./whatsappBusiness/metaApi";
+import { MetaWhatsAppApi, mapVariablesToOrderedArray } from "./whatsappBusiness/metaApi";
+
+// Special marker for variables that should use recipient name
+const RECIPIENT_NAME_MARKER = "__RECIPIENT_NAME__";
+
+/**
+ * Process template variables, replacing recipient name markers with actual recipient name
+ */
+function processVariablesWithRecipientName(
+  templateVariables: Record<string, string>,
+  recipientName: string | null | undefined
+): Record<string, string> {
+  const processed: Record<string, string> = {};
+  
+  for (const [key, value] of Object.entries(templateVariables)) {
+    if (value === RECIPIENT_NAME_MARKER) {
+      // Use recipient name or fallback to empty string
+      processed[key] = recipientName || "";
+    } else {
+      processed[key] = value;
+    }
+  }
+  
+  return processed;
+}
 
 const BACKEND_API_URL = process.env.BACKEND_API_URL || "http://localhost:5600";
 
@@ -417,12 +441,40 @@ export const appRouter = router({
         accessToken: z.string().min(1),
       }))
       .mutation(async ({ ctx, input }) => {
-        // Validate the credentials by fetching phone number info
+        // Validate the credentials by trying to fetch templates and phone numbers from Business Account
         try {
           const api = new MetaWhatsAppApi(input.phoneNumberId, input.accessToken);
-          await api.getPhoneNumberInfo();
+          
+          // Step 1: Validate Business Account ID by fetching templates (most reliable)
+          await api.getTemplates(input.businessAccountId);
+          
+          // Step 2: Try to validate Phone Number ID by listing phone numbers from Business Account
+          try {
+            const phoneNumbers = await api.getPhoneNumbersFromBusiness(input.businessAccountId);
+            // Verify that the provided Phone Number ID exists in the list
+            const phoneNumberExists = phoneNumbers.some(p => p.id === input.phoneNumberId);
+            if (!phoneNumberExists && phoneNumbers.length > 0) {
+              console.warn(`[WhatsApp Business] Phone Number ID ${input.phoneNumberId} not found in Business Account. Available IDs: ${phoneNumbers.map(p => p.id).join(', ')}`);
+            }
+          } catch (phoneListError: any) {
+            // If listing phone numbers fails, try direct phone number access as fallback
+            try {
+              await api.getPhoneNumberInfo();
+            } catch (phoneError: any) {
+              // If both fail, it might be a permissions issue, but templates work so credentials are valid
+              console.warn('[WhatsApp Business] Phone number validation failed, but templates work:', phoneError.message);
+            }
+          }
         } catch (error: any) {
-          throw new Error(`Credenciais inválidas: ${error.message}`);
+          // Provide more helpful error message
+          const errorMsg = error.message || 'Erro desconhecido';
+          if (errorMsg.includes('does not exist') || errorMsg.includes('cannot be loaded')) {
+            throw new Error(`Credenciais inválidas: O Business Account ID (${input.businessAccountId}) está incorreto ou o token não tem permissões necessárias. Verifique: 1) Se o Business Account ID está correto no Meta Business Suite, 2) Se o token tem permissões: whatsapp_business_management, whatsapp_business_messaging`);
+          }
+          if (errorMsg.includes('Invalid OAuth')) {
+            throw new Error(`Credenciais inválidas: Token de acesso inválido ou expirado. Gere um novo token permanente em developers.facebook.com`);
+          }
+          throw new Error(`Credenciais inválidas: ${errorMsg}`);
         }
 
         const id = await db.createWhatsappBusinessAccount({
@@ -497,6 +549,104 @@ export const appRouter = router({
         return { success: true, count: templates.length };
       }),
 
+    // Create a new template via Meta API
+    createTemplate: protectedProcedure
+      .input(z.object({
+        accountId: z.number(),
+        name: z.string().min(1).max(512),
+        language: z.string().default("pt_BR"),
+        category: z.enum(["UTILITY", "MARKETING", "AUTHENTICATION"]),
+        headerType: z.enum(["NONE", "TEXT", "IMAGE", "VIDEO", "DOCUMENT"]).optional().default("NONE"),
+        headerText: z.string().optional(),
+        bodyText: z.string().min(1).max(1024),
+        footerText: z.string().max(60).optional(),
+        buttons: z.array(z.object({
+          type: z.enum(["QUICK_REPLY", "URL", "PHONE_NUMBER"]),
+          text: z.string().min(1).max(25),
+          url: z.string().optional(),
+          phoneNumber: z.string().optional(),
+        })).max(3).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const account = await db.getWhatsappBusinessAccountById(input.accountId);
+        if (!account || account.userId !== ctx.user.id) {
+          throw new Error("Conta não encontrada");
+        }
+
+        const api = new MetaWhatsAppApi(account.phoneNumberId, account.accessToken);
+        
+        const result = await api.createTemplate(account.businessAccountId, {
+          name: input.name,
+          language: input.language,
+          category: input.category,
+          headerType: input.headerType,
+          headerText: input.headerText,
+          bodyText: input.bodyText,
+          footerText: input.footerText,
+          buttons: input.buttons,
+        });
+
+        // Sync templates to get the new one in the database
+        try {
+          const templates = await api.getTemplates(account.businessAccountId);
+          await db.upsertWhatsappTemplates(
+            account.id,
+            templates.map((t) => ({
+              templateId: t.id,
+              name: t.name,
+              language: t.language,
+              category: t.category,
+              status: t.status,
+              components: JSON.stringify(t.components),
+            }))
+          );
+        } catch (syncError) {
+          console.error("Error syncing templates after creation:", syncError);
+        }
+
+        return { 
+          success: true, 
+          templateId: result.id, 
+          status: result.status,
+          message: result.status === "PENDING" 
+            ? "Template criado e enviado para aprovação da Meta" 
+            : "Template criado com sucesso"
+        };
+      }),
+
+    // Delete a template via Meta API
+    deleteTemplate: protectedProcedure
+      .input(z.object({
+        accountId: z.number(),
+        templateName: z.string().min(1),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const account = await db.getWhatsappBusinessAccountById(input.accountId);
+        if (!account || account.userId !== ctx.user.id) {
+          throw new Error("Conta não encontrada");
+        }
+
+        const api = new MetaWhatsAppApi(account.phoneNumberId, account.accessToken);
+        await api.deleteTemplate(account.businessAccountId, input.templateName);
+
+        // Remove from local database
+        // Note: We'll sync to update the list
+        const templates = await api.getTemplates(account.businessAccountId);
+        await db.upsertWhatsappTemplates(
+          account.id,
+          templates.map((t) => ({
+            templateId: t.id,
+            name: t.name,
+            language: t.language,
+            category: t.category,
+            status: t.status,
+            components: JSON.stringify(t.components),
+          }))
+        );
+
+        return { success: true };
+      }),
+
     // Get templates for an account
     getTemplates: protectedProcedure
       .input(z.object({ accountId: z.number() }))
@@ -520,7 +670,10 @@ export const appRouter = router({
         recipientPhone: z.string().min(1),
         templateName: z.string().min(1),
         templateLanguage: z.string().default("pt_BR"),
-        bodyParams: z.array(z.string()).optional(),
+        bodyParams: z.array(z.object({
+          value: z.string(),
+          parameterName: z.string().optional(),
+        })).optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         const account = await db.getWhatsappBusinessAccountById(input.accountId);
@@ -770,6 +923,15 @@ export const appRouter = router({
           ? JSON.parse(campaign.templateVariables)
           : {};
 
+        // Get template to extract body text for variable ordering
+        const template = await db.getWhatsappTemplateByName(account.id, campaign.templateName);
+        let templateBodyText = "";
+        if (template) {
+          const components = JSON.parse(template.components);
+          const bodyComponent = components.find((c: any) => c.type === "BODY");
+          templateBodyText = bodyComponent?.text || "";
+        }
+
         const api = new MetaWhatsAppApi(account.phoneNumberId, account.accessToken);
 
         // Send messages to all pending recipients
@@ -778,14 +940,32 @@ export const appRouter = router({
 
         for (const recipient of recipients) {
           try {
+            console.log(`[Campaign Send] Processing recipient: ${recipient.phoneNumber}, name: ${recipient.name}`);
+            console.log(`[Campaign Send] Template variables before processing:`, templateVariables);
+            
+            // Process template variables, replacing recipient name markers
+            const processedTemplateVars = processVariablesWithRecipientName(
+              templateVariables,
+              recipient.name
+            );
+            console.log(`[Campaign Send] Template variables after processing:`, processedTemplateVars);
+            
             // Merge template variables with recipient-specific variables
             const recipientVariables = recipient.variables
               ? JSON.parse(recipient.variables)
               : {};
-            const mergedVariables = { ...templateVariables, ...recipientVariables };
+            const mergedVariables = { ...processedTemplateVars, ...recipientVariables };
+            console.log(`[Campaign Send] Merged variables:`, mergedVariables);
+            console.log(`[Campaign Send] Template body text:`, templateBodyText);
 
-            // Build body params from variables
-            const bodyParams = Object.values(mergedVariables) as string[];
+            // Build body params from variables in the correct order
+            let bodyParams = mapVariablesToOrderedArray(templateBodyText, mergedVariables);
+            console.log(`[Campaign Send] Body params (ordered):`, bodyParams);
+            // Filter out empty values
+            if (bodyParams.every(p => !p.value)) {
+              bodyParams = [];
+              console.log(`[Campaign Send] All params empty, setting to empty array`);
+            }
 
             const result = await api.sendTemplateMessage({
               phoneNumberId: account.phoneNumberId,

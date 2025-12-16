@@ -15,6 +15,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Loader2,
   ArrowLeft,
@@ -24,6 +25,7 @@ import {
   Plus,
   Trash2,
   Users,
+  User,
   FileText,
   Settings,
   CheckCircle2,
@@ -49,6 +51,10 @@ interface TemplateComponent {
   example?: {
     body_text?: string[][];
     header_text?: string[];
+    body_text_named_params?: Array<{
+      param_name: string;
+      example: string;
+    }>;
   };
 }
 
@@ -63,6 +69,7 @@ export default function CampaignNew() {
   const [templateName, setTemplateName] = useState("");
   const [templateLanguage, setTemplateLanguage] = useState("pt_BR");
   const [templateVariables, setTemplateVariables] = useState<Record<string, string>>({});
+  const [variableUseRecipientName, setVariableUseRecipientName] = useState<Record<string, boolean>>({});
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [newRecipient, setNewRecipient] = useState({ phoneNumber: "", name: "" });
   const [csvText, setCsvText] = useState("");
@@ -150,7 +157,7 @@ export default function CampaignNew() {
     return templates.find((t) => t.name === templateName);
   }, [templates, templateName]);
 
-  // Extract variables from template
+  // Extract variables from template (supports both {{1}} and {{name}} formats)
   const templateVariableNames = useMemo(() => {
     if (!selectedTemplate) return [];
 
@@ -159,20 +166,37 @@ export default function CampaignNew() {
 
     components.forEach((component) => {
       if (component.type === "BODY" && component.text) {
-        // Extract {{1}}, {{2}}, etc. from template text
-        const matches = component.text.match(/\{\{(\d+)\}\}/g);
+        // Extract all variables: {{1}}, {{2}}, {{name}}, {{nome_do_lead}}, etc.
+        const matches = component.text.match(/\{\{([^}]+)\}\}/g);
         if (matches) {
           matches.forEach((match) => {
-            const varNum = match.replace(/[{}]/g, "");
-            if (!variables.includes(varNum)) {
-              variables.push(varNum);
+            const varName = match.replace(/[{}]/g, "").trim();
+            if (!variables.includes(varName)) {
+              variables.push(varName);
             }
           });
         }
       }
+      
+      // Also check for named params in example section
+      if (component.type === "BODY" && component.example?.body_text_named_params) {
+        component.example.body_text_named_params.forEach((param: any) => {
+          if (param.param_name && !variables.includes(param.param_name)) {
+            variables.push(param.param_name);
+          }
+        });
+      }
     });
 
-    return variables.sort((a, b) => parseInt(a) - parseInt(b));
+    // Sort: numbers first (numerically), then strings (alphabetically)
+    return variables.sort((a, b) => {
+      const aIsNum = /^\d+$/.test(a);
+      const bIsNum = /^\d+$/.test(b);
+      if (aIsNum && bIsNum) return parseInt(a) - parseInt(b);
+      if (aIsNum) return -1;
+      if (bIsNum) return 1;
+      return a.localeCompare(b);
+    });
   }, [selectedTemplate]);
 
   // Get template preview text
@@ -186,12 +210,19 @@ export default function CampaignNew() {
 
     let text = bodyComponent.text;
     templateVariableNames.forEach((varName) => {
-      const value = templateVariables[varName] || `{{${varName}}}`;
-      text = text.replace(new RegExp(`\\{\\{${varName}\\}\\}`, "g"), value);
+      let value: string;
+      if (variableUseRecipientName[varName]) {
+        value = "[Nome do Destinatário]";
+      } else {
+        value = templateVariables[varName] || `{{${varName}}}`;
+      }
+      // Escape special regex characters in variable name
+      const escapedVarName = varName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      text = text.replace(new RegExp(`\\{\\{${escapedVarName}\\}\\}`, "g"), value);
     });
 
     return text;
-  }, [selectedTemplate, templateVariables, templateVariableNames]);
+  }, [selectedTemplate, templateVariables, templateVariableNames, variableUseRecipientName]);
 
   // Approved templates only
   const approvedTemplates = useMemo(() => {
@@ -285,14 +316,24 @@ export default function CampaignNew() {
       }
     }
 
+    // Build template variables with special marker for recipient name
+    const finalTemplateVariables: Record<string, string> = { ...templateVariables };
+    
+    // Add special marker for variables that use recipient name
+    Object.entries(variableUseRecipientName).forEach(([varName, useRecipient]) => {
+      if (useRecipient) {
+        finalTemplateVariables[varName] = "__RECIPIENT_NAME__";
+      }
+    });
+
     createCampaignMutation.mutate({
       businessAccountId,
       name: name.trim(),
       description: description.trim() || undefined,
       templateName,
       templateLanguage,
-      templateVariables: Object.keys(templateVariables).length > 0
-        ? JSON.stringify(templateVariables)
+      templateVariables: Object.keys(finalTemplateVariables).length > 0
+        ? JSON.stringify(finalTemplateVariables)
         : undefined,
       scheduledAt: scheduledAt?.toISOString(),
       // Retry configuration
@@ -489,6 +530,7 @@ export default function CampaignNew() {
                             setTemplateName(template.name);
                             setTemplateLanguage(template.language);
                             setTemplateVariables({});
+                            setVariableUseRecipientName({});
                           }}
                         >
                           <div className="flex items-center justify-between">
@@ -555,24 +597,76 @@ export default function CampaignNew() {
               ) : (
                 <>
                   <div className="space-y-4">
-                    {templateVariableNames.map((varName) => (
-                      <div key={varName} className="space-y-2">
-                        <Label htmlFor={`var-${varName}`}>
-                          Variavel {`{{${varName}}}`}
-                        </Label>
-                        <Input
-                          id={`var-${varName}`}
-                          placeholder={`Valor para {{${varName}}}`}
-                          value={templateVariables[varName] || ""}
-                          onChange={(e) =>
-                            setTemplateVariables((prev) => ({
-                              ...prev,
-                              [varName]: e.target.value,
-                            }))
-                          }
-                        />
-                      </div>
-                    ))}
+                    {templateVariableNames.map((varName) => {
+                      // Find example for this variable if available
+                      const components = selectedTemplate?.components as TemplateComponent[];
+                      const bodyComponent = components?.find((c) => c.type === "BODY");
+                      const namedParam = bodyComponent?.example?.body_text_named_params?.find(
+                        (p) => p.param_name === varName
+                      );
+                      const exampleValue = namedParam?.example;
+                      const useRecipientName = variableUseRecipientName[varName] || false;
+                      
+                      return (
+                        <div key={varName} className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label htmlFor={`var-${varName}`}>
+                              Variavel {`{{${varName}}}`}
+                              {exampleValue && (
+                                <span className="text-gray-400 font-normal ml-2">
+                                  (ex: {exampleValue})
+                                </span>
+                              )}
+                            </Label>
+                            <div className="flex items-center gap-2">
+                              <Checkbox
+                                id={`use-recipient-${varName}`}
+                                checked={useRecipientName}
+                                onCheckedChange={(checked) => {
+                                  setVariableUseRecipientName((prev) => ({
+                                    ...prev,
+                                    [varName]: checked === true,
+                                  }));
+                                  // Clear the manual value when using recipient name
+                                  if (checked) {
+                                    setTemplateVariables((prev) => {
+                                      const newVars = { ...prev };
+                                      delete newVars[varName];
+                                      return newVars;
+                                    });
+                                  }
+                                }}
+                              />
+                              <Label
+                                htmlFor={`use-recipient-${varName}`}
+                                className="text-sm font-normal text-gray-600 cursor-pointer flex items-center gap-1"
+                              >
+                                <User className="w-3 h-3" />
+                                Usar nome do destinatario
+                              </Label>
+                            </div>
+                          </div>
+                          {useRecipientName ? (
+                            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-2 text-sm text-blue-700">
+                              <User className="w-4 h-4" />
+                              Esta variavel usara automaticamente o nome de cada destinatario
+                            </div>
+                          ) : (
+                            <Input
+                              id={`var-${varName}`}
+                              placeholder={exampleValue || `Valor para {{${varName}}}`}
+                              value={templateVariables[varName] || ""}
+                              onChange={(e) =>
+                                setTemplateVariables((prev) => ({
+                                  ...prev,
+                                  [varName]: e.target.value,
+                                }))
+                              }
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
 
                   {/* Live Preview */}

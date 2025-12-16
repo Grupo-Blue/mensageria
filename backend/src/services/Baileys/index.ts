@@ -238,11 +238,11 @@ export const addConnection = async (id: string): Promise<void> => {
           'auth_info_baileys',
           id,
         );
-        fs.rmdir(authDir, { recursive: true }, err => {
+        fs.rm(authDir, { recursive: true, force: true }, err => {
           if (err) {
             console.log(err);
           }
-          console.log(`${dir} is deleted!`);
+          console.log(`${authDir} is deleted!`);
         });
         removeConnection(id);
         addConnection(id);

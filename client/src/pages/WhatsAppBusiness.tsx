@@ -26,6 +26,14 @@ import {
 } from "@/components/ui/alert-dialog";
 import { trpc } from "@/lib/trpc";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import {
   Loader2,
   Plus,
   RefreshCw,
@@ -36,13 +44,59 @@ import {
   Building2,
   Key,
   FileText,
-  ExternalLink
+  ExternalLink,
+  Send,
+  MessageSquare,
+  PlusCircle,
+  Info,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { toast } from "sonner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+interface TemplateComponent {
+  type: string;
+  text?: string;
+  example?: {
+    body_text_named_params?: Array<{
+      param_name: string;
+      example: string;
+    }>;
+  };
+}
+
+interface TemplateButton {
+  type: "QUICK_REPLY" | "URL" | "PHONE_NUMBER";
+  text: string;
+  url?: string;
+  phoneNumber?: string;
+}
 
 export default function WhatsAppBusiness() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isTestDialogOpen, setIsTestDialogOpen] = useState(false);
+  const [isCreateTemplateDialogOpen, setIsCreateTemplateDialogOpen] = useState(false);
+  
+  // Test message state
+  const [testAccountId, setTestAccountId] = useState<number | null>(null);
+  const [testTemplateName, setTestTemplateName] = useState("");
+  const [testTemplateLanguage, setTestTemplateLanguage] = useState("");
+  const [testPhone, setTestPhone] = useState("");
+  const [testVariables, setTestVariables] = useState<Record<string, string>>({});
+  
+  // Create template state
+  const [createTemplateAccountId, setCreateTemplateAccountId] = useState<number | null>(null);
+  const [newTemplate, setNewTemplate] = useState({
+    name: "",
+    language: "pt_BR",
+    category: "MARKETING" as "UTILITY" | "MARKETING" | "AUTHENTICATION",
+    headerType: "NONE" as "NONE" | "TEXT",
+    headerText: "",
+    bodyText: "",
+    footerText: "",
+    buttons: [] as TemplateButton[],
+  });
+  
   const [newAccount, setNewAccount] = useState({
     name: "",
     phoneNumberId: "",
@@ -54,6 +108,11 @@ export default function WhatsAppBusiness() {
     refetchInterval: false,
     refetchOnWindowFocus: false,
   });
+
+  const { data: testTemplates } = trpc.whatsappBusiness.getTemplates.useQuery(
+    { accountId: testAccountId! },
+    { enabled: !!testAccountId }
+  );
 
   const utils = trpc.useUtils();
 
@@ -88,6 +147,148 @@ export default function WhatsAppBusiness() {
     },
   });
 
+  const testMessageMutation = trpc.whatsappBusiness.testMessage.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Mensagem enviada! ID: ${data.messageId}`);
+      setIsTestDialogOpen(false);
+      setTestPhone("");
+      setTestVariables({});
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const createTemplateMutation = trpc.whatsappBusiness.createTemplate.useMutation({
+    onSuccess: (data) => {
+      toast.success(data.message);
+      setIsCreateTemplateDialogOpen(false);
+      resetNewTemplate();
+      utils.whatsappBusiness.getTemplates.invalidate();
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const resetNewTemplate = () => {
+    setNewTemplate({
+      name: "",
+      language: "pt_BR",
+      category: "MARKETING",
+      headerType: "NONE",
+      headerText: "",
+      bodyText: "",
+      footerText: "",
+      buttons: [],
+    });
+    setCreateTemplateAccountId(null);
+  };
+
+  const addButton = () => {
+    if (newTemplate.buttons.length >= 3) {
+      toast.error("Máximo de 3 botões permitidos");
+      return;
+    }
+    setNewTemplate(prev => ({
+      ...prev,
+      buttons: [...prev.buttons, { type: "QUICK_REPLY", text: "" }],
+    }));
+  };
+
+  const removeButton = (index: number) => {
+    setNewTemplate(prev => ({
+      ...prev,
+      buttons: prev.buttons.filter((_, i) => i !== index),
+    }));
+  };
+
+  const updateButton = (index: number, updates: Partial<TemplateButton>) => {
+    setNewTemplate(prev => ({
+      ...prev,
+      buttons: prev.buttons.map((btn, i) => i === index ? { ...btn, ...updates } : btn),
+    }));
+  };
+
+  const handleCreateTemplate = () => {
+    if (!createTemplateAccountId) {
+      toast.error("Selecione uma conta");
+      return;
+    }
+    if (!newTemplate.name.trim()) {
+      toast.error("Nome do template é obrigatório");
+      return;
+    }
+    if (!newTemplate.bodyText.trim()) {
+      toast.error("Corpo da mensagem é obrigatório");
+      return;
+    }
+
+    createTemplateMutation.mutate({
+      accountId: createTemplateAccountId,
+      name: newTemplate.name,
+      language: newTemplate.language,
+      category: newTemplate.category,
+      headerType: newTemplate.headerType,
+      headerText: newTemplate.headerType === "TEXT" ? newTemplate.headerText : undefined,
+      bodyText: newTemplate.bodyText,
+      footerText: newTemplate.footerText || undefined,
+      buttons: newTemplate.buttons.length > 0 ? newTemplate.buttons : undefined,
+    });
+  };
+
+  // Get selected template for test
+  const selectedTestTemplate = useMemo(() => {
+    if (!testTemplates || !testTemplateName) return null;
+    return testTemplates.find((t) => t.name === testTemplateName);
+  }, [testTemplates, testTemplateName]);
+
+  // Extract variables from selected test template
+  const testTemplateVariables = useMemo(() => {
+    if (!selectedTestTemplate) return [];
+    
+    const variables: string[] = [];
+    const components = selectedTestTemplate.components as TemplateComponent[];
+    
+    components.forEach((component) => {
+      if (component.type === "BODY" && component.text) {
+        const matches = component.text.match(/\{\{([^}]+)\}\}/g);
+        if (matches) {
+          matches.forEach((match) => {
+            const varName = match.replace(/[{}]/g, "").trim();
+            if (!variables.includes(varName)) {
+              variables.push(varName);
+            }
+          });
+        }
+      }
+    });
+    
+    return variables;
+  }, [selectedTestTemplate]);
+
+  // Handle send test message
+  const handleSendTest = () => {
+    if (!testAccountId || !testTemplateName || !testPhone) {
+      toast.error("Preencha todos os campos obrigatórios");
+      return;
+    }
+
+    // Build body params in order
+    const bodyParams = testTemplateVariables.map((varName) => ({
+      value: testVariables[varName] || "",
+      parameterName: /^\d+$/.test(varName) ? undefined : varName,
+    })).filter(p => p.value);
+
+    testMessageMutation.mutate({
+      accountId: testAccountId,
+      recipientPhone: testPhone,
+      templateName: testTemplateName,
+      templateLanguage: testTemplateLanguage || "pt_BR",
+      bodyParams: bodyParams.length > 0 ? bodyParams : undefined,
+    });
+  };
+
   const handleAddAccount = () => {
     if (!newAccount.name || !newAccount.phoneNumberId || !newAccount.businessAccountId || !newAccount.accessToken) {
       toast.error("Preencha todos os campos obrigatórios");
@@ -117,14 +318,542 @@ export default function WhatsAppBusiness() {
               Configure suas contas da API oficial do WhatsApp Business para envio de campanhas de marketing
             </p>
           </div>
-          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="w-4 h-4 mr-2" />
-                Adicionar Conta
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-lg">
+          <div className="flex gap-2">
+            {/* Test Message Button */}
+            {accounts && accounts.length > 0 && (
+              <Dialog open={isTestDialogOpen} onOpenChange={(open) => {
+                setIsTestDialogOpen(open);
+                if (!open) {
+                  setTestAccountId(null);
+                  setTestTemplateName("");
+                  setTestTemplateLanguage("");
+                  setTestPhone("");
+                  setTestVariables({});
+                }
+              }}>
+                <DialogTrigger asChild>
+                  <Button variant="outline">
+                    <Send className="w-4 h-4 mr-2" />
+                    Enviar Teste
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                      <MessageSquare className="w-5 h-5" />
+                      Enviar Mensagem de Teste
+                    </DialogTitle>
+                    <DialogDescription>
+                      Teste um template de mensagem antes de criar uma campanha
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    {/* Account Selection */}
+                    <div className="space-y-2">
+                      <Label>Conta WhatsApp Business *</Label>
+                      <Select
+                        value={testAccountId?.toString() || ""}
+                        onValueChange={(val) => {
+                          setTestAccountId(parseInt(val));
+                          setTestTemplateName("");
+                          setTestTemplateLanguage("");
+                          setTestVariables({});
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione uma conta" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {accounts.map((account) => (
+                            <SelectItem key={account.id} value={account.id.toString()}>
+                              {account.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Template Selection */}
+                    {testAccountId && (
+                      <div className="space-y-2">
+                        <Label>Template de Mensagem *</Label>
+                        <Select
+                          value={testTemplateName}
+                          onValueChange={(val) => {
+                            setTestTemplateName(val);
+                            const template = testTemplates?.find(t => t.name === val);
+                            if (template) {
+                              setTestTemplateLanguage(template.language);
+                            }
+                            setTestVariables({});
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione um template" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {testTemplates?.filter(t => t.status === "APPROVED").map((template) => (
+                              <SelectItem key={template.id} value={template.name}>
+                                {template.name} ({template.language})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+
+                    {/* Phone Number */}
+                    <div className="space-y-2">
+                      <Label>Número de Telefone *</Label>
+                      <Input
+                        placeholder="Ex: 5511999999999"
+                        value={testPhone}
+                        onChange={(e) => setTestPhone(e.target.value)}
+                      />
+                      <p className="text-xs text-gray-500">
+                        Com código do país (55 para Brasil)
+                      </p>
+                    </div>
+
+                    {/* Template Variables */}
+                    {testTemplateVariables.length > 0 && (
+                      <div className="space-y-3">
+                        <Label>Variáveis do Template</Label>
+                        {testTemplateVariables.map((varName) => {
+                          const components = selectedTestTemplate?.components as TemplateComponent[];
+                          const bodyComponent = components?.find((c) => c.type === "BODY");
+                          const namedParam = bodyComponent?.example?.body_text_named_params?.find(
+                            (p) => p.param_name === varName
+                          );
+                          
+                          return (
+                            <div key={varName} className="space-y-1">
+                              <Label className="text-sm font-normal">
+                                {`{{${varName}}}`}
+                                {namedParam?.example && (
+                                  <span className="text-gray-400 ml-2">(ex: {namedParam.example})</span>
+                                )}
+                              </Label>
+                              <Input
+                                placeholder={namedParam?.example || `Valor para {{${varName}}}`}
+                                value={testVariables[varName] || ""}
+                                onChange={(e) => setTestVariables(prev => ({
+                                  ...prev,
+                                  [varName]: e.target.value,
+                                }))}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Template Preview */}
+                    {selectedTestTemplate && (
+                      <div className="space-y-2">
+                        <Label>Preview do Template</Label>
+                        <div className="p-3 bg-gray-50 rounded-lg border text-sm">
+                          {(() => {
+                            const components = selectedTestTemplate.components as TemplateComponent[];
+                            const bodyComponent = components.find((c) => c.type === "BODY");
+                            let text = bodyComponent?.text || "Sem conteúdo";
+                            
+                            testTemplateVariables.forEach((varName) => {
+                              const value = testVariables[varName] || `{{${varName}}}`;
+                              const escapedVarName = varName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                              text = text.replace(new RegExp(`\\{\\{${escapedVarName}\\}\\}`, "g"), value);
+                            });
+                            
+                            return <p className="whitespace-pre-wrap">{text}</p>;
+                          })()}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsTestDialogOpen(false)}>
+                      Cancelar
+                    </Button>
+                    <Button 
+                      onClick={handleSendTest} 
+                      disabled={testMessageMutation.isPending || !testAccountId || !testTemplateName || !testPhone}
+                    >
+                      {testMessageMutation.isPending ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Enviando...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-4 h-4 mr-2" />
+                          Enviar Teste
+                        </>
+                      )}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            )}
+
+            {/* Create Template Button */}
+            {accounts && accounts.length > 0 && (
+              <Dialog open={isCreateTemplateDialogOpen} onOpenChange={(open) => {
+                setIsCreateTemplateDialogOpen(open);
+                if (!open) resetNewTemplate();
+              }}>
+                <DialogTrigger asChild>
+                  <Button variant="outline">
+                    <PlusCircle className="w-4 h-4 mr-2" />
+                    Criar Template
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                      <FileText className="w-5 h-5" />
+                      Criar Novo Template
+                    </DialogTitle>
+                    <DialogDescription>
+                      Crie um template de mensagem para enviar via WhatsApp Business API
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    {/* Account Selection */}
+                    <div className="space-y-2">
+                      <Label>Conta WhatsApp Business *</Label>
+                      <Select
+                        value={createTemplateAccountId?.toString() || ""}
+                        onValueChange={(val) => setCreateTemplateAccountId(parseInt(val))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione uma conta" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {accounts.map((account) => (
+                            <SelectItem key={account.id} value={account.id.toString()}>
+                              {account.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Template Name */}
+                    <div className="space-y-2">
+                      <Label>Nome do Template *</Label>
+                      <Input
+                        placeholder="Ex: promocao_natal_2024"
+                        value={newTemplate.name}
+                        onChange={(e) => setNewTemplate(prev => ({ 
+                          ...prev, 
+                          name: e.target.value.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "")
+                        }))}
+                      />
+                      <p className="text-xs text-gray-500">
+                        Apenas letras minúsculas, números e underscores
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      {/* Category */}
+                      <div className="space-y-2">
+                        <Label>Categoria *</Label>
+                        <Select
+                          value={newTemplate.category}
+                          onValueChange={(val) => setNewTemplate(prev => ({ 
+                            ...prev, 
+                            category: val as typeof newTemplate.category 
+                          }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="MARKETING">Marketing</SelectItem>
+                            <SelectItem value="UTILITY">Utilitário</SelectItem>
+                            <SelectItem value="AUTHENTICATION">Autenticação</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {/* Language */}
+                      <div className="space-y-2">
+                        <Label>Idioma *</Label>
+                        <Select
+                          value={newTemplate.language}
+                          onValueChange={(val) => setNewTemplate(prev => ({ ...prev, language: val }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="pt_BR">Português (Brasil)</SelectItem>
+                            <SelectItem value="en">Inglês</SelectItem>
+                            <SelectItem value="en_US">Inglês (EUA)</SelectItem>
+                            <SelectItem value="es">Espanhol</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    {/* Header (optional) */}
+                    <div className="space-y-2">
+                      <Label>Cabeçalho (opcional)</Label>
+                      <Select
+                        value={newTemplate.headerType}
+                        onValueChange={(val) => setNewTemplate(prev => ({ 
+                          ...prev, 
+                          headerType: val as typeof newTemplate.headerType 
+                        }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="NONE">Sem cabeçalho</SelectItem>
+                          <SelectItem value="TEXT">Texto</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {newTemplate.headerType === "TEXT" && (
+                        <Input
+                          placeholder="Texto do cabeçalho"
+                          value={newTemplate.headerText}
+                          onChange={(e) => setNewTemplate(prev => ({ ...prev, headerText: e.target.value }))}
+                        />
+                      )}
+                    </div>
+
+                    {/* Body */}
+                    <div className="space-y-2">
+                      <Label>Corpo da Mensagem *</Label>
+                      <Textarea
+                        placeholder="Digite a mensagem. Use {{nome}} para variáveis nomeadas ou {{1}} para variáveis numeradas."
+                        value={newTemplate.bodyText}
+                        onChange={(e) => setNewTemplate(prev => ({ ...prev, bodyText: e.target.value }))}
+                        rows={5}
+                      />
+                      <div className="flex items-start gap-2 text-xs text-gray-500">
+                        <Info className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                        <span>
+                          Use variáveis como {"{{nome}}"} ou {"{{1}}"} para personalização. 
+                          Máximo 1024 caracteres.
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Footer (optional) */}
+                    <div className="space-y-2">
+                      <Label>Rodapé (opcional)</Label>
+                      <Input
+                        placeholder="Ex: Responda SAIR para cancelar"
+                        value={newTemplate.footerText}
+                        onChange={(e) => setNewTemplate(prev => ({ ...prev, footerText: e.target.value }))}
+                        maxLength={60}
+                      />
+                      <p className="text-xs text-gray-500">Máximo 60 caracteres</p>
+                    </div>
+
+                    {/* Buttons (optional) */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label>Botões (opcional)</Label>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={addButton}
+                          disabled={newTemplate.buttons.length >= 3}
+                        >
+                          <Plus className="w-3 h-3 mr-1" />
+                          Adicionar
+                        </Button>
+                      </div>
+                      
+                      {newTemplate.buttons.map((button, index) => (
+                        <div key={index} className="flex gap-2 items-start p-3 border rounded-lg">
+                          <div className="flex-1 space-y-2">
+                            <Select
+                              value={button.type}
+                              onValueChange={(val) => updateButton(index, { 
+                                type: val as TemplateButton["type"],
+                                url: undefined,
+                                phoneNumber: undefined,
+                              })}
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="QUICK_REPLY">Resposta Rápida</SelectItem>
+                                <SelectItem value="URL">Link (URL)</SelectItem>
+                                <SelectItem value="PHONE_NUMBER">Ligar</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Input
+                              placeholder="Texto do botão"
+                              value={button.text}
+                              onChange={(e) => updateButton(index, { text: e.target.value })}
+                              maxLength={25}
+                            />
+                            {button.type === "URL" && (
+                              <Input
+                                placeholder="https://exemplo.com"
+                                value={button.url || ""}
+                                onChange={(e) => updateButton(index, { url: e.target.value })}
+                              />
+                            )}
+                            {button.type === "PHONE_NUMBER" && (
+                              <Input
+                                placeholder="+5511999999999"
+                                value={button.phoneNumber || ""}
+                                onChange={(e) => updateButton(index, { phoneNumber: e.target.value })}
+                              />
+                            )}
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeButton(index)}
+                          >
+                            <Trash2 className="w-4 h-4 text-red-500" />
+                          </Button>
+                        </div>
+                      ))}
+                      
+                      {newTemplate.buttons.length === 0 && (
+                        <p className="text-xs text-gray-500">
+                          Adicione até 3 botões interativos
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Template Preview */}
+                    {(newTemplate.bodyText || newTemplate.headerText) && (
+                      <div className="space-y-2">
+                        <Label className="flex items-center gap-2">
+                          <MessageSquare className="w-4 h-4" />
+                          Prévia do Template
+                        </Label>
+                        <div className="bg-[#e5ddd5] p-4 rounded-lg">
+                          <div className="max-w-[320px] ml-auto">
+                            <div className="bg-[#dcf8c6] rounded-lg shadow-sm overflow-hidden">
+                              {/* Header */}
+                              {newTemplate.headerType === "TEXT" && newTemplate.headerText && (
+                                <div className="px-3 pt-2 pb-1">
+                                  <p className="font-semibold text-sm text-gray-900">
+                                    {newTemplate.headerText}
+                                  </p>
+                                </div>
+                              )}
+                              
+                              {/* Body */}
+                              <div className="px-3 py-2">
+                                <p className="text-sm text-gray-800 whitespace-pre-wrap">
+                                  {newTemplate.bodyText || "Digite o corpo da mensagem..."}
+                                </p>
+                              </div>
+                              
+                              {/* Footer */}
+                              {newTemplate.footerText && (
+                                <div className="px-3 pb-2">
+                                  <p className="text-xs text-gray-500">
+                                    {newTemplate.footerText}
+                                  </p>
+                                </div>
+                              )}
+                              
+                              {/* Timestamp */}
+                              <div className="px-3 pb-1 flex justify-end">
+                                <span className="text-[10px] text-gray-500">
+                                  {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+                              
+                              {/* Buttons */}
+                              {newTemplate.buttons.length > 0 && (
+                                <div className="border-t border-gray-200">
+                                  {newTemplate.buttons.map((btn, idx) => (
+                                    <div
+                                      key={idx}
+                                      className={`text-center py-2 text-sm text-blue-500 font-medium ${
+                                        idx > 0 ? "border-t border-gray-200" : ""
+                                      }`}
+                                    >
+                                      {btn.type === "URL" && "🔗 "}
+                                      {btn.type === "PHONE_NUMBER" && "📞 "}
+                                      {btn.text || `Botão ${idx + 1}`}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            
+                            {/* Variables info */}
+                            {newTemplate.bodyText.match(/\{\{[^}]+\}\}/g) && (
+                              <div className="mt-2 text-xs text-gray-600 bg-white/50 rounded p-2">
+                                <p className="font-medium mb-1">Variáveis detectadas:</p>
+                                <div className="flex flex-wrap gap-1">
+                                  {[...new Set(newTemplate.bodyText.match(/\{\{[^}]+\}\}/g))].map((v, i) => (
+                                    <span key={i} className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                                      {v}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Info Box */}
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <p className="text-sm font-medium text-blue-900 mb-2">
+                        Sobre a aprovação de templates
+                      </p>
+                      <ul className="text-xs text-blue-800 space-y-1 list-disc list-inside">
+                        <li>Templates precisam ser aprovados pela Meta antes do uso</li>
+                        <li>A aprovação geralmente leva de minutos a 24 horas</li>
+                        <li>Templates de Marketing podem ter restrições em alguns países</li>
+                        <li>Evite conteúdo promocional excessivo para aumentar aprovação</li>
+                      </ul>
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsCreateTemplateDialogOpen(false)}>
+                      Cancelar
+                    </Button>
+                    <Button 
+                      onClick={handleCreateTemplate} 
+                      disabled={createTemplateMutation.isPending || !createTemplateAccountId || !newTemplate.name || !newTemplate.bodyText}
+                    >
+                      {createTemplateMutation.isPending ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Criando...
+                        </>
+                      ) : (
+                        <>
+                          <PlusCircle className="w-4 h-4 mr-2" />
+                          Criar Template
+                        </>
+                      )}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            )}
+
+            {/* Add Account Button */}
+            <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Adicionar Conta
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-lg">
               <DialogHeader>
                 <DialogTitle>Adicionar Conta WhatsApp Business</DialogTitle>
                 <DialogDescription>
@@ -223,6 +952,7 @@ export default function WhatsAppBusiness() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          </div>
         </div>
 
         {/* Accounts List */}

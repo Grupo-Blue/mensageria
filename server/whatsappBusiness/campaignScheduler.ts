@@ -1,5 +1,29 @@
 import * as db from "../db";
-import { MetaWhatsAppApi } from "../whatsappBusiness/metaApi";
+import { MetaWhatsAppApi, mapVariablesToOrderedArray, BodyParam } from "../whatsappBusiness/metaApi";
+
+// Special marker for variables that should use recipient name
+const RECIPIENT_NAME_MARKER = "__RECIPIENT_NAME__";
+
+/**
+ * Process template variables, replacing recipient name markers with actual recipient name
+ */
+function processVariablesWithRecipientName(
+  templateVariables: Record<string, string>,
+  recipientName: string | null | undefined
+): Record<string, string> {
+  const processed: Record<string, string> = {};
+  
+  for (const [key, value] of Object.entries(templateVariables)) {
+    if (value === RECIPIENT_NAME_MARKER) {
+      // Use recipient name or fallback to empty string
+      processed[key] = recipientName || "";
+    } else {
+      processed[key] = value;
+    }
+  }
+  
+  return processed;
+}
 
 let schedulerInterval: NodeJS.Timeout | null = null;
 
@@ -146,6 +170,41 @@ export class CampaignScheduler {
   }
 
   /**
+   * Get template body text for variable ordering
+   */
+  private async getTemplateBodyText(accountId: number, templateName: string): Promise<string> {
+    const template = await db.getWhatsappTemplateByName(accountId, templateName);
+    if (!template) return "";
+    
+    try {
+      const components = JSON.parse(template.components);
+      const bodyComponent = components.find((c: any) => c.type === "BODY");
+      return bodyComponent?.text || "";
+    } catch {
+      return "";
+    }
+  }
+
+  /**
+   * Build body params from variables in correct order
+   */
+  private buildBodyParams(
+    mergedVariables: Record<string, string>,
+    templateBodyText: string
+  ): BodyParam[] | undefined {
+    if (Object.keys(mergedVariables).length === 0 || !templateBodyText) {
+      return undefined;
+    }
+    
+    const bodyParams = mapVariablesToOrderedArray(templateBodyText, mergedVariables);
+    // Return undefined if all values are empty
+    if (bodyParams.every(p => !p.value)) {
+      return undefined;
+    }
+    return bodyParams;
+  }
+
+  /**
    * Retry sending messages to failed recipients
    */
   private async retryFailedRecipients(
@@ -179,6 +238,9 @@ export class CampaignScheduler {
         ? JSON.parse(campaign.templateVariables)
         : {};
 
+      // Get template body text for variable ordering
+      const templateBodyText = await this.getTemplateBodyText(account.id, campaign.templateName);
+
       const api = new MetaWhatsAppApi(account.phoneNumberId, account.accessToken);
 
       let successCount = 0;
@@ -192,14 +254,20 @@ export class CampaignScheduler {
           // Increment retry count and reset status to pending
           await db.incrementRecipientRetryCount(recipient.id);
 
+          // Process template variables, replacing recipient name markers
+          const processedTemplateVars = processVariablesWithRecipientName(
+            templateVariables,
+            recipient.name
+          );
+
           // Merge template variables with recipient-specific variables
           const recipientVariables = recipient.variables
             ? JSON.parse(recipient.variables)
             : {};
-          const mergedVariables = { ...templateVariables, ...recipientVariables };
+          const mergedVariables = { ...processedTemplateVars, ...recipientVariables };
 
-          // Build body params from variables
-          const bodyParams = Object.values(mergedVariables) as string[];
+          // Build body params from variables in correct order
+          const bodyParams = this.buildBodyParams(mergedVariables, templateBodyText);
 
           const result = await api.sendTemplateMessage({
             phoneNumberId: account.phoneNumberId,
@@ -207,7 +275,7 @@ export class CampaignScheduler {
             recipientPhone: recipient.phoneNumber,
             templateName: campaign.templateName,
             templateLanguage: campaign.templateLanguage,
-            bodyParams: bodyParams.length > 0 ? bodyParams : undefined,
+            bodyParams,
           });
 
           await db.updateCampaignRecipient(recipient.id, {
@@ -289,6 +357,9 @@ export class CampaignScheduler {
       ? JSON.parse(campaign.templateVariables)
       : {};
 
+    // Get template body text for variable ordering
+    const templateBodyText = await this.getTemplateBodyText(account.id, campaign.templateName);
+
     const api = new MetaWhatsAppApi(account.phoneNumberId, account.accessToken);
 
     let success = 0;
@@ -301,11 +372,17 @@ export class CampaignScheduler {
       try {
         await db.incrementRecipientRetryCount(recipient.id);
 
+        // Process template variables, replacing recipient name markers
+        const processedTemplateVars = processVariablesWithRecipientName(
+          templateVariables,
+          recipient.name
+        );
+
         const recipientVariables = recipient.variables
           ? JSON.parse(recipient.variables)
           : {};
-        const mergedVariables = { ...templateVariables, ...recipientVariables };
-        const bodyParams = Object.values(mergedVariables) as string[];
+        const mergedVariables = { ...processedTemplateVars, ...recipientVariables };
+        const bodyParams = this.buildBodyParams(mergedVariables, templateBodyText);
 
         const result = await api.sendTemplateMessage({
           phoneNumberId: account.phoneNumberId,
@@ -313,7 +390,7 @@ export class CampaignScheduler {
           recipientPhone: recipient.phoneNumber,
           templateName: campaign.templateName,
           templateLanguage: campaign.templateLanguage,
-          bodyParams: bodyParams.length > 0 ? bodyParams : undefined,
+          bodyParams,
         });
 
         await db.updateCampaignRecipient(recipient.id, {
@@ -393,6 +470,9 @@ export class CampaignScheduler {
         ? JSON.parse(campaign.templateVariables)
         : {};
 
+      // Get template body text for variable ordering
+      const templateBodyText = await this.getTemplateBodyText(account.id, campaign.templateName);
+
       const api = new MetaWhatsAppApi(account.phoneNumberId, account.accessToken);
 
       // Send messages to all pending recipients
@@ -401,14 +481,20 @@ export class CampaignScheduler {
 
       for (const recipient of recipients) {
         try {
+          // Process template variables, replacing recipient name markers
+          const processedTemplateVars = processVariablesWithRecipientName(
+            templateVariables,
+            recipient.name
+          );
+
           // Merge template variables with recipient-specific variables
           const recipientVariables = recipient.variables
             ? JSON.parse(recipient.variables)
             : {};
-          const mergedVariables = { ...templateVariables, ...recipientVariables };
+          const mergedVariables = { ...processedTemplateVars, ...recipientVariables };
 
-          // Build body params from variables
-          const bodyParams = Object.values(mergedVariables) as string[];
+          // Build body params from variables in correct order
+          const bodyParams = this.buildBodyParams(mergedVariables, templateBodyText);
 
           const result = await api.sendTemplateMessage({
             phoneNumberId: account.phoneNumberId,
@@ -416,7 +502,7 @@ export class CampaignScheduler {
             recipientPhone: recipient.phoneNumber,
             templateName: campaign.templateName,
             templateLanguage: campaign.templateLanguage,
-            bodyParams: bodyParams.length > 0 ? bodyParams : undefined,
+            bodyParams,
           });
 
           await db.updateCampaignRecipient(recipient.id, {

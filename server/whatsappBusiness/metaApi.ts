@@ -28,6 +28,11 @@ export interface WhatsAppTemplate {
   components: TemplateComponent[];
 }
 
+export interface BodyParam {
+  value: string;
+  parameterName?: string; // For named variables like {{customer_name}}
+}
+
 export interface SendTemplateMessageParams {
   phoneNumberId: string;
   accessToken: string;
@@ -35,7 +40,7 @@ export interface SendTemplateMessageParams {
   templateName: string;
   templateLanguage: string;
   headerParams?: Array<{ type: string; [key: string]: any }>;
-  bodyParams?: string[];
+  bodyParams?: BodyParam[];
   buttonParams?: Array<{ type: string; [key: string]: any }>;
 }
 
@@ -51,6 +56,50 @@ export interface MetaApiError {
   code: number;
   error_subcode?: number;
   fbtrace_id: string;
+}
+
+/**
+ * Extract variables from template text in the order they appear
+ * Supports both {{1}} and {{named_variable}} formats
+ */
+export function extractTemplateVariablesInOrder(templateText: string): string[] {
+  const variables: string[] = [];
+  const regex = /\{\{([^}]+)\}\}/g;
+  let match;
+  
+  while ((match = regex.exec(templateText)) !== null) {
+    const varName = match[1].trim();
+    if (!variables.includes(varName)) {
+      variables.push(varName);
+    }
+  }
+  
+  console.log(`[extractTemplateVariablesInOrder] Found variables in order:`, variables);
+  return variables;
+}
+
+/**
+ * Map named variables to ordered array for Meta API
+ * @param templateText The template body text with {{variable}} placeholders
+ * @param variableValues Object with variable names as keys and values
+ * @returns Array of BodyParam objects with value and parameterName
+ */
+export function mapVariablesToOrderedArray(
+  templateText: string,
+  variableValues: Record<string, string>
+): BodyParam[] {
+  const orderedVariables = extractTemplateVariablesInOrder(templateText);
+  const result = orderedVariables.map((varName) => {
+    const isNumeric = /^\d+$/.test(varName);
+    return {
+      value: variableValues[varName] || "",
+      // Only include parameterName for named (non-numeric) variables
+      parameterName: isNumeric ? undefined : varName,
+    };
+  });
+  console.log(`[mapVariablesToOrderedArray] Variable values:`, variableValues);
+  console.log(`[mapVariablesToOrderedArray] Ordered result:`, result);
+  return result;
 }
 
 /**
@@ -76,9 +125,13 @@ export class MetaWhatsAppApi {
    * Fetch all message templates from the WhatsApp Business Account
    */
   async getTemplates(businessAccountId: string): Promise<WhatsAppTemplate[]> {
+    const url = `${META_API_BASE}/${businessAccountId}/message_templates`;
+    console.log('[MetaWhatsAppApi] Fetching templates from:', url);
+    console.log('[MetaWhatsAppApi] Using token prefix:', this.accessToken.substring(0, 20) + '...');
+    
     try {
       const response = await axios.get(
-        `${META_API_BASE}/${businessAccountId}/message_templates`,
+        url,
         {
           headers: this.getHeaders(),
           params: {
@@ -88,8 +141,10 @@ export class MetaWhatsAppApi {
         }
       );
 
+      console.log('[MetaWhatsAppApi] Templates fetched successfully:', response.data.data?.length || 0, 'templates');
       return response.data.data || [];
     } catch (error) {
+      console.error('[MetaWhatsAppApi] Error fetching templates:', error);
       throw this.handleError(error);
     }
   }
@@ -116,15 +171,26 @@ export class MetaWhatsAppApi {
       });
     }
 
-    // Body component (text variables)
+    // Body component (text variables) - only add if there are non-empty params
     if (bodyParams && bodyParams.length > 0) {
-      components.push({
-        type: "body",
-        parameters: bodyParams.map((text) => ({
-          type: "text",
-          text,
-        })),
-      });
+      // Filter out empty values
+      const validParams = bodyParams.filter(p => p.value && p.value.trim() !== "");
+      if (validParams.length > 0) {
+        components.push({
+          type: "body",
+          parameters: validParams.map((param) => {
+            const paramObj: any = {
+              type: "text",
+              text: param.value,
+            };
+            // Add parameter_name for named variables (required for templates with named params)
+            if (param.parameterName) {
+              paramObj.parameter_name = param.parameterName;
+            }
+            return paramObj;
+          }),
+        });
+      }
     }
 
     // Button component
@@ -153,6 +219,15 @@ export class MetaWhatsAppApi {
       },
     };
 
+    // Debug logging
+    console.log('[MetaWhatsAppApi] Sending template message:');
+    console.log('[MetaWhatsAppApi] Template:', templateName);
+    console.log('[MetaWhatsAppApi] Language:', templateLanguage);
+    console.log('[MetaWhatsAppApi] To:', formattedPhone);
+    console.log('[MetaWhatsAppApi] Body Params:', JSON.stringify(bodyParams));
+    console.log('[MetaWhatsAppApi] Components:', JSON.stringify(components, null, 2));
+    console.log('[MetaWhatsAppApi] Full Payload:', JSON.stringify(payload, null, 2));
+
     try {
       const response = await axios.post(
         `${META_API_BASE}/${this.phoneNumberId}/messages`,
@@ -160,8 +235,10 @@ export class MetaWhatsAppApi {
         { headers: this.getHeaders() }
       );
 
+      console.log('[MetaWhatsAppApi] Message sent successfully:', response.data);
       return response.data;
     } catch (error) {
+      console.error('[MetaWhatsAppApi] Error sending message:', error);
       throw this.handleError(error);
     }
   }
@@ -204,6 +281,8 @@ export class MetaWhatsAppApi {
 
   /**
    * Get phone number information
+   * Note: This endpoint requires the access token to have permission to access this specific phone number.
+   * If it fails, it may mean the token doesn't have phone number read permissions.
    */
   async getPhoneNumberInfo(): Promise<{
     id: string;
@@ -224,6 +303,198 @@ export class MetaWhatsAppApi {
 
       return response.data;
     } catch (error) {
+      // If the direct phone number endpoint fails, it might be a permissions issue
+      // The phone number ID might be correct but the token lacks permissions
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Get phone numbers from Business Account (alternative validation method)
+   * This is more reliable than direct phone number access
+   */
+  async getPhoneNumbersFromBusiness(businessAccountId: string): Promise<Array<{
+    id: string;
+    display_phone_number: string;
+    verified_name: string;
+    quality_rating: string;
+  }>> {
+    try {
+      const response = await axios.get(
+        `${META_API_BASE}/${businessAccountId}/phone_numbers`,
+        {
+          headers: this.getHeaders(),
+          params: {
+            fields: "id,display_phone_number,verified_name,quality_rating",
+          },
+        }
+      );
+
+      return response.data.data || [];
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Create a new message template
+   */
+  async createTemplate(
+    businessAccountId: string,
+    template: {
+      name: string;
+      language: string;
+      category: "UTILITY" | "MARKETING" | "AUTHENTICATION";
+      headerType?: "NONE" | "TEXT" | "IMAGE" | "VIDEO" | "DOCUMENT";
+      headerText?: string;
+      bodyText: string;
+      footerText?: string;
+      buttons?: Array<{
+        type: "QUICK_REPLY" | "URL" | "PHONE_NUMBER";
+        text: string;
+        url?: string;
+        phoneNumber?: string;
+      }>;
+    }
+  ): Promise<{ id: string; status: string; category: string }> {
+    const components: any[] = [];
+
+    // Header component (optional)
+    if (template.headerType && template.headerType !== "NONE") {
+      if (template.headerType === "TEXT" && template.headerText) {
+        components.push({
+          type: "HEADER",
+          format: "TEXT",
+          text: template.headerText,
+        });
+      } else if (template.headerType === "IMAGE") {
+        components.push({
+          type: "HEADER",
+          format: "IMAGE",
+          example: {
+            header_handle: ["https://example.com/image.jpg"], // Placeholder
+          },
+        });
+      }
+    }
+
+    // Body component (required)
+    // Extract example values for variables
+    const bodyVariables = template.bodyText.match(/\{\{[^}]+\}\}/g) || [];
+    const bodyComponent: any = {
+      type: "BODY",
+      text: template.bodyText,
+    };
+    
+    if (bodyVariables.length > 0) {
+      // Check if using named variables or numbered
+      const isNamed = bodyVariables.some(v => !/^\{\{\d+\}\}$/.test(v));
+      
+      if (isNamed) {
+        // Named parameters
+        bodyComponent.example = {
+          body_text_named_params: bodyVariables.map(v => {
+            const paramName = v.replace(/[{}]/g, "").trim();
+            return {
+              param_name: paramName,
+              example: `[${paramName}]`,
+            };
+          }),
+        };
+      } else {
+        // Numbered parameters
+        bodyComponent.example = {
+          body_text: [bodyVariables.map((_, i) => `[Exemplo ${i + 1}]`)],
+        };
+      }
+    }
+    components.push(bodyComponent);
+
+    // Footer component (optional)
+    if (template.footerText) {
+      components.push({
+        type: "FOOTER",
+        text: template.footerText,
+      });
+    }
+
+    // Buttons component (optional)
+    if (template.buttons && template.buttons.length > 0) {
+      const buttonsComponent: any = {
+        type: "BUTTONS",
+        buttons: template.buttons.map((btn) => {
+          if (btn.type === "QUICK_REPLY") {
+            return {
+              type: "QUICK_REPLY",
+              text: btn.text,
+            };
+          } else if (btn.type === "URL") {
+            return {
+              type: "URL",
+              text: btn.text,
+              url: btn.url,
+            };
+          } else if (btn.type === "PHONE_NUMBER") {
+            return {
+              type: "PHONE_NUMBER",
+              text: btn.text,
+              phone_number: btn.phoneNumber,
+            };
+          }
+          return { type: btn.type, text: btn.text };
+        }),
+      };
+      components.push(buttonsComponent);
+    }
+
+    const payload = {
+      name: template.name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, ""),
+      language: template.language,
+      category: template.category,
+      components,
+    };
+
+    console.log("[MetaWhatsAppApi] Creating template:", JSON.stringify(payload, null, 2));
+
+    try {
+      const response = await axios.post(
+        `${META_API_BASE}/${businessAccountId}/message_templates`,
+        payload,
+        { headers: this.getHeaders() }
+      );
+
+      console.log("[MetaWhatsAppApi] Template created:", response.data);
+      return {
+        id: response.data.id,
+        status: response.data.status || "PENDING",
+        category: response.data.category || template.category,
+      };
+    } catch (error) {
+      console.error("[MetaWhatsAppApi] Error creating template:", error);
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Delete a message template
+   */
+  async deleteTemplate(
+    businessAccountId: string,
+    templateName: string
+  ): Promise<{ success: boolean }> {
+    try {
+      const response = await axios.delete(
+        `${META_API_BASE}/${businessAccountId}/message_templates`,
+        {
+          headers: this.getHeaders(),
+          params: { name: templateName },
+        }
+      );
+
+      console.log("[MetaWhatsAppApi] Template deleted:", response.data);
+      return { success: response.data.success || true };
+    } catch (error) {
+      console.error("[MetaWhatsAppApi] Error deleting template:", error);
       throw this.handleError(error);
     }
   }

@@ -17,7 +17,7 @@ if (!ENV.googleClientId || !ENV.googleClientSecret) {
 // Determinar URL base correta
 const baseUrl = ENV.isProduction 
   ? 'https://mensageria.grupoblue.com.br'
-  : ENV.backendApiUrl;
+  : ENV.oAuthServerUrl || 'http://localhost:3000';
 
 const callbackURL = `${baseUrl}/api/auth/google/callback`;
 
