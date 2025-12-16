@@ -586,6 +586,10 @@ export const appRouter = router({
         templateVariables: z.string().optional(), // JSON string
         headerMediaUrl: z.string().optional(),
         scheduledAt: z.string().optional(), // ISO date string
+        // Retry configuration
+        autoRetryEnabled: z.boolean().optional().default(true),
+        maxRetries: z.number().min(0).max(10).optional().default(3),
+        retryDelayMinutes: z.number().min(1).max(1440).optional().default(30),
       }))
       .mutation(async ({ ctx, input }) => {
         // Verify the business account belongs to the user
@@ -605,6 +609,10 @@ export const appRouter = router({
           headerMediaUrl: input.headerMediaUrl,
           status: input.scheduledAt ? "scheduled" : "draft",
           scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : undefined,
+          // Retry settings
+          autoRetryEnabled: input.autoRetryEnabled,
+          maxRetries: input.maxRetries,
+          retryDelayMinutes: input.retryDelayMinutes,
         });
 
         return { success: true, id };
@@ -877,6 +885,59 @@ export const appRouter = router({
           read: recipients.filter((r) => r.status === "read").length,
           failed: recipients.filter((r) => r.status === "failed").length,
         };
+      }),
+
+    // Get retry statistics for a campaign
+    getRetryStats: protectedProcedure
+      .input(z.object({ campaignId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const campaign = await db.getCampaignById(input.campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) {
+          throw new Error("Campanha não encontrada");
+        }
+
+        const retryStats = await db.getRecipientsRetryStats(input.campaignId);
+        return {
+          ...retryStats,
+          maxRetries: campaign.maxRetries,
+          retryDelayMinutes: campaign.retryDelayMinutes,
+          autoRetryEnabled: campaign.autoRetryEnabled,
+        };
+      }),
+
+    // Manual retry for failed messages
+    retryFailed: protectedProcedure
+      .input(z.object({ campaignId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const campaign = await db.getCampaignById(input.campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) {
+          throw new Error("Campanha não encontrada");
+        }
+
+        const { campaignScheduler } = await import("./whatsappBusiness/campaignScheduler");
+        const result = await campaignScheduler.manualRetry(input.campaignId);
+
+        return result;
+      }),
+
+    // Update retry settings for a campaign
+    updateRetrySettings: protectedProcedure
+      .input(z.object({
+        campaignId: z.number(),
+        maxRetries: z.number().min(0).max(10).optional(),
+        retryDelayMinutes: z.number().min(1).max(1440).optional(),
+        autoRetryEnabled: z.boolean().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const campaign = await db.getCampaignById(input.campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) {
+          throw new Error("Campanha não encontrada");
+        }
+
+        const { campaignId, ...settings } = input;
+        await db.updateCampaign(campaignId, settings);
+
+        return { success: true };
       }),
   }),
 });

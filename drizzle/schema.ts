@@ -189,6 +189,10 @@ export const campaigns = mysqlTable("campaigns", {
   deliveredCount: int("delivered_count").default(0).notNull(),
   readCount: int("read_count").default(0).notNull(),
   failedCount: int("failed_count").default(0).notNull(),
+  // Retry configuration
+  maxRetries: int("max_retries").default(3).notNull(),
+  retryDelayMinutes: int("retry_delay_minutes").default(30).notNull(),
+  autoRetryEnabled: boolean("auto_retry_enabled").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 });
@@ -208,6 +212,9 @@ export const campaignRecipients = mysqlTable("campaign_recipients", {
   status: mysqlEnum("status", ["pending", "sent", "delivered", "read", "failed"]).default("pending").notNull(),
   whatsappMessageId: varchar("whatsapp_message_id", { length: 255 }),
   errorMessage: text("error_message"),
+  // Retry tracking
+  retryCount: int("retry_count").default(0).notNull(),
+  lastRetryAt: timestamp("last_retry_at"),
   sentAt: timestamp("sent_at"),
   deliveredAt: timestamp("delivered_at"),
   readAt: timestamp("read_at"),

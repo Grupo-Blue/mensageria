@@ -6,6 +6,7 @@ let schedulerInterval: NodeJS.Timeout | null = null;
 /**
  * Campaign Scheduler Service
  * Checks for scheduled campaigns and executes them when their scheduled time arrives
+ * Also handles automatic retries for failed messages
  */
 export class CampaignScheduler {
   private static instance: CampaignScheduler | null = null;
@@ -34,11 +35,11 @@ export class CampaignScheduler {
     console.log("[CampaignScheduler] Started - checking every", this.checkIntervalMs / 1000, "seconds");
 
     // Run immediately on start
-    this.checkScheduledCampaigns();
+    this.runScheduledTasks();
 
     // Then run periodically
     schedulerInterval = setInterval(() => {
-      this.checkScheduledCampaigns();
+      this.runScheduledTasks();
     }, this.checkIntervalMs);
   }
 
@@ -52,6 +53,14 @@ export class CampaignScheduler {
     }
     this.isRunning = false;
     console.log("[CampaignScheduler] Stopped");
+  }
+
+  /**
+   * Run all scheduled tasks
+   */
+  private async runScheduledTasks() {
+    await this.checkScheduledCampaigns();
+    await this.processAutoRetries();
   }
 
   /**
@@ -90,6 +99,251 @@ export class CampaignScheduler {
     } catch (error) {
       console.error("[CampaignScheduler] Error checking scheduled campaigns:", error);
     }
+  }
+
+  /**
+   * Process automatic retries for failed messages
+   */
+  private async processAutoRetries() {
+    try {
+      const dbInstance = await db.getDb();
+      if (!dbInstance) {
+        return;
+      }
+
+      const { campaigns } = await import("../../drizzle/schema");
+      const { eq, or } = await import("drizzle-orm");
+
+      // Find campaigns that have auto retry enabled and are completed or paused
+      const campaignsForRetry = await dbInstance
+        .select()
+        .from(campaigns)
+        .where(
+          eq(campaigns.autoRetryEnabled, true)
+        );
+
+      for (const campaign of campaignsForRetry) {
+        // Skip if campaign is still running or scheduled
+        if (campaign.status === "running" || campaign.status === "scheduled" || campaign.status === "draft") {
+          continue;
+        }
+
+        // Get failed recipients eligible for retry
+        const failedRecipients = await db.getFailedRecipientsForRetry(
+          campaign.id,
+          campaign.maxRetries,
+          campaign.retryDelayMinutes
+        );
+
+        if (failedRecipients.length > 0) {
+          console.log(`[CampaignScheduler] Found ${failedRecipients.length} failed recipients to retry for campaign ${campaign.id}`);
+          await this.retryFailedRecipients(campaign, failedRecipients);
+        }
+      }
+    } catch (error) {
+      console.error("[CampaignScheduler] Error processing auto retries:", error);
+    }
+  }
+
+  /**
+   * Retry sending messages to failed recipients
+   */
+  private async retryFailedRecipients(
+    campaign: {
+      id: number;
+      userId: number;
+      businessAccountId: number;
+      templateName: string;
+      templateLanguage: string;
+      templateVariables: string | null;
+      maxRetries: number;
+    },
+    recipients: Array<{
+      id: number;
+      phoneNumber: string;
+      name: string | null;
+      variables: string | null;
+      retryCount: number;
+    }>
+  ) {
+    try {
+      // Get the business account
+      const account = await db.getWhatsappBusinessAccountById(campaign.businessAccountId);
+      if (!account) {
+        console.error(`[CampaignScheduler] Business account ${campaign.businessAccountId} not found for retry`);
+        return;
+      }
+
+      // Parse template variables
+      const templateVariables = campaign.templateVariables
+        ? JSON.parse(campaign.templateVariables)
+        : {};
+
+      const api = new MetaWhatsAppApi(account.phoneNumberId, account.accessToken);
+
+      let successCount = 0;
+      let failCount = 0;
+
+      for (const recipient of recipients) {
+        const retryNumber = recipient.retryCount + 1;
+        console.log(`[CampaignScheduler] Retrying ${recipient.phoneNumber} (attempt ${retryNumber}/${campaign.maxRetries})`);
+
+        try {
+          // Increment retry count and reset status to pending
+          await db.incrementRecipientRetryCount(recipient.id);
+
+          // Merge template variables with recipient-specific variables
+          const recipientVariables = recipient.variables
+            ? JSON.parse(recipient.variables)
+            : {};
+          const mergedVariables = { ...templateVariables, ...recipientVariables };
+
+          // Build body params from variables
+          const bodyParams = Object.values(mergedVariables) as string[];
+
+          const result = await api.sendTemplateMessage({
+            phoneNumberId: account.phoneNumberId,
+            accessToken: account.accessToken,
+            recipientPhone: recipient.phoneNumber,
+            templateName: campaign.templateName,
+            templateLanguage: campaign.templateLanguage,
+            bodyParams: bodyParams.length > 0 ? bodyParams : undefined,
+          });
+
+          await db.updateCampaignRecipient(recipient.id, {
+            status: "sent",
+            whatsappMessageId: result.messages[0]?.id,
+            sentAt: new Date(),
+            errorMessage: null,
+          });
+
+          successCount++;
+          console.log(`[CampaignScheduler] Retry successful for ${recipient.phoneNumber}`);
+
+          // Rate limiting: wait 100ms between messages
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        } catch (error: any) {
+          await db.updateCampaignRecipient(recipient.id, {
+            status: "failed",
+            errorMessage: `Retry ${retryNumber} failed: ${error.message}`,
+          });
+          failCount++;
+          console.error(`[CampaignScheduler] Retry failed for ${recipient.phoneNumber}:`, error.message);
+        }
+      }
+
+      // Update campaign stats
+      const allRecipients = await db.getCampaignRecipients(campaign.id);
+      await db.updateCampaign(campaign.id, {
+        sentCount: allRecipients.filter((r: any) =>
+          r.status === "sent" || r.status === "delivered" || r.status === "read"
+        ).length,
+        failedCount: allRecipients.filter((r: any) => r.status === "failed").length,
+      });
+
+      console.log(`[CampaignScheduler] Retry batch completed for campaign ${campaign.id}: ${successCount} success, ${failCount} failed`);
+    } catch (error) {
+      console.error(`[CampaignScheduler] Error retrying recipients for campaign ${campaign.id}:`, error);
+    }
+  }
+
+  /**
+   * Manually trigger retry for a specific campaign
+   */
+  async manualRetry(campaignId: number): Promise<{ success: number; failed: number; skipped: number }> {
+    const campaign = await db.getCampaignById(campaignId);
+    if (!campaign) {
+      throw new Error("Campaign not found");
+    }
+
+    // Get all failed recipients regardless of retry delay
+    const dbInstance = await db.getDb();
+    if (!dbInstance) {
+      throw new Error("Database not available");
+    }
+
+    const { campaignRecipients } = await import("../../drizzle/schema");
+    const { eq, and, lt } = await import("drizzle-orm");
+
+    const failedRecipients = await dbInstance
+      .select()
+      .from(campaignRecipients)
+      .where(
+        and(
+          eq(campaignRecipients.campaignId, campaignId),
+          eq(campaignRecipients.status, "failed"),
+          lt(campaignRecipients.retryCount, campaign.maxRetries)
+        )
+      );
+
+    if (failedRecipients.length === 0) {
+      return { success: 0, failed: 0, skipped: 0 };
+    }
+
+    const account = await db.getWhatsappBusinessAccountById(campaign.businessAccountId);
+    if (!account) {
+      throw new Error("Business account not found");
+    }
+
+    const templateVariables = campaign.templateVariables
+      ? JSON.parse(campaign.templateVariables)
+      : {};
+
+    const api = new MetaWhatsAppApi(account.phoneNumberId, account.accessToken);
+
+    let success = 0;
+    let failed = 0;
+    const skipped = 0;
+
+    for (const recipient of failedRecipients) {
+      const retryNumber = recipient.retryCount + 1;
+
+      try {
+        await db.incrementRecipientRetryCount(recipient.id);
+
+        const recipientVariables = recipient.variables
+          ? JSON.parse(recipient.variables)
+          : {};
+        const mergedVariables = { ...templateVariables, ...recipientVariables };
+        const bodyParams = Object.values(mergedVariables) as string[];
+
+        const result = await api.sendTemplateMessage({
+          phoneNumberId: account.phoneNumberId,
+          accessToken: account.accessToken,
+          recipientPhone: recipient.phoneNumber,
+          templateName: campaign.templateName,
+          templateLanguage: campaign.templateLanguage,
+          bodyParams: bodyParams.length > 0 ? bodyParams : undefined,
+        });
+
+        await db.updateCampaignRecipient(recipient.id, {
+          status: "sent",
+          whatsappMessageId: result.messages[0]?.id,
+          sentAt: new Date(),
+          errorMessage: null,
+        });
+
+        success++;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      } catch (error: any) {
+        await db.updateCampaignRecipient(recipient.id, {
+          status: "failed",
+          errorMessage: `Manual retry ${retryNumber} failed: ${error.message}`,
+        });
+        failed++;
+      }
+    }
+
+    // Update campaign stats
+    const allRecipients = await db.getCampaignRecipients(campaignId);
+    await db.updateCampaign(campaignId, {
+      sentCount: allRecipients.filter((r: any) =>
+        r.status === "sent" || r.status === "delivered" || r.status === "read"
+      ).length,
+      failedCount: allRecipients.filter((r: any) => r.status === "failed").length,
+    });
+
+    return { success, failed, skipped };
   }
 
   /**
@@ -188,13 +442,13 @@ export class CampaignScheduler {
 
       // Update campaign stats
       const allRecipients = await db.getCampaignRecipients(campaign.id);
-      const pendingCount = allRecipients.filter((r) => r.status === "pending").length;
+      const pendingCount = allRecipients.filter((r: any) => r.status === "pending").length;
 
       await db.updateCampaign(campaign.id, {
-        sentCount: allRecipients.filter((r) =>
+        sentCount: allRecipients.filter((r: any) =>
           r.status === "sent" || r.status === "delivered" || r.status === "read"
         ).length,
-        failedCount: allRecipients.filter((r) => r.status === "failed").length,
+        failedCount: allRecipients.filter((r: any) => r.status === "failed").length,
         status: pendingCount === 0 ? "completed" : "running",
         completedAt: pendingCount === 0 ? new Date() : undefined,
       });

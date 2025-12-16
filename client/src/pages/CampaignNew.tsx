@@ -30,6 +30,7 @@ import {
   AlertCircle,
   Clock,
   Calendar,
+  RefreshCw,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useState, useEffect, useMemo } from "react";
@@ -70,6 +71,11 @@ export default function CampaignNew() {
   const [isScheduled, setIsScheduled] = useState(false);
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledTime, setScheduledTime] = useState("");
+
+  // Retry configuration state
+  const [autoRetryEnabled, setAutoRetryEnabled] = useState(true);
+  const [maxRetries, setMaxRetries] = useState(3);
+  const [retryDelayMinutes, setRetryDelayMinutes] = useState(30);
 
   // Queries
   const { data: businessAccounts, isLoading: isLoadingAccounts } = trpc.whatsappBusiness.list.useQuery(undefined, {
@@ -289,6 +295,10 @@ export default function CampaignNew() {
         ? JSON.stringify(templateVariables)
         : undefined,
       scheduledAt: scheduledAt?.toISOString(),
+      // Retry configuration
+      autoRetryEnabled,
+      maxRetries,
+      retryDelayMinutes,
     });
   };
 
@@ -753,6 +763,66 @@ export default function CampaignNew() {
                 )}
               </div>
 
+              {/* Retry Configuration */}
+              <div className="space-y-4 border rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <RefreshCw className="w-5 h-5 text-gray-500" />
+                    <div>
+                      <p className="font-medium">Retry Automatico</p>
+                      <p className="text-sm text-gray-500">Retentar automaticamente mensagens que falharem</p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={autoRetryEnabled}
+                    onCheckedChange={setAutoRetryEnabled}
+                  />
+                </div>
+
+                {autoRetryEnabled && (
+                  <div className="grid sm:grid-cols-2 gap-4 pt-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="maxRetries">Max. Tentativas</Label>
+                      <Select
+                        value={maxRetries.toString()}
+                        onValueChange={(val) => setMaxRetries(parseInt(val))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[1, 2, 3, 4, 5].map((n) => (
+                            <SelectItem key={n} value={n.toString()}>
+                              {n} {n === 1 ? "tentativa" : "tentativas"}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="retryDelay">Intervalo entre Retries</Label>
+                      <Select
+                        value={retryDelayMinutes.toString()}
+                        onValueChange={(val) => setRetryDelayMinutes(parseInt(val))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="15">15 minutos</SelectItem>
+                          <SelectItem value="30">30 minutos</SelectItem>
+                          <SelectItem value="60">1 hora</SelectItem>
+                          <SelectItem value="120">2 horas</SelectItem>
+                          <SelectItem value="360">6 horas</SelectItem>
+                          <SelectItem value="720">12 horas</SelectItem>
+                          <SelectItem value="1440">24 horas</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Summary */}
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <h4 className="font-medium text-blue-900 mb-2">Resumo da Campanha</h4>
@@ -769,6 +839,12 @@ export default function CampaignNew() {
                   {!isScheduled && (
                     <li><strong>Envio:</strong> Imediato (apos criar)</li>
                   )}
+                  <li className="flex items-center gap-1">
+                    <RefreshCw className="w-3 h-3" />
+                    <strong>Auto-retry:</strong> {autoRetryEnabled
+                      ? `${maxRetries} tentativas, intervalo de ${retryDelayMinutes}min`
+                      : "Desativado"}
+                  </li>
                 </ul>
               </div>
 

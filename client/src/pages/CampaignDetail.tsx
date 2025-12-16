@@ -38,6 +38,8 @@ import {
   Eye,
   RefreshCw,
   BarChart3,
+  RotateCcw,
+  Settings,
 } from "lucide-react";
 import { Link, useParams, useLocation } from "wouter";
 import { toast } from "sonner";
@@ -115,6 +117,25 @@ export default function CampaignDetail() {
       toast.error(error.message);
     },
   });
+
+  const retryMutation = trpc.campaigns.retryFailed.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Retry concluido! ${data.success} sucesso, ${data.failed} falharam`);
+      refetch();
+      refetchRecipients();
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const { data: retryStats, refetch: refetchRetryStats } = trpc.campaigns.getRetryStats.useQuery(
+    { campaignId },
+    {
+      enabled: campaignId > 0,
+      refetchInterval: 10000,
+    }
+  );
 
   const getStatusBadge = (status: string) => {
     const statusConfig: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string; icon: React.ReactNode }> = {
@@ -361,6 +382,58 @@ export default function CampaignDetail() {
           </Card>
         )}
 
+        {/* Retry Card (if there are failed messages) */}
+        {retryStats && retryStats.totalFailed > 0 && (
+          <Card className="border-orange-200 bg-orange-50">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-orange-900">
+                <RotateCcw className="w-5 h-5" />
+                Mensagens Falhadas - Sistema de Retry
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid sm:grid-cols-4 gap-4 mb-4">
+                <div>
+                  <p className="text-xs font-medium text-orange-700 uppercase">Total Falhadas</p>
+                  <p className="text-2xl font-bold text-orange-900">{retryStats.totalFailed}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-orange-700 uppercase">Podem Retentar</p>
+                  <p className="text-2xl font-bold text-green-600">{retryStats.retriable}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-orange-700 uppercase">Max Retries Atingido</p>
+                  <p className="text-2xl font-bold text-red-600">{retryStats.maxRetriesReached}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-orange-700 uppercase">Config</p>
+                  <p className="text-sm text-orange-800">
+                    {retryStats.maxRetries} tentativas / {retryStats.retryDelayMinutes}min delay
+                  </p>
+                  <p className="text-xs text-orange-600">
+                    Auto-retry: {retryStats.autoRetryEnabled ? "Ativado" : "Desativado"}
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="border-orange-300 text-orange-700 hover:bg-orange-100"
+                  onClick={() => retryMutation.mutate({ campaignId: campaign.id })}
+                  disabled={retryMutation.isPending || retryStats.retriable === 0}
+                >
+                  {retryMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <RotateCcw className="w-4 h-4 mr-2" />
+                  )}
+                  Retentar {retryStats.retriable} Mensagens
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Campaign Info */}
         <Card>
           <CardHeader>
@@ -442,16 +515,24 @@ export default function CampaignDetail() {
                       <TableHead>Telefone</TableHead>
                       <TableHead>Nome</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead>Retries</TableHead>
                       <TableHead>Enviada em</TableHead>
                       <TableHead>Erro</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {recipients.map((recipient) => (
+                    {recipients.map((recipient: any) => (
                       <TableRow key={recipient.id}>
                         <TableCell className="font-mono">{recipient.phoneNumber}</TableCell>
                         <TableCell>{recipient.name || "-"}</TableCell>
                         <TableCell>{getRecipientStatusBadge(recipient.status)}</TableCell>
+                        <TableCell>
+                          {recipient.retryCount > 0 ? (
+                            <Badge variant="outline" className="text-orange-600 border-orange-300">
+                              {recipient.retryCount}x
+                            </Badge>
+                          ) : "-"}
+                        </TableCell>
                         <TableCell>
                           {recipient.sentAt
                             ? format(new Date(recipient.sentAt), "dd/MM HH:mm", { locale: ptBR })

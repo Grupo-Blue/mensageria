@@ -1,4 +1,4 @@
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, lt, or, isNull, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import {
@@ -513,6 +513,76 @@ export async function deleteCampaignRecipients(campaignId: number) {
   if (!db) throw new Error("Database not available");
 
   await db.delete(campaignRecipients).where(eq(campaignRecipients.campaignId, campaignId));
+}
+
+export async function getFailedRecipientsForRetry(campaignId: number, maxRetries: number, retryDelayMinutes: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const retryThreshold = new Date(Date.now() - retryDelayMinutes * 60 * 1000);
+
+  // Get failed recipients that haven't exceeded max retries and have waited long enough
+  return await db.select().from(campaignRecipients)
+    .where(and(
+      eq(campaignRecipients.campaignId, campaignId),
+      eq(campaignRecipients.status, "failed"),
+      lt(campaignRecipients.retryCount, maxRetries),
+      or(
+        isNull(campaignRecipients.lastRetryAt),
+        lt(campaignRecipients.lastRetryAt, retryThreshold)
+      )
+    ));
+}
+
+export async function incrementRecipientRetryCount(recipientId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.update(campaignRecipients)
+    .set({
+      retryCount: sql`${campaignRecipients.retryCount} + 1`,
+      lastRetryAt: new Date(),
+      status: "pending", // Reset status for retry
+      errorMessage: null,
+    })
+    .where(eq(campaignRecipients.id, recipientId));
+}
+
+export async function resetRecipientForRetry(recipientId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.update(campaignRecipients)
+    .set({
+      status: "pending",
+      errorMessage: null,
+      whatsappMessageId: null,
+      sentAt: null,
+    })
+    .where(eq(campaignRecipients.id, recipientId));
+}
+
+export async function getRecipientsRetryStats(campaignId: number) {
+  const db = await getDb();
+  if (!db) return { totalFailed: 0, retriable: 0, maxRetriesReached: 0 };
+
+  const campaign = await getCampaignById(campaignId);
+  if (!campaign) return { totalFailed: 0, retriable: 0, maxRetriesReached: 0 };
+
+  const failedRecipients = await db.select().from(campaignRecipients)
+    .where(and(
+      eq(campaignRecipients.campaignId, campaignId),
+      eq(campaignRecipients.status, "failed")
+    ));
+
+  const retriable = failedRecipients.filter(r => r.retryCount < campaign.maxRetries).length;
+  const maxRetriesReached = failedRecipients.filter(r => r.retryCount >= campaign.maxRetries).length;
+
+  return {
+    totalFailed: failedRecipients.length,
+    retriable,
+    maxRetriesReached,
+  };
 }
 
 // =====================================================
