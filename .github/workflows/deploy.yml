@@ -1,0 +1,159 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch: # Permite execução manual
+
+jobs:
+  deploy:
+    name: Deploy to Server
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies (Frontend)
+        run: |
+          cd /home/runner/work/mensageria/mensageria
+          pnpm install
+        working-directory: .
+
+      - name: Build Frontend
+        run: pnpm build
+        env:
+          NODE_ENV: production
+
+      - name: Deploy to Server via SSH
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          script: |
+            set -e  # Exit on error
+            
+            # Configurar caminho do projeto
+            PROJECT_PATH="${{ secrets.DEPLOY_PATH || '/var/www/mensageria' }}"
+            cd "$PROJECT_PATH" || exit 1
+            
+            echo "📦 Starting deployment..."
+            echo "📍 Project path: $PROJECT_PATH"
+            
+            # Verificar se é um repositório git
+            if [ ! -d ".git" ]; then
+              echo "⚠️  Not a git repository. Skipping git operations."
+            else
+              # Salvar commit atual para rollback (opcional)
+              CURRENT_COMMIT=$(git rev-parse HEAD) || true
+              echo "💾 Current commit: $CURRENT_COMMIT"
+              
+              # Pull das mudanças mais recentes
+              echo "⬇️  Pulling latest changes from master..."
+              git fetch origin
+              git reset --hard origin/master
+              git clean -fd
+              
+              NEW_COMMIT=$(git rev-parse HEAD)
+              echo "✅ Updated to commit: $NEW_COMMIT"
+            fi
+            
+            # Verificar se pnpm está instalado
+            if ! command -v pnpm &> /dev/null; then
+              echo "⚠️  pnpm not found. Installing..."
+              npm install -g pnpm
+            fi
+            
+            # Instalar dependências do frontend
+            echo "📥 Installing frontend dependencies..."
+            pnpm install --frozen-lockfile --prod=false
+            
+            # Build do frontend
+            echo "🔨 Building frontend..."
+            export NODE_ENV=production
+            pnpm build
+            
+            # Verificar se build foi bem-sucedido
+            if [ ! -d "dist" ]; then
+              echo "❌ Build failed: dist directory not found"
+              exit 1
+            fi
+            
+            echo "✅ Build completed successfully"
+            
+            # Se existir backend separado, build também
+            if [ -d "backend" ]; then
+              echo "🔨 Building backend..."
+              cd backend
+              if [ -f "package.json" ]; then
+                npm install --production
+                if [ -f "package.json" ] && grep -q '"build"' package.json; then
+                  npm run build
+                fi
+              fi
+              cd ..
+            fi
+            
+            # Reiniciar serviços
+            echo "🔄 Restarting services..."
+            
+            DEPLOYED=false
+            
+            # Tentar PM2
+            if command -v pm2 &> /dev/null; then
+              echo "🔄 Using PM2..."
+              if pm2 list | grep -q "mensageria"; then
+                pm2 restart mensageria
+              else
+                pm2 start dist/index.js --name mensageria
+              fi
+              pm2 save
+              DEPLOYED=true
+            fi
+            
+            # Tentar Docker Compose
+            if [ "$DEPLOYED" = false ] && [ -f "docker-compose.yml" ]; then
+              echo "🔄 Using Docker Compose..."
+              docker-compose down
+              docker-compose up -d --build
+              DEPLOYED=true
+            fi
+            
+            # Tentar systemd
+            if [ "$DEPLOYED" = false ] && systemctl list-unit-files | grep -q "mensageria.service"; then
+              echo "🔄 Using systemd..."
+              sudo systemctl restart mensageria.service
+              DEPLOYED=true
+            fi
+            
+            if [ "$DEPLOYED" = false ]; then
+              echo "⚠️  No deployment method found. Please restart the service manually."
+              echo "💡 Available methods: PM2, Docker Compose, or systemd"
+            else
+              echo "✅ Service restarted successfully"
+            fi
+            
+            echo "🎉 Deployment completed successfully!"
+
+      - name: Notify Deployment Status
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ Deployment successful!"
+          else
+            echo "❌ Deployment failed!"
+          fi
