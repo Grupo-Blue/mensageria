@@ -109,3 +109,7 @@ data/
 
 # WhatsApp session data (Baileys)
 auth_info_baileys/
+
+# Backend source (but not client/src)
+/backend/src/
+!/client/src/
