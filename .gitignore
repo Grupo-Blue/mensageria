@@ -106,4 +106,6 @@ temp/
 *.sqlite
 *.sqlite3
 data/
-src/
+
+# WhatsApp session data (Baileys)
+auth_info_baileys/

@@ -37,8 +37,11 @@ export default function WhatsApp() {
       clearTimeout(qrTimeoutRef.current);
     }
     
-    // Conecta ao Socket.IO via HTTPS
-    const socket = io("https://mensageria.grupoblue.com.br", {
+    // Conecta ao Socket.IO - usa variável de ambiente ou localhost em desenvolvimento
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:3333";
+    console.log("[WhatsApp] Connecting to Socket.IO at:", backendUrl);
+    
+    const socket = io(backendUrl, {
       path: "/socket.io",
       transports: ["polling", "websocket"],
       reconnection: true,

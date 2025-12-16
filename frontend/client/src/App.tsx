@@ -11,6 +11,7 @@ import SendMessage from "./pages/SendMessage";
 import Settings from "./pages/Settings";
 import API from "./pages/API";
 import WebhookConfig from "./pages/WebhookConfig";
+import ConnectionSettings from "./pages/ConnectionSettings";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -23,6 +24,7 @@ function Router() {
       <Route path={"/settings"} component={Settings} />
       <Route path={"/api"} component={API} />
       <Route path={"/webhook"} component={WebhookConfig} />
+      <Route path={"/connections"} component={ConnectionSettings} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />

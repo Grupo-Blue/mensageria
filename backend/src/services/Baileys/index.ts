@@ -5,10 +5,12 @@ import makeWASocket, {
 import { Boom } from '@hapi/boom';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import socket from '../../libs/socket';
 import messageStore from './messageStore';
 import { saveGroupInfo } from './saveGroupInfo';
 import settingsStore from '../settingsStore';
+import tokenCache from '../tokenCache';
 
 interface ConnectionInterface {
   id: string;
@@ -17,38 +19,73 @@ interface ConnectionInterface {
 }
 
 
-// Função para encaminhar mensagem recebida ao webhook
+/**
+ * Generate HMAC signature for webhook payload
+ */
+const generateWebhookSignature = (payload: string, secret: string): string => {
+  return crypto.createHmac('sha256', secret).update(payload).digest('hex');
+};
+
+/**
+ * Forward received message to webhook
+ * Priority:
+ * 1. Connection-specific webhook (from tokenCache)
+ * 2. Legacy settings webhook (fallback)
+ */
 const forwardToWebhook = async (connectionName: string, from: string, messageId: string, text: string) => {
   try {
-    // Buscar configuração do webhook
-    const settings = await settingsStore.getSettings();
-    const webhookUrl = settings.webhook_url;
-    
+    // Try to get connection-specific webhook config first
+    let webhookUrl: string | null = null;
+    let webhookSecret: string | null = null;
+
+    const webhookConfig = tokenCache.getWebhookConfig(connectionName);
+    if (webhookConfig?.url) {
+      webhookUrl = webhookConfig.url;
+      webhookSecret = webhookConfig.secret;
+      console.log('[Webhook] Usando webhook específico da conexão:', connectionName);
+    } else {
+      // Fallback to legacy settings
+      const settings = await settingsStore.getSettings();
+      webhookUrl = settings.webhook_url;
+      console.log('[Webhook] Usando webhook global (legacy)');
+    }
+
     if (!webhookUrl) {
-      console.log('[Webhook] URL não configurada, ignorando mensagem');
+      console.log('[Webhook] URL não configurada para conexão:', connectionName);
       return;
     }
-    
+
     console.log('[Webhook] Enviando para:', webhookUrl);
-    
-    const payload = JSON.stringify({
+
+    const payload = {
+      connection_name: connectionName,
       from,
       message_id: messageId,
       timestamp: new Date().toISOString(),
       text
-    });
-    
-    // Usar fetch para suportar HTTP e HTTPS
+    };
+
+    const payloadString = JSON.stringify(payload);
+
+    // Build headers
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-Connection-Name': connectionName,
+    };
+
+    // Add authorization with webhook secret
+    if (webhookSecret) {
+      headers['Authorization'] = `Bearer ${webhookSecret}`;
+      headers['X-Webhook-Signature'] = generateWebhookSignature(payloadString, webhookSecret);
+    }
+
     const response = await fetch(webhookUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer zwjahvtgb9qfu4JWX'
-      },
-      body: payload,
+      headers,
+      body: payloadString,
       signal: AbortSignal.timeout(10000)
     });
-    
+
     if (response.ok) {
       console.log('[Webhook] Mensagem encaminhada com sucesso:', from);
     } else {

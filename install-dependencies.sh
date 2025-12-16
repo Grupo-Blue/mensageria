@@ -3,7 +3,7 @@
 # Script de instalação de dependências para macOS
 # Este script instala Homebrew, Node.js, npm e pnpm
 
-set -e  # Para o script se houver erro
+# Não usar set -e para permitir tratamento de erros personalizado
 
 echo "🚀 Iniciando instalação de dependências..."
 echo ""
@@ -65,14 +65,58 @@ if ! command_exists npm; then
     exit 1
 fi
 
+# Verificar e corrigir permissões do cache do npm
+echo "🔧 Verificando permissões do cache do npm..."
+NPM_CACHE_DIR="$HOME/.npm"
+if [ -d "$NPM_CACHE_DIR" ]; then
+    # Verificar se há arquivos com permissões incorretas
+    if [ -n "$(find "$NPM_CACHE_DIR" -user root 2>/dev/null | head -1)" ]; then
+        echo -e "${YELLOW}Corrigindo permissões do cache do npm...${NC}"
+        USER_ID=$(id -u)
+        GROUP_ID=$(id -g)
+        sudo chown -R "$USER_ID:$GROUP_ID" "$NPM_CACHE_DIR" 2>/dev/null || {
+            echo -e "${YELLOW}Aviso: Não foi possível corrigir automaticamente.${NC}"
+            echo -e "${YELLOW}Execute manualmente: sudo chown -R $USER_ID:$GROUP_ID $NPM_CACHE_DIR${NC}"
+        }
+        echo -e "${GREEN}✓ Permissões do cache do npm corrigidas${NC}"
+    else
+        echo -e "${GREEN}✓ Permissões do cache do npm estão corretas${NC}"
+    fi
+fi
+
 echo ""
 
 # Verificar e instalar pnpm
 echo "📦 Verificando pnpm..."
 if ! command_exists pnpm; then
     echo -e "${YELLOW}pnpm não encontrado. Instalando...${NC}"
-    npm install -g pnpm
-    echo -e "${GREEN}✓ pnpm instalado com sucesso!${NC}"
+    # Usar o método oficial de instalação do pnpm (via curl) que não requer sudo
+    curl -fsSL https://get.pnpm.io/install.sh | sh -
+    
+    # Adicionar pnpm ao PATH
+    PNPM_HOME="$HOME/.local/share/pnpm"
+    if [ -d "$PNPM_HOME" ]; then
+        PNPM_PATH_LINE='export PNPM_HOME="$HOME/.local/share/pnpm"'
+        CASE_PATH_LINE='case ":$PATH:" in *":$PNPM_HOME:"*) ;; *) export PATH="$PNPM_HOME:$PATH" ;; esac'
+        
+        # Adicionar ao .zshrc se não existir
+        if ! grep -qF "$PNPM_PATH_LINE" ~/.zshrc 2>/dev/null; then
+            echo "" >> ~/.zshrc
+            echo "$PNPM_PATH_LINE" >> ~/.zshrc
+            echo "$CASE_PATH_LINE" >> ~/.zshrc
+        fi
+        
+        # Carregar no shell atual
+        export PNPM_HOME="$HOME/.local/share/pnpm"
+        export PATH="$PNPM_HOME:$PATH"
+    fi
+    
+    # Verificar se foi instalado corretamente
+    if command_exists pnpm; then
+        echo -e "${GREEN}✓ pnpm instalado com sucesso!${NC}"
+    else
+        echo -e "${YELLOW}Aviso: pnpm pode não estar no PATH. Tente fechar e reabrir o terminal.${NC}"
+    fi
 else
     echo -e "${GREEN}✓ pnpm já está instalado${NC}"
     pnpm --version

@@ -2,8 +2,12 @@ import { Router, Request, Response } from 'express';
 import whatsapp from './modules/whatsapp';
 import telegram from './modules/telegram';
 import trpc from './modules/trpc';
+import connections from './modules/connections';
 
 const routes = Router();
+
+// New multi-tenant connection routes (v2 API)
+routes.use('/connections', connections);
 
 // Redirecionar callback do Google OAuth para o frontend (porta 3000)
 routes.get('/api/auth/google/callback', (req: Request, res: Response) => {
