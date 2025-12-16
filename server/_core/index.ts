@@ -9,6 +9,8 @@ import { createContext } from "./context";
 import passport from "../auth/google";
 import authRoutes from "../auth/routes";
 import whatsappRoutes from "../whatsapp/routes";
+import whatsappBusinessWebhookRoutes from "../whatsappBusiness/webhookRoutes";
+import { campaignScheduler } from "../whatsappBusiness/campaignScheduler";
 import session from "express-session";
 import cookieParser from "cookie-parser";
 import { ENV } from "./env";
@@ -73,7 +75,11 @@ async function startServer() {
   
   // WhatsApp routes
   app.use('/api/whatsapp', whatsappRoutes);
-  
+
+  // WhatsApp Business API webhook routes (for receiving message status updates from Meta)
+  app.use('/api/whatsapp-business', whatsappBusinessWebhookRoutes);
+  console.log('[Server] WhatsApp Business webhook registrado em /api/whatsapp-business/webhook');
+
   // OAuth callback under /api/oauth/callback (Manus - manter para compatibilidade)
   registerOAuthRoutes(app);
   // tRPC API
@@ -115,6 +121,9 @@ async function startServer() {
     console.log('  - GET  /api/auth/google/callback');
     console.log('  - POST /api/auth/logout');
     console.log('  - GET  /api/auth/me');
+
+    // Start the campaign scheduler
+    campaignScheduler.start();
   });
 }
 
