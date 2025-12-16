@@ -5,6 +5,7 @@ import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import * as db from "./db";
 import axios from "axios";
+import { MetaWhatsAppApi } from "./whatsappBusiness/metaApi";
 
 const BACKEND_API_URL = process.env.BACKEND_API_URL || "http://localhost:5600";
 
@@ -372,19 +373,511 @@ export const appRouter = router({
       try {
         const apiToken = process.env.BACKEND_API_TOKEN;
         if (!apiToken) throw new Error('BACKEND_API_TOKEN não configurado');
-        
+
         const response = await axios.post(`${BACKEND_API_URL}/whatsapp/analyze-messages`, {
           question: input.question,
           groupId: input.groupId,
         }, {
           headers: { 'x-auth-api': apiToken }
         });
-        
+
         return { response: response.data.answer };
       } catch (error: any) {
         throw new Error(error.response?.data?.message || "Erro ao analisar mensagens");
       }
     }),
+  }),
+
+  // =====================================================
+  // WhatsApp Business API (Official Meta API)
+  // =====================================================
+  whatsappBusiness: router({
+    // List all business accounts for the user
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return await db.getWhatsappBusinessAccounts(ctx.user.id);
+    }),
+
+    // Get a specific account by ID
+    get: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const account = await db.getWhatsappBusinessAccountById(input.id);
+        if (!account || account.userId !== ctx.user.id) {
+          throw new Error("Conta não encontrada");
+        }
+        return account;
+      }),
+
+    // Create a new WhatsApp Business account
+    create: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1),
+        phoneNumberId: z.string().min(1),
+        businessAccountId: z.string().min(1),
+        accessToken: z.string().min(1),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        // Validate the credentials by fetching phone number info
+        try {
+          const api = new MetaWhatsAppApi(input.phoneNumberId, input.accessToken);
+          await api.getPhoneNumberInfo();
+        } catch (error: any) {
+          throw new Error(`Credenciais inválidas: ${error.message}`);
+        }
+
+        const id = await db.createWhatsappBusinessAccount({
+          userId: ctx.user.id,
+          name: input.name,
+          phoneNumberId: input.phoneNumberId,
+          businessAccountId: input.businessAccountId,
+          accessToken: input.accessToken,
+          isActive: true,
+        });
+
+        return { success: true, id };
+      }),
+
+    // Update an existing account
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().min(1).optional(),
+        accessToken: z.string().min(1).optional(),
+        isActive: z.boolean().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const account = await db.getWhatsappBusinessAccountById(input.id);
+        if (!account || account.userId !== ctx.user.id) {
+          throw new Error("Conta não encontrada");
+        }
+
+        const { id, ...updateData } = input;
+        await db.updateWhatsappBusinessAccount(id, updateData);
+        return { success: true };
+      }),
+
+    // Delete an account
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const account = await db.getWhatsappBusinessAccountById(input.id);
+        if (!account || account.userId !== ctx.user.id) {
+          throw new Error("Conta não encontrada");
+        }
+
+        await db.deleteWhatsappBusinessAccount(input.id);
+        return { success: true };
+      }),
+
+    // Fetch and sync templates from Meta API
+    syncTemplates: protectedProcedure
+      .input(z.object({ accountId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const account = await db.getWhatsappBusinessAccountById(input.accountId);
+        if (!account || account.userId !== ctx.user.id) {
+          throw new Error("Conta não encontrada");
+        }
+
+        const api = new MetaWhatsAppApi(account.phoneNumberId, account.accessToken);
+        const templates = await api.getTemplates(account.businessAccountId);
+
+        // Save templates to database
+        await db.upsertWhatsappTemplates(
+          account.id,
+          templates.map((t) => ({
+            templateId: t.id,
+            name: t.name,
+            language: t.language,
+            category: t.category,
+            status: t.status,
+            components: JSON.stringify(t.components),
+          }))
+        );
+
+        return { success: true, count: templates.length };
+      }),
+
+    // Get templates for an account
+    getTemplates: protectedProcedure
+      .input(z.object({ accountId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const account = await db.getWhatsappBusinessAccountById(input.accountId);
+        if (!account || account.userId !== ctx.user.id) {
+          throw new Error("Conta não encontrada");
+        }
+
+        const templates = await db.getWhatsappTemplates(account.id);
+        return templates.map((t) => ({
+          ...t,
+          components: JSON.parse(t.components),
+        }));
+      }),
+
+    // Test sending a message
+    testMessage: protectedProcedure
+      .input(z.object({
+        accountId: z.number(),
+        recipientPhone: z.string().min(1),
+        templateName: z.string().min(1),
+        templateLanguage: z.string().default("pt_BR"),
+        bodyParams: z.array(z.string()).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const account = await db.getWhatsappBusinessAccountById(input.accountId);
+        if (!account || account.userId !== ctx.user.id) {
+          throw new Error("Conta não encontrada");
+        }
+
+        const api = new MetaWhatsAppApi(account.phoneNumberId, account.accessToken);
+        const result = await api.sendTemplateMessage({
+          phoneNumberId: account.phoneNumberId,
+          accessToken: account.accessToken,
+          recipientPhone: input.recipientPhone,
+          templateName: input.templateName,
+          templateLanguage: input.templateLanguage,
+          bodyParams: input.bodyParams,
+        });
+
+        return { success: true, messageId: result.messages[0]?.id };
+      }),
+
+    // Get phone number info
+    getPhoneInfo: protectedProcedure
+      .input(z.object({ accountId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const account = await db.getWhatsappBusinessAccountById(input.accountId);
+        if (!account || account.userId !== ctx.user.id) {
+          throw new Error("Conta não encontrada");
+        }
+
+        const api = new MetaWhatsAppApi(account.phoneNumberId, account.accessToken);
+        return await api.getPhoneNumberInfo();
+      }),
+  }),
+
+  // =====================================================
+  // Marketing Campaigns
+  // =====================================================
+  campaigns: router({
+    // List all campaigns for the user
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return await db.getCampaigns(ctx.user.id);
+    }),
+
+    // Get a specific campaign by ID
+    get: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const campaign = await db.getCampaignById(input.id);
+        if (!campaign || campaign.userId !== ctx.user.id) {
+          throw new Error("Campanha não encontrada");
+        }
+        return campaign;
+      }),
+
+    // Create a new campaign
+    create: protectedProcedure
+      .input(z.object({
+        businessAccountId: z.number(),
+        name: z.string().min(1),
+        description: z.string().optional(),
+        templateName: z.string().min(1),
+        templateLanguage: z.string().default("pt_BR"),
+        templateVariables: z.string().optional(), // JSON string
+        headerMediaUrl: z.string().optional(),
+        scheduledAt: z.string().optional(), // ISO date string
+      }))
+      .mutation(async ({ ctx, input }) => {
+        // Verify the business account belongs to the user
+        const account = await db.getWhatsappBusinessAccountById(input.businessAccountId);
+        if (!account || account.userId !== ctx.user.id) {
+          throw new Error("Conta de negócios não encontrada");
+        }
+
+        const id = await db.createCampaign({
+          userId: ctx.user.id,
+          businessAccountId: input.businessAccountId,
+          name: input.name,
+          description: input.description,
+          templateName: input.templateName,
+          templateLanguage: input.templateLanguage,
+          templateVariables: input.templateVariables,
+          headerMediaUrl: input.headerMediaUrl,
+          status: input.scheduledAt ? "scheduled" : "draft",
+          scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : undefined,
+        });
+
+        return { success: true, id };
+      }),
+
+    // Update a campaign
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().min(1).optional(),
+        description: z.string().optional(),
+        templateName: z.string().min(1).optional(),
+        templateLanguage: z.string().optional(),
+        templateVariables: z.string().optional(),
+        headerMediaUrl: z.string().optional(),
+        scheduledAt: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const campaign = await db.getCampaignById(input.id);
+        if (!campaign || campaign.userId !== ctx.user.id) {
+          throw new Error("Campanha não encontrada");
+        }
+
+        if (campaign.status !== "draft" && campaign.status !== "scheduled") {
+          throw new Error("Só é possível editar campanhas em rascunho ou agendadas");
+        }
+
+        const { id, ...updateData } = input;
+        const processedData: any = { ...updateData };
+        if (updateData.scheduledAt) {
+          processedData.scheduledAt = new Date(updateData.scheduledAt);
+          processedData.status = "scheduled";
+        }
+
+        await db.updateCampaign(id, processedData);
+        return { success: true };
+      }),
+
+    // Delete a campaign
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const campaign = await db.getCampaignById(input.id);
+        if (!campaign || campaign.userId !== ctx.user.id) {
+          throw new Error("Campanha não encontrada");
+        }
+
+        if (campaign.status === "running") {
+          throw new Error("Não é possível excluir uma campanha em execução");
+        }
+
+        await db.deleteCampaign(input.id);
+        return { success: true };
+      }),
+
+    // Add recipients to a campaign
+    addRecipients: protectedProcedure
+      .input(z.object({
+        campaignId: z.number(),
+        recipients: z.array(z.object({
+          phoneNumber: z.string().min(1),
+          name: z.string().optional(),
+          variables: z.string().optional(), // JSON string with variable overrides
+        })),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const campaign = await db.getCampaignById(input.campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) {
+          throw new Error("Campanha não encontrada");
+        }
+
+        if (campaign.status !== "draft" && campaign.status !== "scheduled") {
+          throw new Error("Só é possível adicionar destinatários em campanhas em rascunho ou agendadas");
+        }
+
+        const recipientsToAdd = input.recipients.map((r) => ({
+          campaignId: input.campaignId,
+          phoneNumber: r.phoneNumber,
+          name: r.name,
+          variables: r.variables,
+          status: "pending" as const,
+        }));
+
+        await db.addCampaignRecipients(recipientsToAdd);
+
+        // Update total recipients count
+        const allRecipients = await db.getCampaignRecipients(input.campaignId);
+        await db.updateCampaign(input.campaignId, { totalRecipients: allRecipients.length });
+
+        return { success: true, added: input.recipients.length };
+      }),
+
+    // Get recipients for a campaign
+    getRecipients: protectedProcedure
+      .input(z.object({ campaignId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const campaign = await db.getCampaignById(input.campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) {
+          throw new Error("Campanha não encontrada");
+        }
+
+        return await db.getCampaignRecipients(input.campaignId);
+      }),
+
+    // Clear all recipients from a campaign
+    clearRecipients: protectedProcedure
+      .input(z.object({ campaignId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const campaign = await db.getCampaignById(input.campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) {
+          throw new Error("Campanha não encontrada");
+        }
+
+        if (campaign.status !== "draft" && campaign.status !== "scheduled") {
+          throw new Error("Só é possível limpar destinatários em campanhas em rascunho ou agendadas");
+        }
+
+        await db.deleteCampaignRecipients(input.campaignId);
+        await db.updateCampaign(input.campaignId, { totalRecipients: 0 });
+
+        return { success: true };
+      }),
+
+    // Start a campaign (send messages)
+    start: protectedProcedure
+      .input(z.object({ campaignId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const campaign = await db.getCampaignById(input.campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) {
+          throw new Error("Campanha não encontrada");
+        }
+
+        if (campaign.status !== "draft" && campaign.status !== "scheduled") {
+          throw new Error("Só é possível iniciar campanhas em rascunho ou agendadas");
+        }
+
+        const recipients = await db.getCampaignRecipientsByStatus(input.campaignId, "pending");
+        if (recipients.length === 0) {
+          throw new Error("Nenhum destinatário pendente na campanha");
+        }
+
+        const account = await db.getWhatsappBusinessAccountById(campaign.businessAccountId);
+        if (!account) {
+          throw new Error("Conta de negócios não encontrada");
+        }
+
+        // Update campaign status to running
+        await db.updateCampaign(input.campaignId, {
+          status: "running",
+          startedAt: new Date(),
+        });
+
+        // Parse template variables
+        const templateVariables = campaign.templateVariables
+          ? JSON.parse(campaign.templateVariables)
+          : {};
+
+        const api = new MetaWhatsAppApi(account.phoneNumberId, account.accessToken);
+
+        // Send messages to all pending recipients
+        let sentCount = 0;
+        let failedCount = 0;
+
+        for (const recipient of recipients) {
+          try {
+            // Merge template variables with recipient-specific variables
+            const recipientVariables = recipient.variables
+              ? JSON.parse(recipient.variables)
+              : {};
+            const mergedVariables = { ...templateVariables, ...recipientVariables };
+
+            // Build body params from variables
+            const bodyParams = Object.values(mergedVariables) as string[];
+
+            const result = await api.sendTemplateMessage({
+              phoneNumberId: account.phoneNumberId,
+              accessToken: account.accessToken,
+              recipientPhone: recipient.phoneNumber,
+              templateName: campaign.templateName,
+              templateLanguage: campaign.templateLanguage,
+              bodyParams: bodyParams.length > 0 ? bodyParams : undefined,
+            });
+
+            await db.updateCampaignRecipient(recipient.id, {
+              status: "sent",
+              whatsappMessageId: result.messages[0]?.id,
+              sentAt: new Date(),
+            });
+
+            sentCount++;
+
+            // Rate limiting: wait 100ms between messages to avoid API limits
+            await new Promise((resolve) => setTimeout(resolve, 100));
+          } catch (error: any) {
+            await db.updateCampaignRecipient(recipient.id, {
+              status: "failed",
+              errorMessage: error.message,
+            });
+            failedCount++;
+          }
+        }
+
+        // Update campaign stats
+        const allRecipients = await db.getCampaignRecipients(input.campaignId);
+        const pendingCount = allRecipients.filter((r) => r.status === "pending").length;
+
+        await db.updateCampaign(input.campaignId, {
+          sentCount: allRecipients.filter((r) => r.status === "sent" || r.status === "delivered" || r.status === "read").length,
+          failedCount: allRecipients.filter((r) => r.status === "failed").length,
+          status: pendingCount === 0 ? "completed" : "running",
+          completedAt: pendingCount === 0 ? new Date() : undefined,
+        });
+
+        return { success: true, sent: sentCount, failed: failedCount };
+      }),
+
+    // Pause a running campaign
+    pause: protectedProcedure
+      .input(z.object({ campaignId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const campaign = await db.getCampaignById(input.campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) {
+          throw new Error("Campanha não encontrada");
+        }
+
+        if (campaign.status !== "running") {
+          throw new Error("Só é possível pausar campanhas em execução");
+        }
+
+        await db.updateCampaign(input.campaignId, { status: "paused" });
+        return { success: true };
+      }),
+
+    // Resume a paused campaign
+    resume: protectedProcedure
+      .input(z.object({ campaignId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const campaign = await db.getCampaignById(input.campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) {
+          throw new Error("Campanha não encontrada");
+        }
+
+        if (campaign.status !== "paused") {
+          throw new Error("Só é possível retomar campanhas pausadas");
+        }
+
+        // Resume by calling start again
+        await db.updateCampaign(input.campaignId, { status: "draft" });
+
+        // The actual sending will happen when the user calls start again
+        return { success: true };
+      }),
+
+    // Get campaign statistics
+    getStats: protectedProcedure
+      .input(z.object({ campaignId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const campaign = await db.getCampaignById(input.campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) {
+          throw new Error("Campanha não encontrada");
+        }
+
+        const recipients = await db.getCampaignRecipients(input.campaignId);
+
+        return {
+          total: recipients.length,
+          pending: recipients.filter((r) => r.status === "pending").length,
+          sent: recipients.filter((r) => r.status === "sent").length,
+          delivered: recipients.filter((r) => r.status === "delivered").length,
+          read: recipients.filter((r) => r.status === "read").length,
+          failed: recipients.filter((r) => r.status === "failed").length,
+        };
+      }),
   }),
 });
 

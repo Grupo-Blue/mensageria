@@ -106,4 +106,7 @@ temp/
 *.sqlite
 *.sqlite3
 data/
-src/
+
+# Backend source (but not client/src)
+/backend/src/
+!/client/src/
