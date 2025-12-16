@@ -10,6 +10,7 @@ import passport from "../auth/google";
 import authRoutes from "../auth/routes";
 import whatsappRoutes from "../whatsapp/routes";
 import whatsappBusinessWebhookRoutes from "../whatsappBusiness/webhookRoutes";
+import { campaignScheduler } from "../whatsappBusiness/campaignScheduler";
 import session from "express-session";
 import cookieParser from "cookie-parser";
 import { ENV } from "./env";
@@ -120,6 +121,9 @@ async function startServer() {
     console.log('  - GET  /api/auth/google/callback');
     console.log('  - POST /api/auth/logout');
     console.log('  - GET  /api/auth/me');
+
+    // Start the campaign scheduler
+    campaignScheduler.start();
   });
 }
 

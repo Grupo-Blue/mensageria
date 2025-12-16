@@ -389,6 +389,17 @@ export default function CampaignDetail() {
                   {format(new Date(campaign.createdAt), "dd/MM/yyyy HH:mm", { locale: ptBR })}
                 </p>
               </div>
+              {campaign.scheduledAt && (
+                <div>
+                  <p className="text-sm font-medium text-gray-500 flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    Agendada para
+                  </p>
+                  <p className="mt-1 text-blue-600 font-medium">
+                    {format(new Date(campaign.scheduledAt), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                  </p>
+                </div>
+              )}
               {campaign.startedAt && (
                 <div>
                   <p className="text-sm font-medium text-gray-500">Iniciada em</p>

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
+import { Switch } from "@/components/ui/switch";
 import {
   Loader2,
   ArrowLeft,
@@ -27,6 +28,8 @@ import {
   Settings,
   CheckCircle2,
   AlertCircle,
+  Clock,
+  Calendar,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useState, useEffect, useMemo } from "react";
@@ -62,6 +65,11 @@ export default function CampaignNew() {
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [newRecipient, setNewRecipient] = useState({ phoneNumber: "", name: "" });
   const [csvText, setCsvText] = useState("");
+
+  // Scheduling state
+  const [isScheduled, setIsScheduled] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState("");
+  const [scheduledTime, setScheduledTime] = useState("");
 
   // Queries
   const { data: businessAccounts, isLoading: isLoadingAccounts } = trpc.whatsappBusiness.list.useQuery(undefined, {
@@ -257,6 +265,20 @@ export default function CampaignNew() {
       return;
     }
 
+    // Validate scheduling
+    let scheduledAt: Date | undefined;
+    if (isScheduled) {
+      if (!scheduledDate || !scheduledTime) {
+        toast.error("Selecione a data e horario para o agendamento");
+        return;
+      }
+      scheduledAt = new Date(`${scheduledDate}T${scheduledTime}`);
+      if (scheduledAt <= new Date()) {
+        toast.error("A data de agendamento deve ser no futuro");
+        return;
+      }
+    }
+
     createCampaignMutation.mutate({
       businessAccountId,
       name: name.trim(),
@@ -266,6 +288,7 @@ export default function CampaignNew() {
       templateVariables: Object.keys(templateVariables).length > 0
         ? JSON.stringify(templateVariables)
         : undefined,
+      scheduledAt: scheduledAt?.toISOString(),
     });
   };
 
@@ -683,6 +706,53 @@ export default function CampaignNew() {
                 )}
               </div>
 
+              {/* Scheduling */}
+              <div className="space-y-4 border rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-5 h-5 text-gray-500" />
+                    <div>
+                      <p className="font-medium">Agendar Envio</p>
+                      <p className="text-sm text-gray-500">Defina uma data e horario para o envio automatico</p>
+                    </div>
+                  </div>
+                  <Switch
+                    checked={isScheduled}
+                    onCheckedChange={setIsScheduled}
+                  />
+                </div>
+
+                {isScheduled && (
+                  <div className="grid sm:grid-cols-2 gap-4 pt-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="scheduledDate" className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4" />
+                        Data
+                      </Label>
+                      <Input
+                        id="scheduledDate"
+                        type="date"
+                        value={scheduledDate}
+                        onChange={(e) => setScheduledDate(e.target.value)}
+                        min={new Date().toISOString().split('T')[0]}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="scheduledTime" className="flex items-center gap-2">
+                        <Clock className="w-4 h-4" />
+                        Horario
+                      </Label>
+                      <Input
+                        id="scheduledTime"
+                        type="time"
+                        value={scheduledTime}
+                        onChange={(e) => setScheduledTime(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Summary */}
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <h4 className="font-medium text-blue-900 mb-2">Resumo da Campanha</h4>
@@ -690,6 +760,15 @@ export default function CampaignNew() {
                   <li><strong>Nome:</strong> {name || "-"}</li>
                   <li><strong>Template:</strong> {templateName || "-"}</li>
                   <li><strong>Destinatarios:</strong> {recipients.length}</li>
+                  {isScheduled && scheduledDate && scheduledTime && (
+                    <li className="flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      <strong>Agendado para:</strong> {new Date(`${scheduledDate}T${scheduledTime}`).toLocaleString('pt-BR')}
+                    </li>
+                  )}
+                  {!isScheduled && (
+                    <li><strong>Envio:</strong> Imediato (apos criar)</li>
+                  )}
                 </ul>
               </div>
 

@@ -36,12 +36,13 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
+  Calendar,
   Megaphone,
   Eye,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { toast } from "sonner";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 export default function Campaigns() {
@@ -311,6 +312,16 @@ export default function Campaigns() {
                           <span className="font-medium">{progress}%</span>
                         </div>
                         <Progress value={progress} className="h-2" />
+                      </div>
+                    )}
+
+                    {/* Scheduled Info */}
+                    {campaign.status === "scheduled" && campaign.scheduledAt && (
+                      <div className="flex items-center gap-2 p-3 bg-blue-50 border border-blue-100 rounded-lg mt-4">
+                        <Calendar className="w-4 h-4 text-blue-600" />
+                        <span className="text-sm text-blue-700">
+                          Agendada para {format(new Date(campaign.scheduledAt), "dd/MM/yyyy 'as' HH:mm", { locale: ptBR })}
+                        </span>
                       </div>
                     )}
 
