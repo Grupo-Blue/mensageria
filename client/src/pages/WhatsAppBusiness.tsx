@@ -308,6 +308,51 @@ export default function WhatsAppBusiness() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Webhook Configuration Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <RefreshCw className="w-5 h-5" />
+              Configuracao do Webhook (Status em Tempo Real)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-gray-600">
+              Configure o webhook no Meta Business Suite para receber atualizacoes de status das mensagens (enviada, entregue, lida, falhou).
+            </p>
+
+            <div className="bg-gray-50 border rounded-lg p-4 space-y-3">
+              <div>
+                <p className="text-xs font-medium text-gray-500 uppercase">URL do Webhook</p>
+                <code className="text-sm bg-white px-2 py-1 rounded border block mt-1 break-all">
+                  {window.location.origin}/api/whatsapp-business/webhook
+                </code>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-gray-500 uppercase">Token de Verificacao</p>
+                <code className="text-sm bg-white px-2 py-1 rounded border block mt-1">
+                  mensageria_webhook_token
+                </code>
+                <p className="text-xs text-gray-500 mt-1">
+                  Ou defina WHATSAPP_WEBHOOK_VERIFY_TOKEN no .env
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <p className="text-sm font-medium text-blue-900 mb-2">Como configurar no Meta:</p>
+              <ol className="text-xs text-blue-800 space-y-1 list-decimal list-inside">
+                <li>Acesse o Meta for Developers (developers.facebook.com)</li>
+                <li>Selecione seu App {">"} WhatsApp {">"} Configuracao</li>
+                <li>Em "Webhook", clique em "Editar"</li>
+                <li>Cole a URL do webhook e o token de verificacao</li>
+                <li>Selecione os campos: messages, message_echoes</li>
+                <li>Clique em "Verificar e Salvar"</li>
+              </ol>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </DashboardLayout>
   );
