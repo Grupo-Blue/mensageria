@@ -1,0 +1,80 @@
+version: "3.9"
+
+services:
+  frontend:
+    container_name: mensageria-frontend
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      # Conexão com o backend Docker (Baileys)
+      BACKEND_API_URL: http://backend:3333
+      BACKEND_API_TOKEN: cd739c87f3f7a8a6a69407b639a6d7c6db3090e0d6bbe4cbd4176950a1d9ab27
+      INTERNAL_SYNC_TOKEN: cd739c87f3f7a8a6a69407b639a6d7c6db3090e0d6bbe4cbd4176950a1d9ab27
+      FRONTEND_URL: http://localhost:3000
+      # Banco de dados MySQL local (container mysql abaixo)
+      DATABASE_URL: mysql://root:password@mysql:3306/mensageria
+    depends_on:
+      - mysql
+      - backend
+      - drizzle-migrations
+
+  backend:
+    container_name: mensageria-backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "5600:3333"
+    env_file:
+      - ./backend/.env
+    environment:
+      # Tokens de autenticação (dev) – devem bater com o FRONTEND
+      X_AUTH_API: cd739c87f3f7a8a6a69407b639a6d7c6db3090e0d6bbe4cbd4176950a1d9ab27
+      AUTH_TOKEN: cd739c87f3f7a8a6a69407b639a6d7c6db3090e0d6bbe4cbd4176950a1d9ab27
+      INTERNAL_SYNC_TOKEN: cd739c87f3f7a8a6a69407b639a6d7c6db3090e0d6bbe4cbd4176950a1d9ab27
+      # URLs para o frontend rodando no container "frontend"
+      FRONTEND_API_URL: http://frontend:3000
+      FRONTEND_URL: http://frontend:3000
+      WHATSAPP_GROUPS_CALLBACK_URL: http://frontend:3000/api/whatsapp/groups
+      # Porta interna do backend
+      PORT: "3333"
+    volumes:
+      - ./data:/usr/src/app/data
+      - ./data/auth_info_baileys:/usr/src/app/auth_info_baileys
+      - ./data/tmp:/usr/src/app/tmp
+
+  mysql:
+    image: mysql:8
+    container_name: mensageria-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: mensageria
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  drizzle-migrations:
+    container_name: mensageria-drizzle-migrations
+    build:
+      context: .
+      dockerfile: Dockerfile.drizzle
+    restart: "no"
+    environment:
+      # Mesmo banco descrito em DATABASE_SETUP.md, só que apontando para o host mysql do compose
+      DATABASE_URL: mysql://root:password@mysql:3306/mensageria
+    depends_on:
+      - mysql
+
+volumes:
+  mysql_data:
+
+
