@@ -3,7 +3,7 @@ FROM node:20-alpine
 WORKDIR /usr/src/app
 
 # Dependências básicas para rodar o Drizzle CLI
-RUN apk add --no-cache python3 make g++ netcat-openbsd
+RUN apk add --no-cache python3 make g++
 
 # Instalar pnpm na mesma versão usada no projeto
 RUN npm install -g pnpm@10.4.1
@@ -20,10 +20,7 @@ COPY tsconfig.json ./tsconfig.json
 COPY drizzle.config.ts ./drizzle.config.ts
 COPY drizzle ./drizzle
 
-# Comando: aguarda o MySQL ficar acessível e depois executa pnpm db:push
-CMD sh -c "echo 'Aguardando MySQL em mysql:3306...'; \
-  until nc -z mysql 3306; do echo 'MySQL ainda não está pronto, aguardando...'; sleep 2; done; \
-  echo 'MySQL disponível, executando migrações Drizzle...'; \
-  pnpm db:push"
+# Executa as migrações usando a DATABASE_URL recebida via ambiente
+CMD ["pnpm", "db:push"]
 
-
+ 
