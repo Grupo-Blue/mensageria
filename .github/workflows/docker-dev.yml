@@ -99,4 +99,19 @@ jobs:
           docker push "$ECR_REGISTRY/$MIGRATION_REPOSITORY:$IMAGE_TAG"
           docker push "$ECR_REGISTRY/$MIGRATION_REPOSITORY:latest"
 
+      - name: Atualizar backend no Portainer (dev)
+        if: success()
+        run: |
+          curl -X POST "https://portainer.openxsolutions.com.br/api/webhooks/48f1e3bd-8a00-4011-ba15-dbdb19971bda?tag=${GITHUB_SHA}"
+
+      - name: Atualizar frontend no Portainer (dev)
+        if: success()
+        run: |
+          curl -X POST "https://portainer.openxsolutions.com.br/api/webhooks/0c6d9929-5209-42c1-b607-82d1866a0a8f?tag=${GITHUB_SHA}"
+
+      - name: Executar migration no Portainer (dev)
+        if: success()
+        run: |
+          curl -X POST "https://portainer.openxsolutions.com.br/api/webhooks/a06b34c2-eee2-4d45-8f5a-3f081497cb74?tag=${GITHUB_SHA}"
+
 
