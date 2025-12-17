@@ -1,7 +1,7 @@
 version: "3.9"
 
 services:
-  frontend:
+  mensageria-frontend:
     container_name: mensageria-frontend
     build:
       context: .
@@ -24,7 +24,7 @@ services:
       - backend
       - drizzle-migrations
 
-  backend:
+  mensageria-backend:
     container_name: mensageria-backend
     build:
       context: ./backend
