@@ -35,16 +35,77 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      # Tokens de autenticação (dev) – devem bater com o FRONTEND
-      X_AUTH_API: cd739c87f3f7a8a6a69407b639a6d7c6db3090e0d6bbe4cbd4176950a1d9ab27
-      AUTH_TOKEN: cd739c87f3f7a8a6a69407b639a6d7c6db3090e0d6bbe4cbd4176950a1d9ab27
+      # ============================================
+      # CONFIGURAÇÕES BÁSICAS
+      # ============================================
+      NODE_ENV: development
+      PORT: 3333
+      LOCAL_PORT: 3333
+      MENSAGERIA_HOST: http://localhost:3333
+      SYSTEM_NAME: Mensageria
+
+      # ============================================
+      # AUTENTICAÇÃO
+      # ============================================
+      SECRET_KEY: your-secret-key-here-change-this-in-production
+      X_AUTH_API: your-api-auth-key-here
+      AUTH_TOKEN: your-auth-token-here
+
+      # ============================================
+      # API EXTERNA
+      # ============================================
+      API_URL: http://localhost:3333
+
+      # ============================================
+      # TELEGRAM
+      # ============================================
+      TELEGRAM_BOT_TOKEN: your-telegram-bot-token
+      TELEGRAM_CALL_BACK_URL_TO_SEND_USER_ID: http://mensageria-frontend:3000/api/telegram/callback
+
+      # ============================================
+      # WHATSAPP
+      # ============================================
+      IDENTIFICATION: mensageria
+      WHATSAPP_GROUPS_CALLBACK_URL: http://mensageria-frontend:3000/api/whatsapp/groups
+
+      # ============================================
+      # GOOGLE GEMINI AI
+      # ============================================
+      GOOGLE_API_KEY: your-google-gemini-api-key
+
+      # ============================================
+      # RESUMO DE GRUPOS WHATSAPP
+      # ============================================
+      RESUME_WHATSAPP_GROUP_ID: your-whatsapp-group-id-to-monitor
+      RESUME_WHATSAPP_GROUP_ID_TO_SEND: your-whatsapp-group-id-to-send-resume
+      RESUME_HOUR_OF_DAY: 22
+
+      # ============================================
+      # REDIS
+      # ============================================
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+      REDIS_NAME: test
+
+      # ============================================
+      # EMAIL (NODEMAILER)
+      # ============================================
+      MAIL_HOST: smtp.gmail.com
+      MAIL_PORT: 587
+      MAIL_USER: your-email@gmail.com
+      MAIL_PASS: your-email-password
+
+      # ============================================
+      # GOOGLE SHEETS (Opcional)
+      # ============================================
+      GOOGLE_SHEETS_API_KEY: ""
+      GOOGLE_SPREADSHEET_ID: ""
+
+      # ============================================
+      # Multi-tenant configuration
+      # ============================================
+      FRONTEND_API_URL: http://mensageria-frontend:3000
       INTERNAL_SYNC_TOKEN: cd739c87f3f7a8a6a69407b639a6d7c6db3090e0d6bbe4cbd4176950a1d9ab27
-      # URLs para o frontend rodando no container "frontend"
-      FRONTEND_API_URL: http://frontend:3000
-      FRONTEND_URL: http://frontend:3000
-      WHATSAPP_GROUPS_CALLBACK_URL: http://frontend:3000/api/whatsapp/groups
-      # Porta interna do backend
-      PORT: "3333"
     volumes:
       - ./data:/usr/src/app/data
       - ./data/auth_info_baileys:/usr/src/app/auth_info_baileys

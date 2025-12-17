@@ -5,7 +5,7 @@ services:
     image: "724698481758.dkr.ecr.${AWS_REGION:-us-east-2}.amazonaws.com/mensageria-front-dev:latest"
     environment:
       # URL interna do backend Docker (serviço abaixo)
-      BACKEND_API_URL: http://backend:3333
+      BACKEND_API_URL: https://dev-api-mensageria.grupoblue.com.br
     networks:
       - mensageria-dev
       - proxy-services
@@ -20,10 +20,81 @@ services:
   backend:
     image: "724698481758.dkr.ecr.${AWS_REGION:-us-east-2}.amazonaws.com/mensageria-back-dev:latest"
     environment:
-      # URLs internas apontando para o serviço frontend no Swarm
-      FRONTEND_API_URL: http://frontend:3000
-      FRONTEND_URL: http://frontend:3000
-      WHATSAPP_GROUPS_CALLBACK_URL: http://frontend:3000/api/whatsapp/groups
+      # ============================================
+      # CONFIGURAÇÕES BÁSICAS
+      # ============================================
+      NODE_ENV: development
+      PORT: 3333
+      LOCAL_PORT: 3333
+      MENSAGERIA_HOST: https://dev-api-mensageria.grupoblue.com.br
+      SYSTEM_NAME: Mensageria
+
+      # ============================================
+      # AUTENTICAÇÃO
+      # ============================================
+      SECRET_KEY: your-secret-key-here-change-this-in-production
+      X_AUTH_API: your-api-auth-key-here
+      AUTH_TOKEN: your-auth-token-here
+
+      # ============================================
+      # API EXTERNA
+      # ============================================
+      API_URL: dev-api-mensageria.grupoblue.com.br
+
+      # ============================================
+      # TELEGRAM
+      # ============================================
+      TELEGRAM_BOT_TOKEN: your-telegram-bot-token
+      TELEGRAM_CALL_BACK_URL_TO_SEND_USER_ID: https://dev-mensageria.grupoblue.com.br/api/telegram/callback
+
+      # ============================================
+      # WHATSAPP
+      # ============================================
+      IDENTIFICATION: mensageria
+      WHATSAPP_GROUPS_CALLBACK_URL: https://dev-mensageria.grupoblue.com.br/api/whatsapp/groups
+
+      # ============================================
+      # GOOGLE GEMINI AI
+      # ============================================
+      GOOGLE_API_KEY: your-google-gemini-api-key
+
+      # ============================================
+      # RESUMO DE GRUPOS WHATSAPP
+      # ============================================
+      RESUME_WHATSAPP_GROUP_ID: your-whatsapp-group-id-to-monitor
+      RESUME_WHATSAPP_GROUP_ID_TO_SEND: your-whatsapp-group-id-to-send-resume
+      RESUME_HOUR_OF_DAY: 22
+
+      # ============================================
+      # REDIS
+      # ============================================
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+      REDIS_NAME: test
+
+      # ============================================
+      # EMAIL (NODEMAILER)
+      # ============================================
+      MAIL_HOST: smtp.gmail.com
+      MAIL_PORT: 587
+      MAIL_USER: your-email@gmail.com
+      MAIL_PASS: your-email-password
+
+      # ============================================
+      # GOOGLE SHEETS (Opcional)
+      # ============================================
+      GOOGLE_SHEETS_API_KEY: ""
+      GOOGLE_SPREADSHEET_ID: ""
+
+      # ============================================
+      # Multi-tenant configuration
+      # ============================================
+      FRONTEND_API_URL: https://dev-mensageria.grupoblue.com.br
+      INTERNAL_SYNC_TOKEN: cd739c87f3f7a8a6a69407b639a6d7c6db3090e0d6bbe4cbd4176950a1d9ab27
+    volumes:
+      - mensageria-data-dev:/usr/src/app/data
+      - mensageria-auth-info-baileys-dev:/usr/src/app/auth_info_baileys
+      - mensageria-tmp-dev:/usr/src/app/tmp
     networks:
       - mensageria-dev
     deploy:
@@ -38,6 +109,9 @@ services:
     image: "724698481758.dkr.ecr.${AWS_REGION:-us-east-2}.amazonaws.com/mensageria-migration-dev:latest"
     networks:
       - mensageria-dev
+    environment:
+      # Mesmo banco descrito em DATABASE_SETUP.md, só que apontando para o host mysql do compose
+      DATABASE_URL: mysql://root:fha78&^hKg@161.97.151.114:3306/mensageria_dev
     deploy:
       replicas: 1
       restart_policy:
@@ -48,4 +122,10 @@ networks:
     driver: overlay
   proxy-services:
     external: true
-
+volumes:
+  mensageria-data-dev:
+    driver: local
+  mensageria-auth-info-baileys-dev:
+    driver: local
+  mensageria-tmp-dev:
+    driver: local
