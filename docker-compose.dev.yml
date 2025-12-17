@@ -1,0 +1,51 @@
+version: "3.9"
+
+services:
+  frontend:
+    image: "724698481758.dkr.ecr.${AWS_REGION:-us-east-2}.amazonaws.com/mensageria-front-dev:latest"
+    environment:
+      # URL interna do backend Docker (serviço abaixo)
+      BACKEND_API_URL: http://backend:3333
+    networks:
+      - mensageria-dev
+      - proxy-services
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      update_config:
+        parallelism: 1
+        delay: 10s
+
+  backend:
+    image: "724698481758.dkr.ecr.${AWS_REGION:-us-east-2}.amazonaws.com/mensageria-back-dev:latest"
+    environment:
+      # URLs internas apontando para o serviço frontend no Swarm
+      FRONTEND_API_URL: http://frontend:3000
+      FRONTEND_URL: http://frontend:3000
+      WHATSAPP_GROUPS_CALLBACK_URL: http://frontend:3000/api/whatsapp/groups
+    networks:
+      - mensageria-dev
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      update_config:
+        parallelism: 1
+        delay: 10s
+
+  migration:
+    image: "724698481758.dkr.ecr.${AWS_REGION:-us-east-2}.amazonaws.com/mensageria-migration-dev:latest"
+    networks:
+      - mensageria-dev
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: none
+
+networks:
+  mensageria-dev:
+    driver: overlay
+  proxy-services:
+    external: true
+
