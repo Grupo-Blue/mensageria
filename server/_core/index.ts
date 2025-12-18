@@ -38,6 +38,45 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
   const server = createServer(app);
+  
+  // Configurar trust proxy para funcionar corretamente atrás de proxy reverso (nginx, traefik, etc.)
+  // Isso garante que req.protocol e req.hostname usem os headers X-Forwarded-*
+  app.set('trust proxy', true);
+  
+  // Middleware para forçar protocolo e hostname corretos quando OAUTH_SERVER_URL está configurada
+  // Isso garante que o Passport use a URL correta para o redirect_uri
+  // O Passport pode construir o redirect_uri dinamicamente usando req.protocol e req.hostname
+  if (ENV.oAuthServerUrl) {
+    const oauthUrl = new URL(ENV.oAuthServerUrl);
+    app.use((req: any, res, next) => {
+      // Apenas sobrescrever se for uma rota de OAuth
+      if (req.path.startsWith('/api/auth/google')) {
+        // Forçar protocolo e hostname corretos para OAuth
+        // Isso garante que o Passport use a URL configurada em vez de construir dinamicamente
+        const originalProtocol = req.protocol;
+        const originalHostname = req.hostname;
+        const originalGet = req.get;
+        
+        req.protocol = oauthUrl.protocol.replace(':', '');
+        req.hostname = oauthUrl.hostname;
+        req.get = function(header: string) {
+          if (header && header.toLowerCase() === 'host') {
+            return oauthUrl.host;
+          }
+          return originalGet ? originalGet.call(this, header) : req.headers[header?.toLowerCase() || header];
+        };
+        
+        // Restaurar valores originais após a requisição (para não afetar outras rotas)
+        res.on('finish', () => {
+          req.protocol = originalProtocol;
+          req.hostname = originalHostname;
+          req.get = originalGet;
+        });
+      }
+      next();
+    });
+  }
+  
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
