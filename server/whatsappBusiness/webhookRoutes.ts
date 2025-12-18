@@ -62,7 +62,7 @@ router.post("/webhook", async (req: Request, res: Response) => {
           }
         }
 
-        // Handle incoming messages (optional - for two-way communication)
+        // Handle incoming messages - process opt-out requests
         if (value?.messages) {
           for (const message of value.messages) {
             console.log("[WhatsApp Business Webhook] Incoming message:", {
@@ -70,7 +70,9 @@ router.post("/webhook", async (req: Request, res: Response) => {
               type: message.type,
               timestamp: message.timestamp,
             });
-            // You can implement message handling here if needed
+
+            // Process the message for opt-out keywords
+            await processIncomingMessage(message, value.metadata?.phone_number_id);
           }
         }
       }
@@ -148,6 +150,93 @@ async function processStatusUpdate(status: {
     });
   } catch (error) {
     console.error("[WhatsApp Business Webhook] Error updating status:", error);
+  }
+}
+
+/**
+ * Process incoming message for opt-out keywords
+ */
+async function processIncomingMessage(
+  message: {
+    from: string;
+    type: string;
+    timestamp: string;
+    text?: { body: string };
+  },
+  phoneNumberId?: string
+) {
+  try {
+    // Only process text messages
+    if (message.type !== "text" || !message.text?.body) {
+      return;
+    }
+
+    const messageText = message.text.body;
+    const fromPhone = message.from;
+
+    // Check if this is an opt-out message
+    const optOutResult = db.isOptOutMessage(messageText);
+    if (!optOutResult.isOptOut || !optOutResult.reason) {
+      console.log("[WhatsApp Business Webhook] Message is not an opt-out request");
+      return;
+    }
+
+    console.log("[WhatsApp Business Webhook] Opt-out request detected:", {
+      from: fromPhone,
+      message: messageText,
+      reason: optOutResult.reason,
+    });
+
+    // Find the business account by phone_number_id
+    let businessAccountId: number | null = null;
+
+    if (phoneNumberId) {
+      const dbInstance = await db.getDb();
+      if (dbInstance) {
+        const { whatsappBusinessAccounts } = await import("../../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+
+        const accounts = await dbInstance
+          .select()
+          .from(whatsappBusinessAccounts)
+          .where(eq(whatsappBusinessAccounts.phoneNumberId, phoneNumberId))
+          .limit(1);
+
+        if (accounts.length > 0) {
+          businessAccountId = accounts[0].id;
+        }
+      }
+    }
+
+    if (!businessAccountId) {
+      // Try to find by matching any active account
+      const accounts = await db.getWhatsappBusinessAccounts(0);
+      const activeAccount = accounts.find(a => a.isActive);
+      if (activeAccount) {
+        businessAccountId = activeAccount.id;
+      }
+    }
+
+    if (!businessAccountId) {
+      console.error("[WhatsApp Business Webhook] Could not find business account for opt-out");
+      return;
+    }
+
+    // Add to blacklist
+    const result = await db.addToBlacklist({
+      businessAccountId,
+      phoneNumber: fromPhone,
+      reason: optOutResult.reason,
+      originalMessage: messageText,
+    });
+
+    if (result.alreadyBlacklisted) {
+      console.log("[WhatsApp Business Webhook] Phone already blacklisted:", fromPhone);
+    } else {
+      console.log("[WhatsApp Business Webhook] Added to blacklist:", fromPhone);
+    }
+  } catch (error) {
+    console.error("[WhatsApp Business Webhook] Error processing incoming message:", error);
   }
 }
 

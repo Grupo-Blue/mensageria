@@ -733,6 +733,91 @@ export const appRouter = router({
         const api = new MetaWhatsAppApi(account.phoneNumberId, account.accessToken);
         return await api.getPhoneNumberInfo();
       }),
+
+    // =====================================================
+    // Blacklist Management
+    // =====================================================
+
+    // Get blacklist for an account
+    getBlacklist: protectedProcedure
+      .input(z.object({ accountId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const account = await db.getWhatsappBusinessAccountById(input.accountId);
+        if (!account || account.userId !== ctx.user.id) {
+          throw new Error("Conta não encontrada");
+        }
+
+        return await db.getBlacklist(account.id);
+      }),
+
+    // Add to blacklist manually
+    addToBlacklist: protectedProcedure
+      .input(z.object({
+        accountId: z.number(),
+        phoneNumber: z.string().min(1),
+        reason: z.enum(["sair", "cancelar", "spam_report", "manual", "bounce"]).default("manual"),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const account = await db.getWhatsappBusinessAccountById(input.accountId);
+        if (!account || account.userId !== ctx.user.id) {
+          throw new Error("Conta não encontrada");
+        }
+
+        const result = await db.addToBlacklist({
+          businessAccountId: account.id,
+          phoneNumber: input.phoneNumber,
+          reason: input.reason,
+        });
+
+        return result;
+      }),
+
+    // Remove from blacklist
+    removeFromBlacklist: protectedProcedure
+      .input(z.object({
+        accountId: z.number(),
+        phoneNumber: z.string().min(1),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const account = await db.getWhatsappBusinessAccountById(input.accountId);
+        if (!account || account.userId !== ctx.user.id) {
+          throw new Error("Conta não encontrada");
+        }
+
+        await db.removeFromBlacklist(account.id, input.phoneNumber);
+        return { success: true };
+      }),
+
+    // Check if a phone is blacklisted
+    isBlacklisted: protectedProcedure
+      .input(z.object({
+        accountId: z.number(),
+        phoneNumber: z.string().min(1),
+      }))
+      .query(async ({ ctx, input }) => {
+        const account = await db.getWhatsappBusinessAccountById(input.accountId);
+        if (!account || account.userId !== ctx.user.id) {
+          throw new Error("Conta não encontrada");
+        }
+
+        const isBlacklisted = await db.isPhoneBlacklisted(account.id, input.phoneNumber);
+        return { isBlacklisted };
+      }),
+
+    // Filter blacklisted numbers from a list
+    filterBlacklisted: protectedProcedure
+      .input(z.object({
+        accountId: z.number(),
+        phoneNumbers: z.array(z.string()),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const account = await db.getWhatsappBusinessAccountById(input.accountId);
+        if (!account || account.userId !== ctx.user.id) {
+          throw new Error("Conta não encontrada");
+        }
+
+        return await db.filterBlacklistedNumbers(account.id, input.phoneNumbers);
+      }),
   }),
 
   // =====================================================
@@ -1189,11 +1274,33 @@ export const appRouter = router({
 
         const api = new MetaWhatsAppApi(account.phoneNumberId, account.accessToken);
 
-        // Send messages to all pending recipients
+        // Filter out blacklisted recipients before sending
+        const phoneNumbers = recipients.map(r => r.phoneNumber);
+        const { allowed: allowedPhones, blocked: blockedPhones } = await db.filterBlacklistedNumbers(account.id, phoneNumbers);
+        const blockedSet = new Set(blockedPhones.map(p => p.replace(/\D/g, "")));
+
+        console.log(`[Campaign Send] Total recipients: ${recipients.length}, Blacklisted: ${blockedPhones.length}`);
+
+        // Send messages to all pending recipients (excluding blacklisted)
         let sentCount = 0;
         let failedCount = 0;
+        let skippedBlacklisted = 0;
 
         for (const recipient of recipients) {
+          // Check if recipient is blacklisted
+          const normalizedPhone = recipient.phoneNumber.replace(/\D/g, "");
+          if (blockedSet.has(normalizedPhone)) {
+            console.log(`[Campaign Send] Skipping blacklisted recipient: ${recipient.phoneNumber}`);
+            // Mark as failed with reason
+            await db.updateCampaignRecipient(recipient.id, {
+              status: "failed",
+              errorMessage: "Contato na blacklist (opt-out)",
+            });
+            skippedBlacklisted++;
+            failedCount++;
+            continue;
+          }
+
           try {
             console.log(`[Campaign Send] Processing recipient: ${recipient.phoneNumber}, name: ${recipient.name}`);
             console.log(`[Campaign Send] Template variables before processing:`, templateVariables);

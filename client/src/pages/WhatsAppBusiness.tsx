@@ -54,6 +54,7 @@ import {
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import BlacklistManager from "@/components/BlacklistManager";
 
 interface TemplateComponent {
   type: string;
@@ -1085,6 +1086,30 @@ export default function WhatsAppBusiness() {
               </Button>
             </CardContent>
           </Card>
+        )}
+
+        {/* Blacklist Section */}
+        {accounts && accounts.length > 0 && (
+          <div className="space-y-4">
+            <h2 className="text-xl font-semibold text-gray-900">Blacklist de Contatos</h2>
+            <p className="text-sm text-muted-foreground">
+              Gerencie os contatos que não devem receber mensagens. Contatos são adicionados automaticamente quando respondem "SAIR" ou similar.
+            </p>
+            <Tabs defaultValue={accounts[0]?.id.toString()}>
+              <TabsList className="w-full flex-wrap h-auto gap-1">
+                {accounts.map((account) => (
+                  <TabsTrigger key={account.id} value={account.id.toString()} className="flex-grow">
+                    {account.name}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+              {accounts.map((account) => (
+                <TabsContent key={account.id} value={account.id.toString()}>
+                  <BlacklistManager accountId={account.id} accountName={account.name} />
+                </TabsContent>
+              ))}
+            </Tabs>
+          </div>
         )}
 
         {/* Info Card */}

@@ -294,3 +294,26 @@ export const contactListItems = mysqlTable("contact_list_items", {
 
 export type ContactListItem = typeof contactListItems.$inferSelect;
 export type InsertContactListItem = typeof contactListItems.$inferInsert;
+
+/**
+ * WhatsApp Blacklist - contacts who opted out of receiving messages
+ * This is per WhatsApp Business Account, so if a contact opts out from one account,
+ * they won't receive messages from that account anymore (across all lists)
+ */
+export const whatsappBlacklist = mysqlTable("whatsapp_blacklist", {
+  id: int("id").autoincrement().primaryKey(),
+  businessAccountId: int("business_account_id").notNull(), // Reference to whatsappBusinessAccounts
+  phoneNumber: varchar("phone_number", { length: 20 }).notNull(),
+  reason: mysqlEnum("reason", ["sair", "cancelar", "spam_report", "manual", "bounce"]).notNull(),
+  originalMessage: text("original_message"), // The message that triggered the opt-out
+  optedOutAt: timestamp("opted_out_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => {
+  return {
+    // Each phone can only be blacklisted once per business account
+    uniqueAccountPhone: unique().on(table.businessAccountId, table.phoneNumber),
+  };
+});
+
+export type WhatsappBlacklist = typeof whatsappBlacklist.$inferSelect;
+export type InsertWhatsappBlacklist = typeof whatsappBlacklist.$inferInsert;

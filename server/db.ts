@@ -31,7 +31,10 @@ import {
   InsertContactListItem,
   webhookConfig,
   webhookLogs,
-  InsertWebhookLog
+  InsertWebhookLog,
+  whatsappBlacklist,
+  WhatsappBlacklist,
+  InsertWhatsappBlacklist
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -1051,4 +1054,230 @@ export async function createWebhookLog(data: {
     response: data.response,
     errorMessage: data.errorMessage,
   });
+}
+
+// =====================================================
+// WhatsApp Blacklist Functions
+// =====================================================
+
+/**
+ * Check if a phone number is blacklisted for a specific business account
+ */
+export async function isPhoneBlacklisted(businessAccountId: number, phoneNumber: string): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+
+  // Normalize phone number (remove non-digits)
+  const normalizedPhone = phoneNumber.replace(/\D/g, "");
+
+  const result = await db
+    .select()
+    .from(whatsappBlacklist)
+    .where(
+      and(
+        eq(whatsappBlacklist.businessAccountId, businessAccountId),
+        eq(whatsappBlacklist.phoneNumber, normalizedPhone)
+      )
+    )
+    .limit(1);
+
+  return result.length > 0;
+}
+
+/**
+ * Add a phone number to the blacklist
+ */
+export async function addToBlacklist(data: {
+  businessAccountId: number;
+  phoneNumber: string;
+  reason: "sair" | "cancelar" | "spam_report" | "manual" | "bounce";
+  originalMessage?: string;
+}): Promise<{ success: boolean; alreadyBlacklisted: boolean }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Normalize phone number
+  const normalizedPhone = data.phoneNumber.replace(/\D/g, "");
+
+  try {
+    // Check if already blacklisted
+    const existing = await isPhoneBlacklisted(data.businessAccountId, normalizedPhone);
+    if (existing) {
+      return { success: true, alreadyBlacklisted: true };
+    }
+
+    // Add to blacklist
+    await db.insert(whatsappBlacklist).values({
+      businessAccountId: data.businessAccountId,
+      phoneNumber: normalizedPhone,
+      reason: data.reason,
+      originalMessage: data.originalMessage,
+    });
+
+    // Also mark as opted_out in all contact lists for this user
+    await markPhoneAsOptedOutInAllLists(data.businessAccountId, normalizedPhone, data.reason);
+
+    console.log(`[Blacklist] Added ${normalizedPhone} to blacklist for account ${data.businessAccountId}, reason: ${data.reason}`);
+
+    return { success: true, alreadyBlacklisted: false };
+  } catch (error: any) {
+    if (error.code === "ER_DUP_ENTRY") {
+      return { success: true, alreadyBlacklisted: true };
+    }
+    throw error;
+  }
+}
+
+/**
+ * Remove a phone number from the blacklist
+ */
+export async function removeFromBlacklist(businessAccountId: number, phoneNumber: string): Promise<boolean> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const normalizedPhone = phoneNumber.replace(/\D/g, "");
+
+  const result = await db
+    .delete(whatsappBlacklist)
+    .where(
+      and(
+        eq(whatsappBlacklist.businessAccountId, businessAccountId),
+        eq(whatsappBlacklist.phoneNumber, normalizedPhone)
+      )
+    );
+
+  return true;
+}
+
+/**
+ * Get all blacklisted numbers for a business account
+ */
+export async function getBlacklist(businessAccountId: number): Promise<WhatsappBlacklist[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  return await db
+    .select()
+    .from(whatsappBlacklist)
+    .where(eq(whatsappBlacklist.businessAccountId, businessAccountId))
+    .orderBy(desc(whatsappBlacklist.optedOutAt));
+}
+
+/**
+ * Mark a phone as opted_out in all contact lists belonging to the user who owns this business account
+ */
+async function markPhoneAsOptedOutInAllLists(businessAccountId: number, phoneNumber: string, reason: string) {
+  const db = await getDb();
+  if (!db) return;
+
+  try {
+    // First, get the user ID from the business account
+    const account = await db
+      .select()
+      .from(whatsappBusinessAccounts)
+      .where(eq(whatsappBusinessAccounts.id, businessAccountId))
+      .limit(1);
+
+    if (account.length === 0) return;
+
+    const userId = account[0].userId;
+
+    // Get all contact lists for this user
+    const lists = await db
+      .select()
+      .from(contactLists)
+      .where(eq(contactLists.userId, userId));
+
+    // Update status in all lists where this phone exists
+    for (const list of lists) {
+      await db
+        .update(contactListItems)
+        .set({
+          status: "opted_out",
+          optedOutAt: new Date(),
+          optedOutReason: reason,
+        })
+        .where(
+          and(
+            eq(contactListItems.listId, list.id),
+            eq(contactListItems.phoneNumber, phoneNumber),
+            eq(contactListItems.status, "active") // Only update active contacts
+          )
+        );
+    }
+
+    // Recalculate stats for all affected lists
+    for (const list of lists) {
+      await recalculateListStats(list.id);
+    }
+
+    console.log(`[Blacklist] Marked ${phoneNumber} as opted_out in all lists for user ${userId}`);
+  } catch (error) {
+    console.error("[Blacklist] Error marking phone as opted_out in lists:", error);
+  }
+}
+
+/**
+ * Check if message is an opt-out request
+ */
+export function isOptOutMessage(message: string): { isOptOut: boolean; reason: "sair" | "cancelar" | null } {
+  if (!message) return { isOptOut: false, reason: null };
+
+  const normalizedMessage = message.trim().toUpperCase();
+
+  // Check for exact matches first
+  const exactMatches = ["SAIR", "CANCELAR", "CANCELAR RECEBIMENTO", "PARAR", "STOP", "UNSUBSCRIBE"];
+  if (exactMatches.includes(normalizedMessage)) {
+    if (normalizedMessage === "SAIR" || normalizedMessage === "PARAR" || normalizedMessage === "STOP") {
+      return { isOptOut: true, reason: "sair" };
+    }
+    return { isOptOut: true, reason: "cancelar" };
+  }
+
+  // Check for partial matches
+  const sairPatterns = [/^SAIR$/i, /^PARAR$/i, /^STOP$/i, /^PARE$/i];
+  const cancelarPatterns = [/CANCELAR/i, /DESCADASTRAR/i, /NAO QUERO/i, /NÃO QUERO/i, /UNSUBSCRIBE/i, /REMOVER/i];
+
+  for (const pattern of sairPatterns) {
+    if (pattern.test(normalizedMessage)) {
+      return { isOptOut: true, reason: "sair" };
+    }
+  }
+
+  for (const pattern of cancelarPatterns) {
+    if (pattern.test(normalizedMessage)) {
+      return { isOptOut: true, reason: "cancelar" };
+    }
+  }
+
+  return { isOptOut: false, reason: null };
+}
+
+/**
+ * Filter out blacklisted numbers from a list of phone numbers
+ */
+export async function filterBlacklistedNumbers(
+  businessAccountId: number,
+  phoneNumbers: string[]
+): Promise<{ allowed: string[]; blocked: string[] }> {
+  const db = await getDb();
+  if (!db) return { allowed: phoneNumbers, blocked: [] };
+
+  // Get all blacklisted numbers for this account
+  const blacklist = await getBlacklist(businessAccountId);
+  const blacklistedSet = new Set(blacklist.map(b => b.phoneNumber));
+
+  const allowed: string[] = [];
+  const blocked: string[] = [];
+
+  for (const phone of phoneNumbers) {
+    const normalized = phone.replace(/\D/g, "");
+    if (blacklistedSet.has(normalized)) {
+      blocked.push(phone);
+    } else {
+      allowed.push(phone);
+    }
+  }
+
+  return { allowed, blocked };
 }
