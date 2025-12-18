@@ -35,6 +35,8 @@ const callbackURL = `${normalizedBaseUrl}/api/auth/google/callback`;
 console.log('[Google OAuth] Initializing with:', {
   clientId: ENV.googleClientId.substring(0, 20) + '...',
   callbackURL,
+  oAuthServerUrl: ENV.oAuthServerUrl,
+  normalizedBaseUrl,
   isProduction: ENV.isProduction,
 });
 
