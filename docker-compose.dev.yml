@@ -4,8 +4,46 @@ services:
   frontend:
     image: "724698481758.dkr.ecr.${AWS_REGION:-us-east-2}.amazonaws.com/mensageria-front-dev:latest"
     environment:
-      # URL interna do backend Docker (serviço abaixo)
+      # ============================================
+      # CONFIGURAÇÕES BÁSICAS
+      # ============================================
+      NODE_ENV: development
+      
+      # ============================================
+      # APLICAÇÃO
+      # ============================================
+      VITE_APP_ID: 6b1696d1c484fd5431d1d1f2e87c6407
+      
+      # ============================================
+      # AUTENTICAÇÃO JWT
+      # ============================================
+      JWT_SECRET: 8cbcfb0f448288b9115030ae1045a742
+      
+      # ============================================
+      # BANCO DE DADOS
+      # ============================================
+      DATABASE_URL: mysql://root:fha78&^hKg@161.97.151.114:3306/mensageria_dev
+      
+      # ============================================
+      # OAUTH E AUTENTICAÇÃO GOOGLE
+      # ============================================
+      OAUTH_SERVER_URL: https://dev-mensageria.grupoblue.com.br
+      GOOGLE_CLIENT_ID: 556550009781-j77mg98jt90sa6ciaknbe0tldvt6ii2p.apps.googleusercontent.com
+      GOOGLE_CLIENT_SECRET: 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
+      OWNER_OPEN_ID: ""
+      
+      # ============================================
+      # STORAGE (FORGE API)
+      # ============================================
+      BUILT_IN_FORGE_API_URL: https://api.example.com
+      BUILT_IN_FORGE_API_KEY: your-forge-api-key
+      
+      # ============================================
+      # BACKEND API
+      # ============================================
       BACKEND_API_URL: https://dev-api-mensageria.grupoblue.com.br
+      BACKEND_API_TOKEN: cd739c87f3f7a8a6a69407b639a6d7c6db3090e0d6bbe4cbd4176950a1d9ab27
+      INTERNAL_SYNC_TOKEN: cd739c87f3f7a8a6a69407b639a6d7c6db3090e0d6bbe4cbd4176950a1d9ab27
     networks:
       - mensageria-dev
       - proxy-services
