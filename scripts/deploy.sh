@@ -20,8 +20,8 @@ echo -e "${YELLOW}📍 Project path: $PROJECT_PATH${NC}"
 echo -e "${YELLOW}🌍 Environment: $NODE_ENV${NC}"
 
 # Verificar se está no diretório correto
-if [ ! -f "package.json" ]; then
-  echo -e "${RED}❌ Error: package.json not found. Are you in the project root?${NC}"
+if [ ! -f "frontend/package.json" ]; then
+  echo -e "${RED}❌ Error: frontend/package.json not found. Are you in the project root?${NC}"
   exit 1
 fi
 
@@ -38,12 +38,13 @@ if [ -d ".git" ]; then
   git pull origin master || echo -e "${YELLOW}⚠️  Git pull failed, continuing anyway...${NC}"
 fi
 
-# Instalar dependências
-echo -e "${GREEN}📥 Installing dependencies...${NC}"
+# Instalar dependências do frontend
+echo -e "${GREEN}📥 Installing frontend dependencies...${NC}"
+cd frontend || exit 1
 pnpm install --frozen-lockfile
 
 # Build do projeto
-echo -e "${GREEN}🔨 Building project...${NC}"
+echo -e "${GREEN}🔨 Building frontend...${NC}"
 export NODE_ENV=$NODE_ENV
 pnpm build
 
@@ -52,6 +53,7 @@ if [ ! -d "dist" ]; then
   echo -e "${RED}❌ Build failed: dist directory not found${NC}"
   exit 1
 fi
+cd ..
 
 echo -e "${GREEN}✅ Build completed successfully${NC}"
 
@@ -79,7 +81,7 @@ if command -v pm2 &> /dev/null; then
   if pm2 list | grep -q "mensageria"; then
     pm2 restart mensageria
   else
-    pm2 start dist/index.js --name mensageria
+    pm2 start frontend/dist/index.js --name mensageria
   fi
   pm2 save
   DEPLOYED=true

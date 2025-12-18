@@ -26,12 +26,13 @@ jobs:
 
       - name: Install dependencies (Frontend)
         run: |
-          cd /home/runner/work/mensageria/mensageria
+          cd frontend
           pnpm install
         working-directory: .
 
       - name: Build Frontend
         run: pnpm build
+        working-directory: frontend
         env:
           NODE_ENV: production
 
@@ -78,6 +79,7 @@ jobs:
             
             # Instalar dependências do frontend
             echo "📥 Installing frontend dependencies..."
+            cd frontend || exit 1
             pnpm install --frozen-lockfile --prod=false
             
             # Build do frontend
@@ -90,6 +92,7 @@ jobs:
               echo "❌ Build failed: dist directory not found"
               exit 1
             fi
+            cd ..
             
             echo "✅ Build completed successfully"
             
@@ -117,7 +120,7 @@ jobs:
               if pm2 list | grep -q "mensageria"; then
                 pm2 restart mensageria
               else
-                pm2 start dist/index.js --name mensageria
+                pm2 start frontend/dist/index.js --name mensageria
               fi
               pm2 save
               DEPLOYED=true

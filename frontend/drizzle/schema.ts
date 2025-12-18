@@ -150,3 +150,163 @@ export const webhookLogs = mysqlTable("webhook_logs", {
 
 export type WebhookLog = typeof webhookLogs.$inferSelect;
 export type InsertWebhookLog = typeof webhookLogs.$inferInsert;
+
+/**
+ * WhatsApp Business Accounts table
+ */
+export const whatsappBusinessAccounts = mysqlTable("whatsapp_business_accounts", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("user_id").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  phoneNumberId: varchar("phone_number_id", { length: 100 }).notNull(),
+  businessAccountId: varchar("business_account_id", { length: 100 }).notNull(),
+  accessToken: text("access_token").notNull(),
+  webhookVerifyToken: varchar("webhook_verify_token", { length: 255 }),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+
+export type WhatsappBusinessAccount = typeof whatsappBusinessAccounts.$inferSelect;
+export type InsertWhatsappBusinessAccount = typeof whatsappBusinessAccounts.$inferInsert;
+
+/**
+ * Marketing campaigns table
+ */
+export const campaigns = mysqlTable("campaigns", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("user_id").notNull(),
+  businessAccountId: int("business_account_id").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  templateName: varchar("template_name", { length: 255 }).notNull(),
+  templateLanguage: varchar("template_language", { length: 10 }).default("pt_BR").notNull(),
+  templateVariables: text("template_variables"),
+  headerMediaUrl: text("header_media_url"),
+  status: mysqlEnum("status", ["draft", "scheduled", "running", "paused", "completed", "failed"]).default("draft").notNull(),
+  scheduledAt: timestamp("scheduled_at"),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  totalRecipients: int("total_recipients").default(0).notNull(),
+  sentCount: int("sent_count").default(0).notNull(),
+  deliveredCount: int("delivered_count").default(0).notNull(),
+  readCount: int("read_count").default(0).notNull(),
+  failedCount: int("failed_count").default(0).notNull(),
+  maxRetries: int("max_retries").default(3).notNull(),
+  retryDelayMinutes: int("retry_delay_minutes").default(30).notNull(),
+  autoRetryEnabled: boolean("auto_retry_enabled").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Campaign = typeof campaigns.$inferSelect;
+export type InsertCampaign = typeof campaigns.$inferInsert;
+
+/**
+ * Campaign recipients table
+ */
+export const campaignRecipients = mysqlTable("campaign_recipients", {
+  id: int("id").autoincrement().primaryKey(),
+  campaignId: int("campaign_id").notNull(),
+  phoneNumber: varchar("phone_number", { length: 20 }).notNull(),
+  name: varchar("name", { length: 255 }),
+  variables: text("variables"),
+  status: mysqlEnum("status", ["pending", "sent", "delivered", "read", "failed"]).default("pending").notNull(),
+  whatsappMessageId: varchar("whatsapp_message_id", { length: 255 }),
+  errorMessage: text("error_message"),
+  retryCount: int("retry_count").default(0).notNull(),
+  lastRetryAt: timestamp("last_retry_at"),
+  sentAt: timestamp("sent_at"),
+  deliveredAt: timestamp("delivered_at"),
+  readAt: timestamp("read_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type CampaignRecipient = typeof campaignRecipients.$inferSelect;
+export type InsertCampaignRecipient = typeof campaignRecipients.$inferInsert;
+
+/**
+ * WhatsApp message templates cache table
+ */
+export const whatsappTemplates = mysqlTable("whatsapp_templates", {
+  id: int("id").autoincrement().primaryKey(),
+  businessAccountId: int("business_account_id").notNull(),
+  templateId: varchar("template_id", { length: 100 }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  language: varchar("language", { length: 10 }).notNull(),
+  category: varchar("category", { length: 50 }).notNull(),
+  status: varchar("status", { length: 50 }).notNull(),
+  components: text("components").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (table) => {
+  return {
+    uniqueBusinessAccountTemplate: unique().on(table.businessAccountId, table.templateId),
+  };
+});
+
+export type WhatsappTemplate = typeof whatsappTemplates.$inferSelect;
+export type InsertWhatsappTemplate = typeof whatsappTemplates.$inferInsert;
+
+/**
+ * Contact Lists table
+ */
+export const contactLists = mysqlTable("contact_lists", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("user_id").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  company: varchar("company", { length: 255 }),
+  description: text("description"),
+  totalContacts: int("total_contacts").default(0).notNull(),
+  invalidContacts: int("invalid_contacts").default(0).notNull(),
+  optedOutContacts: int("opted_out_contacts").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ContactList = typeof contactLists.$inferSelect;
+export type InsertContactList = typeof contactLists.$inferInsert;
+
+/**
+ * Contact List Items table
+ */
+export const contactListItems = mysqlTable("contact_list_items", {
+  id: int("id").autoincrement().primaryKey(),
+  listId: int("list_id").notNull(),
+  phoneNumber: varchar("phone_number", { length: 20 }).notNull(),
+  name: varchar("name", { length: 255 }),
+  email: varchar("email", { length: 320 }),
+  customFields: text("custom_fields"),
+  status: mysqlEnum("status", ["active", "invalid", "opted_out", "spam_reported"]).default("active").notNull(),
+  optedOutAt: timestamp("opted_out_at"),
+  optedOutReason: varchar("opted_out_reason", { length: 50 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (table) => {
+  return {
+    uniqueListPhone: unique().on(table.listId, table.phoneNumber),
+  };
+});
+
+export type ContactListItem = typeof contactListItems.$inferSelect;
+export type InsertContactListItem = typeof contactListItems.$inferInsert;
+
+/**
+ * WhatsApp Blacklist table for opt-out management
+ */
+export const whatsappBlacklist = mysqlTable("whatsapp_blacklist", {
+  id: int("id").autoincrement().primaryKey(),
+  businessAccountId: int("business_account_id").notNull(),
+  phoneNumber: varchar("phone_number", { length: 20 }).notNull(),
+  reason: mysqlEnum("reason", ["sair", "cancelar", "spam_report", "manual", "bounce"]).notNull(),
+  originalMessage: text("original_message"),
+  optedOutAt: timestamp("opted_out_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => {
+  return {
+    uniqueAccountPhone: unique().on(table.businessAccountId, table.phoneNumber),
+  };
+});
+
+export type WhatsappBlacklist = typeof whatsappBlacklist.$inferSelect;
+export type InsertWhatsappBlacklist = typeof whatsappBlacklist.$inferInsert;

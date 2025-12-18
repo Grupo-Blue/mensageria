@@ -2,6 +2,8 @@ import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
 import net from "net";
+import fs from "fs";
+import path from "path";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
@@ -9,7 +11,9 @@ import { createContext } from "./context";
 import passport from "../auth/google";
 import authRoutes from "../auth/routes";
 import whatsappRoutes from "../whatsapp/routes";
+import whatsappBusinessWebhookRoutes from "../whatsappBusiness/webhookRoutes";
 import internalRoutes from "../internal/routes";
+import { campaignScheduler } from "../whatsappBusiness/campaignScheduler";
 import session from "express-session";
 import cookieParser from "cookie-parser";
 import { ENV } from "./env";
@@ -50,27 +54,28 @@ async function startServer() {
     app.use((req: any, res, next) => {
       // Apenas sobrescrever se for uma rota de OAuth
       if (req.path.startsWith('/api/auth/google')) {
-        // Forçar protocolo e hostname corretos para OAuth
-        // Isso garante que o Passport use a URL configurada em vez de construir dinamicamente
-        const originalProtocol = req.protocol;
-        const originalHostname = req.hostname;
+        // Forçar protocolo e hostname corretos para OAuth usando Object.defineProperty
+        // req.protocol e req.hostname são propriedades somente leitura, então precisamos sobrescrevê-las
         const originalGet = req.get;
         
-        req.protocol = oauthUrl.protocol.replace(':', '');
-        req.hostname = oauthUrl.hostname;
+        Object.defineProperty(req, 'protocol', {
+          get: () => oauthUrl.protocol.replace(':', ''),
+          configurable: true,
+          enumerable: true
+        });
+        
+        Object.defineProperty(req, 'hostname', {
+          get: () => oauthUrl.hostname,
+          configurable: true,
+          enumerable: true
+        });
+        
         req.get = function(header: string) {
           if (header && header.toLowerCase() === 'host') {
             return oauthUrl.host;
           }
           return originalGet ? originalGet.call(this, header) : req.headers[header?.toLowerCase() || header];
         };
-        
-        // Restaurar valores originais após a requisição (para não afetar outras rotas)
-        res.on('finish', () => {
-          req.protocol = originalProtocol;
-          req.hostname = originalHostname;
-          req.get = originalGet;
-        });
       }
       next();
     });
@@ -101,14 +106,26 @@ async function startServer() {
   app.use(passport.initialize());
   app.use(passport.session());
   
+  // Debug: Adicionar middleware para logar todas as requisições à API (ANTES das rotas)
+  app.use('/api/*', (req, res, next) => {
+    console.log('[API Request]', req.method, req.originalUrl, 'Path:', req.path);
+    next();
+  });
+  
   // Google OAuth routes
   app.use('/api/auth', authRoutes);
-
+  console.log('[Server] Rotas de autenticação registradas em /api/auth');
+  
   // WhatsApp routes
   app.use('/api/whatsapp', whatsappRoutes);
 
   // Internal API routes (backend-to-frontend communication)
   app.use('/api/internal', internalRoutes);
+  console.log('[Server] Internal API routes registradas em /api/internal');
+
+  // WhatsApp Business API webhook routes (for receiving message status updates from Meta)
+  app.use('/api/whatsapp-business', whatsappBusinessWebhookRoutes);
+  console.log('[Server] WhatsApp Business webhook registrado em /api/whatsapp-business/webhook');
 
   // OAuth callback under /api/oauth/callback (Manus - manter para compatibilidade)
   registerOAuthRoutes(app);
@@ -121,11 +138,55 @@ async function startServer() {
     })
   );
   // development mode uses Vite, production mode uses static files
-  if (process.env.NODE_ENV === "development") {
+  // IMPORTANTE: Mesmo com NODE_ENV=development, se os arquivos buildados existem (Docker),
+  // devemos usar serveStatic porque o client/ não está disponível no container
+  const nodeEnv = process.env.NODE_ENV || "production";
+  const distPublicPath = path.resolve(process.cwd(), "dist", "public");
+  const indexPath = path.resolve(distPublicPath, "index.html");
+  const hasBuiltFiles = fs.existsSync(distPublicPath) && fs.existsSync(indexPath);
+  
+  console.log(`[Server] Environment: NODE_ENV=${nodeEnv}`);
+  console.log(`[Server] Working directory: ${process.cwd()}`);
+  console.log(`[Server] Checking for built files at: ${distPublicPath}`);
+  console.log(`[Server] Built files exist: ${hasBuiltFiles}`);
+  if (hasBuiltFiles) {
+    console.log(`[Server] index.html found at: ${indexPath}`);
+  } else {
+    console.log(`[Server] index.html NOT found at: ${indexPath}`);
+    // Listar o que existe em dist/ para debug
+    const distPath = path.resolve(process.cwd(), "dist");
+    if (fs.existsSync(distPath)) {
+      try {
+        const distContents = fs.readdirSync(distPath);
+        console.log(`[Server] Contents of dist/: ${distContents.join(", ")}`);
+      } catch (e) {
+        console.log(`[Server] Could not read dist/ directory`);
+      }
+    }
+  }
+  
+  if (nodeEnv === "development" && !hasBuiltFiles) {
+    // Apenas usar Vite se estiver em desenvolvimento LOCAL (sem Docker)
+    // e os arquivos buildados não existirem
+    console.log("[Server] Using Vite dev server (development mode, no built files)");
     await setupVite(app, server);
   } else {
+    // Usar arquivos estáticos se:
+    // 1. Estiver em produção, OU
+    // 2. Os arquivos buildados existirem (caso Docker com NODE_ENV=development)
+    console.log("[Server] Using static file serving");
     serveStatic(app);
   }
+
+  // Handler para rotas não encontradas (404) - deve ser o último middleware
+  app.use((req, res, next) => {
+    if (req.originalUrl.startsWith("/api/")) {
+      console.error('[404] Rota da API não encontrada:', req.method, req.originalUrl);
+      res.status(404).json({ error: `Cannot ${req.method} ${req.originalUrl}` });
+    } else {
+      next();
+    }
+  });
 
   const preferredPort = parseInt(process.env.PORT || "3000");
   const port = await findAvailablePort(preferredPort);
@@ -136,6 +197,14 @@ async function startServer() {
 
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
+    console.log('[Server] Rotas disponíveis:');
+    console.log('  - GET  /api/auth/google');
+    console.log('  - GET  /api/auth/google/callback');
+    console.log('  - POST /api/auth/logout');
+    console.log('  - GET  /api/auth/me');
+
+    // Start the campaign scheduler
+    campaignScheduler.start();
   });
 }
 

@@ -4,13 +4,13 @@ services:
   mensageria-frontend:
     container_name: mensageria-frontend
     build:
-      context: .
+      context: ./frontend
       dockerfile: Dockerfile
     restart: unless-stopped
     ports:
       - "3000:3000"
     env_file:
-      - .env
+      - frontend/.env
     environment:
       # Conexão com o backend Docker (Baileys)
       BACKEND_API_URL: http://backend:3333
@@ -128,7 +128,7 @@ services:
   drizzle-migrations:
     container_name: mensageria-drizzle-migrations
     build:
-      context: .
+      context: ./frontend
       dockerfile: Dockerfile.drizzle
     restart: "no"
     environment:
