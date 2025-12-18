@@ -1,9 +1,7 @@
 name: Deploy to Production
 
 on:
-  push:
-    branches:
-      - master
+
   workflow_dispatch: # Permite execução manual
 
 jobs:

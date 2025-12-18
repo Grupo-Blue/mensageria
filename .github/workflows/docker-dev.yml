@@ -1,0 +1,117 @@
+name: Build and Push Docker Images (dev)
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch: {}
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-2' }}
+  AWS_ACCOUNT_ID: '724698481758'
+
+jobs:
+  build-and-push-dev:
+    name: Build and push images to ECR (dev)
+    runs-on: ubuntu-latest
+    env:
+      ENVIRONMENT: dev
+      FRONT_REPOSITORY: mensageria-front-dev
+      BACK_REPOSITORY: mensageria-back-dev
+      MIGRATION_REPOSITORY: mensageria-migration-dev
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Ensure ECR repositories exist
+        run: |
+          set -e
+          aws ecr describe-repositories --repository-names "$FRONT_REPOSITORY" >/dev/null 2>&1 || \
+            aws ecr create-repository --repository-name "$FRONT_REPOSITORY"
+
+          aws ecr describe-repositories --repository-names "$BACK_REPOSITORY" >/dev/null 2>&1 || \
+            aws ecr create-repository --repository-name "$BACK_REPOSITORY"
+
+          aws ecr describe-repositories --repository-names "$MIGRATION_REPOSITORY" >/dev/null 2>&1 || \
+            aws ecr create-repository --repository-name "$MIGRATION_REPOSITORY"
+
+      - name: Prepare .env for frontend (dev)
+        run: |
+          set -e
+          if [ -f "frontend/dev.env" ]; then
+            cp frontend/dev.env .env
+            echo "Using frontend/dev.env as .env for dev build"
+          else
+            echo "frontend/dev.env não encontrado" >&2
+            exit 1
+          fi
+
+      - name: Build and push Docker images (dev)
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          set -e
+          IMAGE_TAG="${GITHUB_SHA}"
+
+          echo "Using registry: $ECR_REGISTRY"
+          echo "Building images with tag: $IMAGE_TAG"
+
+          # Frontend (app + painel)
+          docker build \
+            -f Dockerfile \
+            -t "$ECR_REGISTRY/$FRONT_REPOSITORY:$IMAGE_TAG" \
+            -t "$ECR_REGISTRY/$FRONT_REPOSITORY:latest" \
+            .
+
+          # Backend (Baileys / WhatsApp / Telegram)
+          docker build \
+            -f backend/Dockerfile \
+            -t "$ECR_REGISTRY/$BACK_REPOSITORY:$IMAGE_TAG" \
+            -t "$ECR_REGISTRY/$BACK_REPOSITORY:latest" \
+            backend
+
+          # Migration (Drizzle)
+          docker build \
+            -f Dockerfile.drizzle \
+            -t "$ECR_REGISTRY/$MIGRATION_REPOSITORY:$IMAGE_TAG" \
+            -t "$ECR_REGISTRY/$MIGRATION_REPOSITORY:latest" \
+            .
+
+          docker push "$ECR_REGISTRY/$FRONT_REPOSITORY:$IMAGE_TAG"
+          docker push "$ECR_REGISTRY/$FRONT_REPOSITORY:latest"
+
+          docker push "$ECR_REGISTRY/$BACK_REPOSITORY:$IMAGE_TAG"
+          docker push "$ECR_REGISTRY/$BACK_REPOSITORY:latest"
+
+          docker push "$ECR_REGISTRY/$MIGRATION_REPOSITORY:$IMAGE_TAG"
+          docker push "$ECR_REGISTRY/$MIGRATION_REPOSITORY:latest"
+
+      - name: Atualizar backend no Portainer (dev)
+        if: success()
+        run: |
+          curl -X POST "https://portainer.openxsolutions.com.br/api/webhooks/48f1e3bd-8a00-4011-ba15-dbdb19971bda?tag=${GITHUB_SHA}"
+
+      - name: Atualizar frontend no Portainer (dev)
+        if: success()
+        run: |
+          curl -X POST "https://portainer.openxsolutions.com.br/api/webhooks/0c6d9929-5209-42c1-b607-82d1866a0a8f?tag=${GITHUB_SHA}"
+
+      - name: Executar migration no Portainer (dev)
+        if: success()
+        run: |
+          curl -X POST "https://portainer.openxsolutions.com.br/api/webhooks/a06b34c2-eee2-4d45-8f5a-3f081497cb74?tag=${GITHUB_SHA}"
+
+

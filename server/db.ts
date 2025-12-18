@@ -28,7 +28,10 @@ import {
   InsertContactList,
   contactListItems,
   ContactListItem,
-  InsertContactListItem
+  InsertContactListItem,
+  webhookConfig,
+  webhookLogs,
+  InsertWebhookLog
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -45,11 +48,15 @@ function parseDatabaseUrl(url: string): {
 } {
   try {
     const parsedUrl = new URL(url);
+    // Decodificar a senha caso tenha sido URL-encoded
+    // Isso é necessário quando a senha contém caracteres especiais como &, ^, etc.
+    const password = decodeURIComponent(parsedUrl.password);
+    
     return {
       host: parsedUrl.hostname,
       port: parseInt(parsedUrl.port) || 3306,
-      user: parsedUrl.username,
-      password: parsedUrl.password,
+      user: decodeURIComponent(parsedUrl.username),
+      password: password,
       database: parsedUrl.pathname.replace(/^\//, ''),
     };
   } catch (error) {
@@ -68,6 +75,8 @@ export async function getDb() {
         port: connectionConfig.port,
         database: connectionConfig.database,
         user: connectionConfig.user,
+        passwordLength: connectionConfig.password.length,
+        passwordHasSpecialChars: /[&^#@%!]/.test(connectionConfig.password),
       });
       
       // Criar conexão MySQL2
@@ -94,6 +103,23 @@ export async function getDb() {
         console.error("  - Using Docker: docker run -d -p 3306:3306 -e MYSQL_ROOT_PASSWORD=password mysql:8");
         console.error("");
         console.error("[Database] Current DATABASE_URL:", process.env.DATABASE_URL);
+      } else if (error?.code === 'ER_ACCESS_DENIED_ERROR') {
+        console.error("[Database] Access denied. Possible causes:");
+        console.error("  1. Wrong username or password");
+        console.error("  2. Password contains special characters that need URL encoding");
+        console.error("  3. User doesn't have permission to access from this IP");
+        console.error("");
+        console.error("[Database] If your password contains special characters (&, ^, #, @, %, !, etc.),");
+        console.error("  they must be URL-encoded in the DATABASE_URL:");
+        console.error("  - & becomes %26");
+        console.error("  - ^ becomes %5E");
+        console.error("  - # becomes %23");
+        console.error("  - @ becomes %40");
+        console.error("  - % becomes %25");
+        console.error("");
+        console.error("[Database] Example: mysql://user:pass%26word@host:3306/db");
+        console.error("[Database] Current DATABASE_URL (masked):", 
+          process.env.DATABASE_URL?.replace(/:[^:@]+@/, ':****@'));
       }
       
       _db = null;
@@ -929,4 +955,100 @@ export async function deleteAllContactListItems(listId: number) {
 
   await db.delete(contactListItems).where(eq(contactListItems.listId, listId));
   await recalculateListStats(listId);
+}
+
+// =====================================================
+// Webhook Functions (from production)
+// =====================================================
+
+/**
+ * Get all WhatsApp connections with their webhook configurations
+ */
+export async function getAllWhatsappConnectionsWithWebhooks() {
+  const db = await getDb();
+  if (!db) return [];
+
+  const connections = await db.select().from(whatsappConnections);
+
+  // For each connection, get the webhook config if exists
+  const result = await Promise.all(
+    connections.map(async (conn) => {
+      const webhook = await db
+        .select()
+        .from(webhookConfig)
+        .where(
+          and(
+            eq(webhookConfig.userId, conn.userId),
+            eq(webhookConfig.connectionName, conn.identification)
+          )
+        )
+        .limit(1);
+
+      return {
+        id: conn.id,
+        identification: conn.identification,
+        apiKey: conn.apiKey,
+        userId: conn.userId,
+        webhookUrl: conn.webhookUrl || webhook[0]?.webhookUrl || null,
+        webhookSecret: conn.webhookSecret || webhook[0]?.webhookSecret || null,
+        status: conn.status,
+      };
+    })
+  );
+
+  return result;
+}
+
+/**
+ * Update WhatsApp connection by identification (name)
+ */
+export async function updateWhatsappConnectionByIdentification(
+  identification: string,
+  data: Partial<InsertWhatsappConnection>
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db
+    .update(whatsappConnections)
+    .set(data)
+    .where(eq(whatsappConnections.identification, identification));
+}
+
+/**
+ * Create webhook log entry
+ */
+export async function createWebhookLog(data: {
+  connectionName: string;
+  fromNumber: string;
+  messageId: string;
+  text: string;
+  status: "success" | "error";
+  response?: string;
+  errorMessage?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Find webhook config by connection name
+  const config = await db
+    .select()
+    .from(webhookConfig)
+    .where(eq(webhookConfig.connectionName, data.connectionName))
+    .limit(1);
+
+  if (!config.length) {
+    console.warn(`[WebhookLog] No webhook config found for connection: ${data.connectionName}`);
+    return;
+  }
+
+  await db.insert(webhookLogs).values({
+    webhookConfigId: config[0].id,
+    fromNumber: data.fromNumber,
+    messageId: data.messageId,
+    text: data.text,
+    status: data.status,
+    response: data.response,
+    errorMessage: data.errorMessage,
+  });
 }

@@ -1,8 +1,0 @@
-{
-  "query": "SELECT id, identification, status, userId FROM whatsapp_connections;",
-  "command": "mysql --batch --raw --column-names --default-character-set=utf8mb4 --host gateway02.us-east-1.prod.aws.tidbcloud.com --port 4000 --user 2Qbe3HsW4wtpjFA.de6c779173ba --database 4JGtbNF32VHe8qDcDW4RHj --execute SELECT id, identification, status, userId FROM whatsapp_connections;",
-  "returncode": 1,
-  "logs": [
-    "ERROR 1054 (42S22) at line 1: Unknown column 'userid' in 'field list'"
-  ]
-}
