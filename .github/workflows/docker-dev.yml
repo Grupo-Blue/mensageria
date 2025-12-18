@@ -52,8 +52,8 @@ jobs:
         run: |
           set -e
           if [ -f "frontend/dev.env" ]; then
-            cp frontend/dev.env .env
-            echo "Using frontend/dev.env as .env for dev build"
+            cp frontend/dev.env frontend/.env
+            echo "Using frontend/dev.env as frontend/.env for dev build"
           else
             echo "frontend/dev.env não encontrado" >&2
             exit 1
@@ -71,10 +71,10 @@ jobs:
 
           # Frontend (app + painel)
           docker build \
-            -f Dockerfile \
+            -f frontend/Dockerfile \
             -t "$ECR_REGISTRY/$FRONT_REPOSITORY:$IMAGE_TAG" \
             -t "$ECR_REGISTRY/$FRONT_REPOSITORY:latest" \
-            .
+            frontend
 
           # Backend (Baileys / WhatsApp / Telegram)
           docker build \
@@ -85,10 +85,10 @@ jobs:
 
           # Migration (Drizzle)
           docker build \
-            -f Dockerfile.drizzle \
+            -f frontend/Dockerfile.drizzle \
             -t "$ECR_REGISTRY/$MIGRATION_REPOSITORY:$IMAGE_TAG" \
             -t "$ECR_REGISTRY/$MIGRATION_REPOSITORY:latest" \
-            .
+            frontend
 
           docker push "$ECR_REGISTRY/$FRONT_REPOSITORY:$IMAGE_TAG"
           docker push "$ECR_REGISTRY/$FRONT_REPOSITORY:latest"

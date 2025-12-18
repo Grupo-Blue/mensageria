@@ -1,6 +1,7 @@
 import { eq, and, desc, lt, or, isNull, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
+import crypto from "crypto";
 import {
   InsertUser,
   users,
@@ -37,6 +38,14 @@ import {
   InsertWhatsappBlacklist
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
+
+/**
+ * Generate a secure API key
+ */
+export function generateApiKey(prefix: string = 'conn'): string {
+  const randomPart = crypto.randomBytes(24).toString('hex');
+  return `${prefix}_${randomPart}`;
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _db: any = null;
@@ -1054,6 +1063,88 @@ export async function createWebhookLog(data: {
     response: data.response,
     errorMessage: data.errorMessage,
   });
+}
+
+/**
+ * Generate and set API key for a WhatsApp connection
+ */
+export async function generateConnectionApiKey(connectionId: number): Promise<string> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const apiKey = generateApiKey('conn');
+
+  await db
+    .update(whatsappConnections)
+    .set({ apiKey })
+    .where(eq(whatsappConnections.id, connectionId));
+
+  return apiKey;
+}
+
+/**
+ * Generate and set API key for a user
+ */
+export async function generateUserApiKey(userId: number): Promise<string> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const apiKey = generateApiKey('user');
+
+  await db
+    .update(users)
+    .set({ apiKey })
+    .where(eq(users.id, userId));
+
+  return apiKey;
+}
+
+/**
+ * Get user by API key
+ */
+export async function getUserByApiKey(apiKey: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const result = await db
+    .select()
+    .from(users)
+    .where(eq(users.apiKey, apiKey))
+    .limit(1);
+
+  return result.length > 0 ? result[0] : undefined;
+}
+
+/**
+ * Get WhatsApp connection by API key
+ */
+export async function getWhatsappConnectionByApiKey(apiKey: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const result = await db
+    .select()
+    .from(whatsappConnections)
+    .where(eq(whatsappConnections.apiKey, apiKey))
+    .limit(1);
+
+  return result.length > 0 ? result[0] : undefined;
+}
+
+/**
+ * Update connection webhook settings
+ */
+export async function updateConnectionWebhook(
+  connectionId: number,
+  data: { webhookUrl?: string; webhookSecret?: string }
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db
+    .update(whatsappConnections)
+    .set(data)
+    .where(eq(whatsappConnections.id, connectionId));
 }
 
 // =====================================================

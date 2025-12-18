@@ -76,30 +76,33 @@
 }
 
 @layer base {
-  * {
-    @apply border-border;
-  }
   body {
-    @apply bg-background text-foreground;
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
     font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   }
 }
 
 @layer utilities {
   .container {
-    @apply mx-auto px-4;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 1rem;
+    padding-right: 1rem;
     max-width: 1280px;
   }
 
   @media (min-width: 640px) {
     .container {
-      @apply px-6;
+      padding-left: 1.5rem;
+      padding-right: 1.5rem;
     }
   }
 
   @media (min-width: 1024px) {
     .container {
-      @apply px-8;
+      padding-left: 2rem;
+      padding-right: 2rem;
     }
   }
 }

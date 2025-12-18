@@ -13,10 +13,16 @@ COPY package.json pnpm-lock.yaml ./
 COPY patches ./patches
 
 # Instalar dependências (inclui devDependencies para conseguir rodar o build)
-RUN pnpm install --frozen-lockfile
+# Usando --no-frozen-lockfile temporariamente para evitar problemas de sincronização
+RUN pnpm install --no-frozen-lockfile
 
 # Copiar todo o código do frontend (client + server + shared, etc.)
+# O .dockerignore garante que node_modules não seja sobrescrito
 COPY . .
+
+# Reinstalar dependências após copiar arquivos para garantir que tudo está sincronizado
+# Isso garante que patches e overrides sejam aplicados corretamente
+RUN pnpm install --no-frozen-lockfile
 
 # Build completo: Vite (frontend) + esbuild (servidor Express/tRPC)
 RUN pnpm build
