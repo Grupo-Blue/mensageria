@@ -22,7 +22,13 @@ import {
   campaignRecipients,
   InsertCampaignRecipient,
   whatsappTemplates,
-  InsertWhatsappTemplate
+  InsertWhatsappTemplate,
+  contactLists,
+  ContactList,
+  InsertContactList,
+  contactListItems,
+  ContactListItem,
+  InsertContactListItem
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -638,4 +644,289 @@ export async function deleteWhatsappTemplates(businessAccountId: number) {
   if (!db) throw new Error("Database not available");
 
   await db.delete(whatsappTemplates).where(eq(whatsappTemplates.businessAccountId, businessAccountId));
+}
+
+// =====================================================
+// Contact Lists
+// =====================================================
+
+export async function getContactLists(userId: number): Promise<ContactList[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  return await db.select().from(contactLists)
+    .where(eq(contactLists.userId, userId))
+    .orderBy(desc(contactLists.createdAt));
+}
+
+export async function getContactListById(id: number): Promise<ContactList | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const result = await db.select().from(contactLists).where(eq(contactLists.id, id)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function createContactList(list: InsertContactList): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Prepare values, ensuring optional fields are properly handled
+  // Don't include fields that are undefined to let MySQL use defaults
+  const values: Record<string, any> = {
+    userId: list.userId,
+    name: list.name,
+  };
+
+  // Only include optional fields if they have actual values (not undefined, not null, not empty string)
+  if (list.company !== undefined && list.company !== null && String(list.company).trim() !== "") {
+    values.company = list.company;
+  }
+  if (list.description !== undefined && list.description !== null && String(list.description).trim() !== "") {
+    values.description = list.description;
+  }
+
+  try {
+    const result = await db.insert(contactLists).values(values);
+    // Handle different return formats from Drizzle
+    if (Array.isArray(result) && result.length > 0) {
+      return result[0].insertId || (result[0] as any).insertId || result[0];
+    }
+    return (result as any).insertId || (result as any)[0]?.insertId;
+  } catch (error: any) {
+    console.error("[createContactList] Error:", error);
+    console.error("[createContactList] Values:", JSON.stringify(values, null, 2));
+    throw error;
+  }
+}
+
+export async function updateContactList(id: number, data: Partial<InsertContactList>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.update(contactLists).set(data).where(eq(contactLists.id, id));
+}
+
+export async function deleteContactList(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Delete all items first
+  await db.delete(contactListItems).where(eq(contactListItems.listId, id));
+  // Then delete the list
+  await db.delete(contactLists).where(eq(contactLists.id, id));
+}
+
+export async function recalculateListStats(listId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const items = await db.select().from(contactListItems).where(eq(contactListItems.listId, listId));
+  
+  const totalContacts = items.length;
+  const invalidContacts = items.filter(i => i.status === "invalid").length;
+  const optedOutContacts = items.filter(i => i.status === "opted_out" || i.status === "spam_reported").length;
+
+  await db.update(contactLists).set({
+    totalContacts,
+    invalidContacts,
+    optedOutContacts,
+  }).where(eq(contactLists.id, listId));
+}
+
+// =====================================================
+// Contact List Items
+// =====================================================
+
+export async function getContactListItems(listId: number, statusFilter?: string): Promise<ContactListItem[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  if (statusFilter) {
+    return await db.select().from(contactListItems)
+      .where(and(
+        eq(contactListItems.listId, listId),
+        eq(contactListItems.status, statusFilter as any)
+      ))
+      .orderBy(desc(contactListItems.createdAt));
+  }
+
+  return await db.select().from(contactListItems)
+    .where(eq(contactListItems.listId, listId))
+    .orderBy(desc(contactListItems.createdAt));
+}
+
+export async function getActiveContactListItems(listId: number): Promise<ContactListItem[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  return await db.select().from(contactListItems)
+    .where(and(
+      eq(contactListItems.listId, listId),
+      eq(contactListItems.status, "active")
+    ));
+}
+
+export async function getContactListItemById(id: number): Promise<ContactListItem | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const result = await db.select().from(contactListItems).where(eq(contactListItems.id, id)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function getContactListItemByPhone(listId: number, phoneNumber: string): Promise<ContactListItem | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const result = await db.select().from(contactListItems)
+    .where(and(
+      eq(contactListItems.listId, listId),
+      eq(contactListItems.phoneNumber, phoneNumber)
+    ))
+    .limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function findContactByPhoneAcrossLists(userId: number, phoneNumber: string): Promise<ContactListItem | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  // Find contact by phone in any list owned by the user
+  const result = await db.select({
+    item: contactListItems,
+  }).from(contactListItems)
+    .innerJoin(contactLists, eq(contactListItems.listId, contactLists.id))
+    .where(and(
+      eq(contactLists.userId, userId),
+      eq(contactListItems.phoneNumber, phoneNumber)
+    ))
+    .limit(1);
+
+  return result.length > 0 ? result[0].item : undefined;
+}
+
+export async function addContactListItems(items: InsertContactListItem[]): Promise<{ added: number; duplicates: number }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  if (items.length === 0) return { added: 0, duplicates: 0 };
+
+  let added = 0;
+  let duplicates = 0;
+
+  // Insert one by one to handle duplicates gracefully
+  for (const item of items) {
+    try {
+      const existing = await getContactListItemByPhone(item.listId, item.phoneNumber);
+      if (existing) {
+        duplicates++;
+        continue;
+      }
+      await db.insert(contactListItems).values(item);
+      added++;
+    } catch (error: any) {
+      if (error.code === 'ER_DUP_ENTRY') {
+        duplicates++;
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  // Recalculate stats for the list
+  if (items.length > 0) {
+    await recalculateListStats(items[0].listId);
+  }
+
+  return { added, duplicates };
+}
+
+export async function updateContactListItem(id: number, data: Partial<InsertContactListItem>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.update(contactListItems).set(data).where(eq(contactListItems.id, id));
+
+  // Get the item to recalculate stats
+  const item = await getContactListItemById(id);
+  if (item) {
+    await recalculateListStats(item.listId);
+  }
+}
+
+export async function markContactAsOptedOut(listId: number, phoneNumber: string, reason: "manual" | "sair" | "spam" | "bounce") {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const status = reason === "spam" ? "spam_reported" : "opted_out";
+
+  await db.update(contactListItems).set({
+    status,
+    optedOutAt: new Date(),
+    optedOutReason: reason,
+  }).where(and(
+    eq(contactListItems.listId, listId),
+    eq(contactListItems.phoneNumber, phoneNumber)
+  ));
+
+  await recalculateListStats(listId);
+}
+
+export async function markContactAsOptedOutByPhone(userId: number, phoneNumber: string, reason: "manual" | "sair" | "spam" | "bounce") {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const status = reason === "spam" ? "spam_reported" : "opted_out";
+
+  // Find all lists for this user and opt out the contact in all of them
+  const userLists = await getContactLists(userId);
+  
+  for (const list of userLists) {
+    const item = await getContactListItemByPhone(list.id, phoneNumber);
+    if (item && item.status === "active") {
+      await db.update(contactListItems).set({
+        status,
+        optedOutAt: new Date(),
+        optedOutReason: reason,
+      }).where(eq(contactListItems.id, item.id));
+      
+      await recalculateListStats(list.id);
+    }
+  }
+}
+
+export async function reactivateContact(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const item = await getContactListItemById(id);
+  if (!item) throw new Error("Contact not found");
+
+  await db.update(contactListItems).set({
+    status: "active",
+    optedOutAt: null,
+    optedOutReason: null,
+  }).where(eq(contactListItems.id, id));
+
+  await recalculateListStats(item.listId);
+}
+
+export async function deleteContactListItem(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const item = await getContactListItemById(id);
+  if (!item) return;
+
+  await db.delete(contactListItems).where(eq(contactListItems.id, id));
+  await recalculateListStats(item.listId);
+}
+
+export async function deleteAllContactListItems(listId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.delete(contactListItems).where(eq(contactListItems.listId, listId));
+  await recalculateListStats(listId);
 }

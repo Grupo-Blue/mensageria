@@ -251,3 +251,46 @@ export const whatsappTemplates = mysqlTable("whatsapp_templates", {
 
 export type WhatsappTemplate = typeof whatsappTemplates.$inferSelect;
 export type InsertWhatsappTemplate = typeof whatsappTemplates.$inferInsert;
+
+/**
+ * Contact lists table for managing campaign recipients
+ */
+export const contactLists = mysqlTable("contact_lists", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("user_id").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  company: varchar("company", { length: 255 }),
+  description: text("description"),
+  totalContacts: int("total_contacts").default(0).notNull(),
+  invalidContacts: int("invalid_contacts").default(0).notNull(),
+  optedOutContacts: int("opted_out_contacts").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ContactList = typeof contactLists.$inferSelect;
+export type InsertContactList = typeof contactLists.$inferInsert;
+
+/**
+ * Contact list items - individual contacts in a list
+ */
+export const contactListItems = mysqlTable("contact_list_items", {
+  id: int("id").autoincrement().primaryKey(),
+  listId: int("list_id").notNull(),
+  phoneNumber: varchar("phone_number", { length: 20 }).notNull(),
+  name: varchar("name", { length: 255 }),
+  email: varchar("email", { length: 320 }),
+  customFields: text("custom_fields"), // JSON string with additional data
+  status: mysqlEnum("status", ["active", "invalid", "opted_out", "spam_reported"]).default("active").notNull(),
+  optedOutAt: timestamp("opted_out_at"),
+  optedOutReason: varchar("opted_out_reason", { length: 50 }), // "manual", "sair", "spam", "bounce"
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (table) => {
+  return {
+    uniqueListPhone: unique().on(table.listId, table.phoneNumber),
+  };
+});
+
+export type ContactListItem = typeof contactListItems.$inferSelect;
+export type InsertContactListItem = typeof contactListItems.$inferInsert;

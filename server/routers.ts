@@ -494,6 +494,8 @@ export const appRouter = router({
       .input(z.object({
         id: z.number(),
         name: z.string().min(1).optional(),
+        phoneNumberId: z.string().min(1).optional(),
+        businessAccountId: z.string().min(1).optional(),
         accessToken: z.string().min(1).optional(),
         isActive: z.boolean().optional(),
       }))
@@ -566,6 +568,8 @@ export const appRouter = router({
           url: z.string().optional(),
           phoneNumber: z.string().optional(),
         })).max(3).optional(),
+        variableType: z.enum(["NAMED", "POSITIONAL"]).optional().default("POSITIONAL"),
+        variableExamples: z.record(z.string()).optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         const account = await db.getWhatsappBusinessAccountById(input.accountId);
@@ -584,6 +588,8 @@ export const appRouter = router({
           bodyText: input.bodyText,
           footerText: input.footerText,
           buttons: input.buttons,
+          variableType: input.variableType,
+          variableExamples: input.variableExamples,
         });
 
         // Sync templates to get the new one in the database
@@ -604,13 +610,34 @@ export const appRouter = router({
           console.error("Error syncing templates after creation:", syncError);
         }
 
+        // Determina a mensagem baseada no status
+        let message = "Template criado com sucesso";
+        let success = true;
+        
+        if (result.status === "PENDING") {
+          message = "Template criado e enviado para aprovação da Meta. Aguarde a revisão (pode levar até 24h).";
+        } else if (result.status === "REJECTED") {
+          success = false;
+          const rejectedReason = (result as any).rejectedReason;
+          if (rejectedReason) {
+            message = `Template rejeitado pela Meta: ${rejectedReason}`;
+          } else {
+            message = "Template rejeitado pela Meta. Sugestões:\n" +
+              "• Use categoria UTILITY ao invés de MARKETING\n" +
+              "• Remova termos como 'oferta', 'promoção', 'investimento'\n" +
+              "• Evite urgência ('último dia', 'restam poucas')\n" +
+              "• Simplifique o texto - menos é mais\n" +
+              "• Crie o template diretamente no business.facebook.com para ver o motivo exato";
+          }
+        } else if (result.status === "APPROVED") {
+          message = "Template aprovado e pronto para uso!";
+        }
+
         return { 
-          success: true, 
+          success, 
           templateId: result.id, 
           status: result.status,
-          message: result.status === "PENDING" 
-            ? "Template criado e enviado para aprovação da Meta" 
-            : "Template criado com sucesso"
+          message
         };
       }),
 
@@ -705,6 +732,234 @@ export const appRouter = router({
 
         const api = new MetaWhatsAppApi(account.phoneNumberId, account.accessToken);
         return await api.getPhoneNumberInfo();
+      }),
+  }),
+
+  // =====================================================
+  // Contact Lists
+  // =====================================================
+  contactLists: router({
+    // List all contact lists for the user
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return await db.getContactLists(ctx.user.id);
+    }),
+
+    // Get a specific list by ID
+    get: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const list = await db.getContactListById(input.id);
+        if (!list || list.userId !== ctx.user.id) {
+          throw new Error("Lista não encontrada");
+        }
+        return list;
+      }),
+
+    // Create a new contact list
+    create: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1),
+        company: z.string().optional(),
+        description: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const listData: any = {
+          userId: ctx.user.id,
+          name: input.name,
+        };
+        
+        // Only include optional fields if they have values
+        if (input.company !== undefined && input.company !== null && input.company.trim() !== "") {
+          listData.company = input.company;
+        }
+        if (input.description !== undefined && input.description !== null && input.description.trim() !== "") {
+          listData.description = input.description;
+        }
+        
+        const id = await db.createContactList(listData);
+        return { success: true, id };
+      }),
+
+    // Update a contact list
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().min(1).optional(),
+        company: z.string().optional(),
+        description: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const list = await db.getContactListById(input.id);
+        if (!list || list.userId !== ctx.user.id) {
+          throw new Error("Lista não encontrada");
+        }
+
+        const { id, ...updateData } = input;
+        await db.updateContactList(id, updateData);
+        return { success: true };
+      }),
+
+    // Delete a contact list
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const list = await db.getContactListById(input.id);
+        if (!list || list.userId !== ctx.user.id) {
+          throw new Error("Lista não encontrada");
+        }
+
+        await db.deleteContactList(input.id);
+        return { success: true };
+      }),
+
+    // Get contacts in a list
+    getContacts: protectedProcedure
+      .input(z.object({
+        listId: z.number(),
+        statusFilter: z.enum(["active", "invalid", "opted_out", "spam_reported"]).optional(),
+      }))
+      .query(async ({ ctx, input }) => {
+        const list = await db.getContactListById(input.listId);
+        if (!list || list.userId !== ctx.user.id) {
+          throw new Error("Lista não encontrada");
+        }
+
+        return await db.getContactListItems(input.listId, input.statusFilter);
+      }),
+
+    // Add contacts to a list (import)
+    addContacts: protectedProcedure
+      .input(z.object({
+        listId: z.number(),
+        contacts: z.array(z.object({
+          phoneNumber: z.string().min(1),
+          name: z.string().optional(),
+          email: z.string().optional(),
+          customFields: z.string().optional(), // JSON string
+        })),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const list = await db.getContactListById(input.listId);
+        if (!list || list.userId !== ctx.user.id) {
+          throw new Error("Lista não encontrada");
+        }
+
+        const contactsToAdd = input.contacts.map((c) => ({
+          listId: input.listId,
+          phoneNumber: c.phoneNumber.replace(/\D/g, ""), // Clean phone number
+          name: c.name,
+          email: c.email,
+          customFields: c.customFields,
+          status: "active" as const,
+        }));
+
+        const result = await db.addContactListItems(contactsToAdd);
+        return { success: true, ...result };
+      }),
+
+    // Update a contact
+    updateContact: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().optional(),
+        email: z.string().optional(),
+        customFields: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const contact = await db.getContactListItemById(input.id);
+        if (!contact) {
+          throw new Error("Contato não encontrado");
+        }
+
+        const list = await db.getContactListById(contact.listId);
+        if (!list || list.userId !== ctx.user.id) {
+          throw new Error("Sem permissão");
+        }
+
+        const { id, ...updateData } = input;
+        await db.updateContactListItem(id, updateData);
+        return { success: true };
+      }),
+
+    // Opt-out a contact (manual)
+    optOutContact: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        reason: z.enum(["manual", "sair", "spam", "bounce"]).default("manual"),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const contact = await db.getContactListItemById(input.id);
+        if (!contact) {
+          throw new Error("Contato não encontrado");
+        }
+
+        const list = await db.getContactListById(contact.listId);
+        if (!list || list.userId !== ctx.user.id) {
+          throw new Error("Sem permissão");
+        }
+
+        await db.markContactAsOptedOut(contact.listId, contact.phoneNumber, input.reason);
+        return { success: true };
+      }),
+
+    // Opt-out by phone (used when user replies SAIR)
+    optOutByPhone: protectedProcedure
+      .input(z.object({
+        phoneNumber: z.string().min(1),
+        reason: z.enum(["manual", "sair", "spam", "bounce"]),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await db.markContactAsOptedOutByPhone(ctx.user.id, input.phoneNumber.replace(/\D/g, ""), input.reason);
+        return { success: true };
+      }),
+
+    // Reactivate a contact
+    reactivateContact: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const contact = await db.getContactListItemById(input.id);
+        if (!contact) {
+          throw new Error("Contato não encontrado");
+        }
+
+        const list = await db.getContactListById(contact.listId);
+        if (!list || list.userId !== ctx.user.id) {
+          throw new Error("Sem permissão");
+        }
+
+        await db.reactivateContact(input.id);
+        return { success: true };
+      }),
+
+    // Delete a contact
+    deleteContact: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const contact = await db.getContactListItemById(input.id);
+        if (!contact) {
+          throw new Error("Contato não encontrado");
+        }
+
+        const list = await db.getContactListById(contact.listId);
+        if (!list || list.userId !== ctx.user.id) {
+          throw new Error("Sem permissão");
+        }
+
+        await db.deleteContactListItem(input.id);
+        return { success: true };
+      }),
+
+    // Clear all contacts from a list
+    clearContacts: protectedProcedure
+      .input(z.object({ listId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const list = await db.getContactListById(input.listId);
+        if (!list || list.userId !== ctx.user.id) {
+          throw new Error("Lista não encontrada");
+        }
+
+        await db.deleteAllContactListItems(input.listId);
+        return { success: true };
       }),
   }),
 

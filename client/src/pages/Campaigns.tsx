@@ -1,4 +1,5 @@
 import DashboardLayout from "@/components/DashboardLayout";
+import ContactListsManager from "@/components/ContactListsManager";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -151,6 +152,9 @@ export default function Campaigns() {
             </Button>
           )}
         </div>
+
+        {/* Contact Lists Manager */}
+        <ContactListsManager />
 
         {/* No Business Accounts Warning */}
         {!hasBusinessAccounts && (

@@ -355,6 +355,8 @@ export class MetaWhatsAppApi {
         url?: string;
         phoneNumber?: string;
       }>;
+      variableType?: "NAMED" | "POSITIONAL";
+      variableExamples?: Record<string, string>;
     }
   ): Promise<{ id: string; status: string; category: string }> {
     const components: any[] = [];
@@ -381,33 +383,122 @@ export class MetaWhatsAppApi {
     // Body component (required)
     // Extract example values for variables
     const bodyVariables = template.bodyText.match(/\{\{[^}]+\}\}/g) || [];
-    const bodyComponent: any = {
-      type: "BODY",
-      text: template.bodyText,
+    
+    // Exemplos padrão para variáveis comuns (fallback se não fornecido)
+    const defaultExamples: Record<string, string> = {
+      'nome': 'João',
+      'name': 'João',
+      'primeiro_nome': 'Maria',
+      'first_name': 'Maria',
+      'cliente': 'Carlos',
+      'customer': 'Carlos',
+      'empresa': 'Empresa ABC',
+      'company': 'Empresa ABC',
+      'valor': 'R$ 1.500,00',
+      'value': 'R$ 1.500,00',
+      'data': '15/01/2025',
+      'date': '15/01/2025',
+      'codigo': 'ABC123',
+      'code': 'ABC123',
+      'produto': 'Produto Premium',
+      'product': 'Produto Premium',
+      'link': 'https://exemplo.com',
+      'url': 'https://exemplo.com',
+      'telefone': '+55 11 99999-9999',
+      'phone': '+55 11 99999-9999',
+      'endereco': 'Rua das Flores, 123',
+      'address': 'Rua das Flores, 123',
+      'hora': '14:30',
+      'time': '14:30',
+      'numero': '12345',
+      'number': '12345',
     };
+
+    // Função para obter exemplo: primeiro tenta o fornecido pelo usuário, depois o padrão
+    const getExampleForVariable = (varName: string, index: number): string => {
+      // Se o usuário forneceu um exemplo, usa ele
+      if (template.variableExamples && template.variableExamples[varName]) {
+        return template.variableExamples[varName];
+      }
+      
+      // Senão, tenta o padrão
+      const lowerName = varName.toLowerCase();
+      for (const [key, value] of Object.entries(defaultExamples)) {
+        if (lowerName.includes(key) || key.includes(lowerName)) {
+          return value;
+        }
+      }
+      
+      // Fallback genérico
+      return `Exemplo ${index + 1}`;
+    };
+
+    // Verifica o tipo de variável escolhido pelo usuário
+    const useNamedVariables = template.variableType === "NAMED";
+    
+    let processedBodyText = template.bodyText;
+    const variableExamplesList: string[] = [];
+    const namedParams: Array<{ param_name: string; example: string }> = [];
     
     if (bodyVariables.length > 0) {
-      // Check if using named variables or numbered
-      const isNamed = bodyVariables.some(v => !/^\{\{\d+\}\}$/.test(v));
+      // Verifica se as variáveis no texto são nomeadas ou numéricas
+      const hasNamedVars = bodyVariables.some(v => !/^\{\{\d+\}\}$/.test(v));
       
-      if (isNamed) {
-        // Named parameters
-        bodyComponent.example = {
-          body_text_named_params: bodyVariables.map(v => {
-            const paramName = v.replace(/[{}]/g, "").trim();
-            return {
-              param_name: paramName,
-              example: `[${paramName}]`,
-            };
-          }),
-        };
+      if (useNamedVariables && hasNamedVars) {
+        // Usa variáveis nomeadas (body_text_named_params)
+        bodyVariables.forEach((v, i) => {
+          const paramName = v.replace(/[{}]/g, "").trim();
+          namedParams.push({
+            param_name: paramName,
+            example: getExampleForVariable(paramName, i),
+          });
+        });
+        
+        console.log("[MetaWhatsAppApi] Using NAMED variables:");
+        console.log("[MetaWhatsAppApi] Named params:", namedParams);
       } else {
-        // Numbered parameters
-        bodyComponent.example = {
-          body_text: [bodyVariables.map((_, i) => `[Exemplo ${i + 1}]`)],
-        };
+        // Converte para variáveis numéricas (body_text)
+        if (hasNamedVars) {
+          // Converte variáveis nomeadas para numéricas
+          bodyVariables.forEach((v, i) => {
+            const paramName = v.replace(/[{}]/g, "").trim();
+            const numericVar = `{{${i + 1}}}`;
+            processedBodyText = processedBodyText.replace(v, numericVar);
+            variableExamplesList.push(getExampleForVariable(paramName, i));
+          });
+          
+          console.log("[MetaWhatsAppApi] Converted to POSITIONAL variables:");
+          console.log("[MetaWhatsAppApi] Original:", template.bodyText);
+          console.log("[MetaWhatsAppApi] Processed:", processedBodyText);
+        } else {
+          // Já são variáveis numéricas
+          bodyVariables.forEach((v, i) => {
+            const paramName = v.replace(/[{}]/g, "").trim();
+            variableExamplesList.push(getExampleForVariable(paramName, i));
+          });
+        }
+        console.log("[MetaWhatsAppApi] Examples:", variableExamplesList);
       }
     }
+
+    const bodyComponent: any = {
+      type: "BODY",
+      text: useNamedVariables ? template.bodyText : processedBodyText,
+    };
+    
+    // Adiciona exemplos se houver variáveis
+    if (namedParams.length > 0) {
+      // Formato para variáveis nomeadas
+      bodyComponent.example = {
+        body_text_named_params: namedParams,
+      };
+    } else if (variableExamplesList.length > 0) {
+      // Formato para variáveis numéricas
+      bodyComponent.example = {
+        body_text: [variableExamplesList],
+      };
+    }
+    
     components.push(bodyComponent);
 
     // Footer component (optional)
@@ -447,8 +538,21 @@ export class MetaWhatsAppApi {
       components.push(buttonsComponent);
     }
 
+    // Sanitiza o nome do template
+    let sanitizedName = template.name
+      .toLowerCase()
+      .replace(/\s+/g, "_")
+      .replace(/[^a-z0-9_]/g, "")
+      .replace(/_+/g, "_") // Remove underscores duplicados
+      .replace(/^_|_$/g, ""); // Remove underscore no início/fim
+    
+    // Garante que o nome não está vazio e tem pelo menos 1 caractere
+    if (!sanitizedName || sanitizedName.length < 1) {
+      sanitizedName = "template_" + Date.now();
+    }
+
     const payload = {
-      name: template.name.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, ""),
+      name: sanitizedName,
       language: template.language,
       category: template.category,
       components,
@@ -464,13 +568,27 @@ export class MetaWhatsAppApi {
       );
 
       console.log("[MetaWhatsAppApi] Template created:", response.data);
+      
+      // Verifica se foi rejeitado e tenta obter mais detalhes
+      if (response.data.status === "REJECTED") {
+        console.log("[MetaWhatsAppApi] Template REJECTED - checking for rejection reason...");
+        // A Meta às vezes retorna o motivo em rejected_reason
+        const rejectionInfo = response.data.rejected_reason || response.data.quality_score || "Motivo não especificado";
+        console.log("[MetaWhatsAppApi] Rejection info:", rejectionInfo);
+      }
+      
       return {
         id: response.data.id,
         status: response.data.status || "PENDING",
         category: response.data.category || template.category,
+        rejectedReason: response.data.rejected_reason,
       };
     } catch (error) {
       console.error("[MetaWhatsAppApi] Error creating template:", error);
+      if (axios.isAxiosError(error)) {
+        const errorData = error.response?.data;
+        console.error("[MetaWhatsAppApi] Error details:", JSON.stringify(errorData, null, 2));
+      }
       throw this.handleError(error);
     }
   }

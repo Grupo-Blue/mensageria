@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { trpc } from "@/lib/trpc";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Loader2,
   ArrowLeft,
@@ -33,6 +34,10 @@ import {
   Clock,
   Calendar,
   RefreshCw,
+  List,
+  UserCheck,
+  UserX,
+  Building2,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useState, useEffect, useMemo } from "react";
@@ -73,6 +78,8 @@ export default function CampaignNew() {
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [newRecipient, setNewRecipient] = useState({ phoneNumber: "", name: "" });
   const [csvText, setCsvText] = useState("");
+  const [selectedListId, setSelectedListId] = useState<number | null>(null);
+  const [recipientSource, setRecipientSource] = useState<"list" | "manual" | "csv">("list");
 
   // Scheduling state
   const [isScheduled, setIsScheduled] = useState(false);
@@ -97,6 +104,17 @@ export default function CampaignNew() {
       refetchInterval: false,
       refetchOnWindowFocus: false,
     }
+  );
+
+  // Contact Lists
+  const { data: contactLists, isLoading: isLoadingLists } = trpc.contactLists.list.useQuery(undefined, {
+    refetchInterval: false,
+    refetchOnWindowFocus: false,
+  });
+
+  const { data: listContacts, isLoading: isLoadingListContacts } = trpc.contactLists.getContacts.useQuery(
+    { listId: selectedListId!, statusFilter: "active" },
+    { enabled: !!selectedListId }
   );
 
   const utils = trpc.useUtils();
@@ -229,6 +247,20 @@ export default function CampaignNew() {
     return templates?.filter((t) => t.status === "APPROVED") || [];
   }, [templates]);
 
+  // Selected list details
+  const selectedList = useMemo(() => {
+    if (!selectedListId || !contactLists) return null;
+    return contactLists.find((l) => l.id === selectedListId);
+  }, [selectedListId, contactLists]);
+
+  // Get total recipients count (from list or manual)
+  const totalRecipients = useMemo(() => {
+    if (recipientSource === "list" && listContacts) {
+      return listContacts.length;
+    }
+    return recipients.length;
+  }, [recipientSource, listContacts, recipients]);
+
   // Handle CSV import
   const handleImportCSV = () => {
     if (!csvText.trim()) {
@@ -297,9 +329,24 @@ export default function CampaignNew() {
       toast.error("Selecione um template");
       return;
     }
-    if (recipients.length === 0) {
-      toast.error("Adicione pelo menos um destinatario");
-      return;
+
+    // Get recipients based on source
+    let finalRecipients: Recipient[] = [];
+    if (recipientSource === "list") {
+      if (!selectedListId || !listContacts || listContacts.length === 0) {
+        toast.error("Selecione uma lista com contatos ativos");
+        return;
+      }
+      finalRecipients = listContacts.map((c) => ({
+        phoneNumber: c.phoneNumber,
+        name: c.name || undefined,
+      }));
+    } else {
+      if (recipients.length === 0) {
+        toast.error("Adicione pelo menos um destinatario");
+        return;
+      }
+      finalRecipients = recipients;
     }
 
     // Validate scheduling
@@ -326,6 +373,9 @@ export default function CampaignNew() {
       }
     });
 
+    // Store recipients for use in mutation success handler
+    setRecipients(finalRecipients);
+
     createCampaignMutation.mutate({
       businessAccountId,
       name: name.trim(),
@@ -346,7 +396,10 @@ export default function CampaignNew() {
   // Step validation
   const canProceedToStep2 = !!businessAccountId && !!templateName;
   const canProceedToStep3 = templateVariableNames.length === 0 || Object.keys(templateVariables).length > 0;
-  const canCreate = !!name && recipients.length > 0;
+  const canCreate = !!name && (
+    (recipientSource === "list" && selectedListId && listContacts && listContacts.length > 0) ||
+    (recipientSource !== "list" && recipients.length > 0)
+  );
 
   if (isLoadingAccounts) {
     return (
@@ -706,17 +759,137 @@ export default function CampaignNew() {
                 Adicionar Destinatarios
               </CardTitle>
               <CardDescription>
-                Adicione os numeros de telefone que receberao a campanha
+                Selecione uma lista de contatos ou adicione manualmente
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <Tabs defaultValue="manual">
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="manual">Adicionar Manual</TabsTrigger>
-                  <TabsTrigger value="csv">Importar CSV</TabsTrigger>
-                </TabsList>
+              {/* Source Selection */}
+              <div className="space-y-3">
+                <Label>Origem dos Destinatários</Label>
+                <RadioGroup
+                  value={recipientSource}
+                  onValueChange={(value) => setRecipientSource(value as "list" | "manual" | "csv")}
+                  className="flex gap-4"
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="list" id="source-list" />
+                    <Label htmlFor="source-list" className="cursor-pointer flex items-center gap-1">
+                      <List className="w-4 h-4" />
+                      Lista de Contatos
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="manual" id="source-manual" />
+                    <Label htmlFor="source-manual" className="cursor-pointer flex items-center gap-1">
+                      <User className="w-4 h-4" />
+                      Manual
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="csv" id="source-csv" />
+                    <Label htmlFor="source-csv" className="cursor-pointer flex items-center gap-1">
+                      <Upload className="w-4 h-4" />
+                      Importar CSV
+                    </Label>
+                  </div>
+                </RadioGroup>
+              </div>
 
-                <TabsContent value="manual" className="space-y-4 mt-4">
+              {/* List Selection */}
+              {recipientSource === "list" && (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Selecionar Lista</Label>
+                    {isLoadingLists ? (
+                      <div className="flex items-center gap-2 text-gray-500">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Carregando listas...
+                      </div>
+                    ) : contactLists && contactLists.length > 0 ? (
+                      <Select
+                        value={selectedListId?.toString() || ""}
+                        onValueChange={(val) => setSelectedListId(parseInt(val))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione uma lista" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {contactLists.map((list) => {
+                            const activeContacts = list.totalContacts - list.invalidContacts - list.optedOutContacts;
+                            return (
+                              <SelectItem key={list.id} value={list.id.toString()}>
+                                <div className="flex items-center gap-2">
+                                  <span>{list.name}</span>
+                                  {list.company && (
+                                    <Badge variant="outline" className="text-xs">
+                                      {list.company}
+                                    </Badge>
+                                  )}
+                                  <span className="text-gray-500 text-sm">
+                                    ({activeContacts} ativos)
+                                  </span>
+                                </div>
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="p-4 border rounded-lg bg-yellow-50 text-yellow-800">
+                        <p className="font-medium">Nenhuma lista encontrada</p>
+                        <p className="text-sm mt-1">
+                          Crie uma lista na página de Campanhas antes de criar uma nova campanha.
+                        </p>
+                        <Button variant="link" asChild className="p-0 h-auto mt-2">
+                          <Link href="/campaigns">
+                            Ir para Campanhas →
+                          </Link>
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Selected List Details */}
+                  {selectedList && (
+                    <div className="p-4 border rounded-lg bg-blue-50">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium text-blue-900">{selectedList.name}</p>
+                          {selectedList.company && (
+                            <p className="text-sm text-blue-700 flex items-center gap-1 mt-1">
+                              <Building2 className="w-3 h-3" />
+                              {selectedList.company}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4 mt-3 text-sm">
+                        <span className="flex items-center gap-1 text-green-700">
+                          <UserCheck className="w-4 h-4" />
+                          {isLoadingListContacts ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            `${listContacts?.length || 0} ativos`
+                          )}
+                        </span>
+                        {selectedList.optedOutContacts > 0 && (
+                          <span className="flex items-center gap-1 text-orange-700">
+                            <UserX className="w-4 h-4" />
+                            {selectedList.optedOutContacts} saíram
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-blue-600 mt-2">
+                        Apenas contatos ativos receberão a mensagem
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Manual Input */}
+              {recipientSource === "manual" && (
+                <div className="space-y-4">
                   <div className="flex gap-2">
                     <div className="flex-1">
                       <Input
@@ -740,9 +913,59 @@ export default function CampaignNew() {
                       <Plus className="w-4 h-4" />
                     </Button>
                   </div>
-                </TabsContent>
 
-                <TabsContent value="csv" className="space-y-4 mt-4">
+                  {/* Manual Recipients List */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Destinatarios ({recipients.length})</Label>
+                      {recipients.length > 0 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-red-600"
+                          onClick={() => setRecipients([])}
+                        >
+                          Limpar Todos
+                        </Button>
+                      )}
+                    </div>
+
+                    {recipients.length === 0 ? (
+                      <div className="text-center py-8 text-gray-500 border rounded-lg">
+                        <Users className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                        <p>Nenhum destinatario adicionado</p>
+                      </div>
+                    ) : (
+                      <div className="max-h-48 overflow-y-auto border rounded-lg divide-y">
+                        {recipients.map((recipient, index) => (
+                          <div
+                            key={index}
+                            className="flex items-center justify-between p-3 hover:bg-gray-50"
+                          >
+                            <div>
+                              <p className="font-medium">{recipient.phoneNumber}</p>
+                              {recipient.name && (
+                                <p className="text-sm text-gray-500">{recipient.name}</p>
+                              )}
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleRemoveRecipient(index)}
+                            >
+                              <Trash2 className="w-4 h-4 text-red-500" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* CSV Import */}
+              {recipientSource === "csv" && (
+                <div className="space-y-4">
                   <div className="space-y-2">
                     <Textarea
                       placeholder="Cole aqui os dados CSV (telefone,nome)&#10;Exemplo:&#10;5511999999999,Joao&#10;5511888888888,Maria"
@@ -760,55 +983,47 @@ export default function CampaignNew() {
                       </Button>
                     </div>
                   </div>
-                </TabsContent>
-              </Tabs>
 
-              {/* Recipients List */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label>Destinatarios ({recipients.length})</Label>
+                  {/* CSV Recipients List */}
                   {recipients.length > 0 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-600"
-                      onClick={() => setRecipients([])}
-                    >
-                      Limpar Todos
-                    </Button>
-                  )}
-                </div>
-
-                {recipients.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500 border rounded-lg">
-                    <Users className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                    <p>Nenhum destinatario adicionado</p>
-                  </div>
-                ) : (
-                  <div className="max-h-64 overflow-y-auto border rounded-lg divide-y">
-                    {recipients.map((recipient, index) => (
-                      <div
-                        key={index}
-                        className="flex items-center justify-between p-3 hover:bg-gray-50"
-                      >
-                        <div>
-                          <p className="font-medium">{recipient.phoneNumber}</p>
-                          {recipient.name && (
-                            <p className="text-sm text-gray-500">{recipient.name}</p>
-                          )}
-                        </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label>Importados ({recipients.length})</Label>
                         <Button
                           variant="ghost"
-                          size="icon"
-                          onClick={() => handleRemoveRecipient(index)}
+                          size="sm"
+                          className="text-red-600"
+                          onClick={() => setRecipients([])}
                         >
-                          <Trash2 className="w-4 h-4 text-red-500" />
+                          Limpar Todos
                         </Button>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                      <div className="max-h-48 overflow-y-auto border rounded-lg divide-y">
+                        {recipients.map((recipient, index) => (
+                          <div
+                            key={index}
+                            className="flex items-center justify-between p-3 hover:bg-gray-50"
+                          >
+                            <div>
+                              <p className="font-medium">{recipient.phoneNumber}</p>
+                              {recipient.name && (
+                                <p className="text-sm text-gray-500">{recipient.name}</p>
+                              )}
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleRemoveRecipient(index)}
+                            >
+                              <Trash2 className="w-4 h-4 text-red-500" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Scheduling */}
               <div className="space-y-4 border rounded-lg p-4">
@@ -923,7 +1138,27 @@ export default function CampaignNew() {
                 <ul className="text-sm text-blue-800 space-y-1">
                   <li><strong>Nome:</strong> {name || "-"}</li>
                   <li><strong>Template:</strong> {templateName || "-"}</li>
-                  <li><strong>Destinatarios:</strong> {recipients.length}</li>
+                  <li>
+                    <strong>Destinatarios:</strong>{" "}
+                    {recipientSource === "list" ? (
+                      <>
+                        {selectedList ? (
+                          <>
+                            {isLoadingListContacts ? (
+                              <Loader2 className="w-3 h-3 animate-spin inline" />
+                            ) : (
+                              listContacts?.length || 0
+                            )}{" "}
+                            (Lista: {selectedList.name})
+                          </>
+                        ) : (
+                          "Selecione uma lista"
+                        )}
+                      </>
+                    ) : (
+                      recipients.length
+                    )}
+                  </li>
                   {isScheduled && scheduledDate && scheduledTime && (
                     <li className="flex items-center gap-1">
                       <Clock className="w-3 h-3" />

@@ -49,6 +49,7 @@ import {
   MessageSquare,
   PlusCircle,
   Info,
+  Edit,
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
@@ -95,6 +96,8 @@ export default function WhatsAppBusiness() {
     bodyText: "",
     footerText: "",
     buttons: [] as TemplateButton[],
+    variableType: "NAMED" as "NAMED" | "POSITIONAL",
+    variableExamples: {} as Record<string, string>,
   });
   
   const [newAccount, setNewAccount] = useState({
@@ -161,7 +164,14 @@ export default function WhatsAppBusiness() {
 
   const createTemplateMutation = trpc.whatsappBusiness.createTemplate.useMutation({
     onSuccess: (data) => {
-      toast.success(data.message);
+      if (data.success) {
+        toast.success(data.message);
+      } else {
+        // Template foi rejeitado pela Meta
+        toast.error(data.message, {
+          duration: 10000, // Mostra por mais tempo para o usuário ler
+        });
+      }
       setIsCreateTemplateDialogOpen(false);
       resetNewTemplate();
       utils.whatsappBusiness.getTemplates.invalidate();
@@ -181,8 +191,27 @@ export default function WhatsAppBusiness() {
       bodyText: "",
       footerText: "",
       buttons: [],
+      variableType: "NAMED",
+      variableExamples: {},
     });
     setCreateTemplateAccountId(null);
+  };
+
+  // Detectar variáveis no texto do template
+  const detectedVariables = useMemo(() => {
+    const matches = newTemplate.bodyText.match(/\{\{([^}]+)\}\}/g) || [];
+    return [...new Set(matches)].map(v => v.replace(/[{}]/g, "").trim());
+  }, [newTemplate.bodyText]);
+
+  // Atualizar exemplo de variável
+  const updateVariableExample = (varName: string, example: string) => {
+    setNewTemplate(prev => ({
+      ...prev,
+      variableExamples: {
+        ...prev.variableExamples,
+        [varName]: example,
+      },
+    }));
   };
 
   const addButton = () => {
@@ -234,6 +263,8 @@ export default function WhatsAppBusiness() {
       bodyText: newTemplate.bodyText,
       footerText: newTemplate.footerText || undefined,
       buttons: newTemplate.buttons.length > 0 ? newTemplate.buttons : undefined,
+      variableType: newTemplate.variableType,
+      variableExamples: Object.keys(newTemplate.variableExamples).length > 0 ? newTemplate.variableExamples : undefined,
     });
   };
 
@@ -640,6 +671,75 @@ export default function WhatsAppBusiness() {
                         </span>
                       </div>
                     </div>
+
+                    {/* Variable Configuration - appears when variables are detected */}
+                    {detectedVariables.length > 0 && (
+                      <div className="space-y-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                        <div className="flex items-center gap-2">
+                          <Info className="w-4 h-4 text-blue-600" />
+                          <Label className="text-blue-800 font-medium">
+                            Configuração das Variáveis ({detectedVariables.length} detectadas)
+                          </Label>
+                        </div>
+                        
+                        {/* Variable Type */}
+                        <div className="space-y-2">
+                          <Label className="text-sm">Tipo de Variável</Label>
+                          <Select
+                            value={newTemplate.variableType}
+                            onValueChange={(val) => setNewTemplate(prev => ({ 
+                              ...prev, 
+                              variableType: val as "NAMED" | "POSITIONAL" 
+                            }))}
+                          >
+                            <SelectTrigger className="bg-white">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="NAMED">Nome (ex: {`{{nome}}`})</SelectItem>
+                              <SelectItem value="POSITIONAL">Número (ex: {`{{1}}`})</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-blue-600">
+                            {newTemplate.variableType === "NAMED" 
+                              ? "Variáveis identificadas por nome. Ex: {{nome}}, {{empresa}}"
+                              : "Variáveis serão convertidas para números. Ex: {{1}}, {{2}}"
+                            }
+                          </p>
+                        </div>
+
+                        {/* Variable Examples */}
+                        <div className="space-y-2">
+                          <Label className="text-sm">Amostras de Variáveis (obrigatório)</Label>
+                          <p className="text-xs text-blue-600 mb-2">
+                            Informe exemplos realistas para cada variável. A Meta usa esses exemplos para aprovar o template.
+                          </p>
+                          <div className="space-y-2">
+                            {detectedVariables.map((varName, index) => (
+                              <div key={varName} className="flex items-center gap-2">
+                                <div className="w-24 flex-shrink-0">
+                                  <span className="text-sm font-mono bg-blue-100 px-2 py-1 rounded text-blue-700">
+                                    {newTemplate.variableType === "POSITIONAL" ? `{{${index + 1}}}` : `{{${varName}}}`}
+                                  </span>
+                                </div>
+                                <Input
+                                  placeholder={
+                                    varName.toLowerCase().includes('nome') ? 'Ex: João' :
+                                    varName.toLowerCase().includes('empresa') ? 'Ex: Empresa ABC' :
+                                    varName.toLowerCase().includes('valor') ? 'Ex: R$ 1.500,00' :
+                                    varName.toLowerCase().includes('data') ? 'Ex: 15/01/2025' :
+                                    `Ex: Valor de ${varName}`
+                                  }
+                                  value={newTemplate.variableExamples[varName] || ""}
+                                  onChange={(e) => updateVariableExample(varName, e.target.value)}
+                                  className="bg-white"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Footer (optional) */}
                     <div className="space-y-2">
@@ -1104,6 +1204,17 @@ interface AccountCardProps {
 }
 
 function AccountCard({ account, onDelete, onSyncTemplates, isSyncing, isDeleting }: AccountCardProps) {
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editData, setEditData] = useState({
+    name: account.name,
+    phoneNumberId: account.phoneNumberId,
+    businessAccountId: account.businessAccountId,
+    accessToken: "",
+    isActive: account.isActive,
+  });
+
+  const utils = trpc.useUtils();
+
   const { data: phoneInfo, isLoading: isLoadingPhone } = trpc.whatsappBusiness.getPhoneInfo.useQuery(
     { accountId: account.id },
     {
@@ -1120,6 +1231,34 @@ function AccountCard({ account, onDelete, onSyncTemplates, isSyncing, isDeleting
       refetchOnWindowFocus: false,
     }
   );
+
+  const updateMutation = trpc.whatsappBusiness.update.useMutation({
+    onSuccess: () => {
+      toast.success("Conta atualizada com sucesso!");
+      utils.whatsappBusiness.list.invalidate();
+      setIsEditOpen(false);
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const handleUpdate = () => {
+    const updatePayload: any = {
+      id: account.id,
+      name: editData.name,
+      phoneNumberId: editData.phoneNumberId,
+      businessAccountId: editData.businessAccountId,
+      isActive: editData.isActive,
+    };
+    
+    // Só envia o token se foi alterado
+    if (editData.accessToken.trim()) {
+      updatePayload.accessToken = editData.accessToken;
+    }
+    
+    updateMutation.mutate(updatePayload);
+  };
 
   const approvedTemplates = templates?.filter((t) => t.status === "APPROVED") || [];
 
@@ -1152,6 +1291,94 @@ function AccountCard({ account, onDelete, onSyncTemplates, isSyncing, isDeleting
               )}
               <span className="ml-2 hidden sm:inline">Sincronizar Templates</span>
             </Button>
+            
+            {/* Edit Button */}
+            <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <Edit className="w-4 h-4" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>Editar Conta WhatsApp Business</DialogTitle>
+                  <DialogDescription>
+                    Atualize os dados da conexão com a API do WhatsApp Business
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-name">Nome da Conta</Label>
+                    <Input
+                      id="edit-name"
+                      value={editData.name}
+                      onChange={(e) => setEditData(prev => ({ ...prev, name: e.target.value }))}
+                      placeholder="Ex: Minha Empresa"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-phoneNumberId">Phone Number ID</Label>
+                    <Input
+                      id="edit-phoneNumberId"
+                      value={editData.phoneNumberId}
+                      onChange={(e) => setEditData(prev => ({ ...prev, phoneNumberId: e.target.value }))}
+                      placeholder="Ex: 123456789012345"
+                    />
+                    <p className="text-xs text-gray-500">
+                      Encontre em: Meta Business Suite → WhatsApp → Configurações da API
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-businessAccountId">WhatsApp Business Account ID</Label>
+                    <Input
+                      id="edit-businessAccountId"
+                      value={editData.businessAccountId}
+                      onChange={(e) => setEditData(prev => ({ ...prev, businessAccountId: e.target.value }))}
+                      placeholder="Ex: 123456789012345"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-accessToken">Access Token</Label>
+                    <Input
+                      id="edit-accessToken"
+                      type="password"
+                      value={editData.accessToken}
+                      onChange={(e) => setEditData(prev => ({ ...prev, accessToken: e.target.value }))}
+                      placeholder="Deixe vazio para manter o atual"
+                    />
+                    <p className="text-xs text-gray-500">
+                      Só preencha se quiser trocar o token. Deixe vazio para manter o atual.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="edit-isActive"
+                      checked={editData.isActive}
+                      onChange={(e) => setEditData(prev => ({ ...prev, isActive: e.target.checked }))}
+                      className="rounded"
+                    />
+                    <Label htmlFor="edit-isActive">Conta ativa</Label>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsEditOpen(false)}>
+                    Cancelar
+                  </Button>
+                  <Button onClick={handleUpdate} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Salvando...
+                      </>
+                    ) : (
+                      "Salvar Alterações"
+                    )}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700">
