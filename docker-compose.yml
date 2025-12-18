@@ -21,7 +21,7 @@ services:
       DATABASE_URL: mysql://root:password@mysql:3306/mensageria
     depends_on:
       - mysql
-      - backend
+      - mensageria-backend
       - drizzle-migrations
 
   mensageria-backend:

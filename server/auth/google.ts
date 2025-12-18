@@ -19,7 +19,7 @@ if (!ENV.googleClientId || !ENV.googleClientSecret) {
 // Em produção, usar a URL de produção
 function getCallbackBaseUrl(): string {
   if (ENV.isProduction) {
-    return 'https://mensageria.grupoblue.com.br';
+    return process.env.oAuthServerUrl;
   }
   
   // Em desenvolvimento, usar FRONTEND_URL ou padrão localhost:3000
