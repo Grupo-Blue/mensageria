@@ -2,6 +2,8 @@ import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
 import net from "net";
+import fs from "fs";
+import path from "path";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
@@ -136,9 +138,43 @@ async function startServer() {
     })
   );
   // development mode uses Vite, production mode uses static files
-  if (process.env.NODE_ENV === "development") {
+  // IMPORTANTE: Mesmo com NODE_ENV=development, se os arquivos buildados existem (Docker),
+  // devemos usar serveStatic porque o client/ não está disponível no container
+  const nodeEnv = process.env.NODE_ENV || "production";
+  const distPublicPath = path.resolve(process.cwd(), "dist", "public");
+  const indexPath = path.resolve(distPublicPath, "index.html");
+  const hasBuiltFiles = fs.existsSync(distPublicPath) && fs.existsSync(indexPath);
+  
+  console.log(`[Server] Environment: NODE_ENV=${nodeEnv}`);
+  console.log(`[Server] Working directory: ${process.cwd()}`);
+  console.log(`[Server] Checking for built files at: ${distPublicPath}`);
+  console.log(`[Server] Built files exist: ${hasBuiltFiles}`);
+  if (hasBuiltFiles) {
+    console.log(`[Server] index.html found at: ${indexPath}`);
+  } else {
+    console.log(`[Server] index.html NOT found at: ${indexPath}`);
+    // Listar o que existe em dist/ para debug
+    const distPath = path.resolve(process.cwd(), "dist");
+    if (fs.existsSync(distPath)) {
+      try {
+        const distContents = fs.readdirSync(distPath);
+        console.log(`[Server] Contents of dist/: ${distContents.join(", ")}`);
+      } catch (e) {
+        console.log(`[Server] Could not read dist/ directory`);
+      }
+    }
+  }
+  
+  if (nodeEnv === "development" && !hasBuiltFiles) {
+    // Apenas usar Vite se estiver em desenvolvimento LOCAL (sem Docker)
+    // e os arquivos buildados não existirem
+    console.log("[Server] Using Vite dev server (development mode, no built files)");
     await setupVite(app, server);
   } else {
+    // Usar arquivos estáticos se:
+    // 1. Estiver em produção, OU
+    // 2. Os arquivos buildados existirem (caso Docker com NODE_ENV=development)
+    console.log("[Server] Using static file serving");
     serveStatic(app);
   }
 
