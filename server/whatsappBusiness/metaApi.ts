@@ -487,16 +487,21 @@ export class MetaWhatsAppApi {
     };
     
     // Adiciona exemplos se houver variáveis
-    if (namedParams.length > 0) {
-      // Formato para variáveis nomeadas
+    // IMPORTANTE: A API da Meta na versão 21.0 requer que variáveis nomeadas
+    // usem o campo "body_text_named_params" com format específico
+    if (namedParams.length > 0 && useNamedVariables) {
+      // Formato para variáveis nomeadas (Meta API v21.0+)
+      // Referência: https://developers.facebook.com/docs/whatsapp/business-management-api/message-templates/components
       bodyComponent.example = {
         body_text_named_params: namedParams,
       };
+      console.log("[MetaWhatsAppApi] Body component with named params:", JSON.stringify(bodyComponent, null, 2));
     } else if (variableExamplesList.length > 0) {
-      // Formato para variáveis numéricas
+      // Formato para variáveis numéricas (posicionais)
       bodyComponent.example = {
         body_text: [variableExamplesList],
       };
+      console.log("[MetaWhatsAppApi] Body component with positional params:", JSON.stringify(bodyComponent, null, 2));
     }
     
     components.push(bodyComponent);
@@ -551,11 +556,13 @@ export class MetaWhatsAppApi {
       sanitizedName = "template_" + Date.now();
     }
 
-    const payload = {
+    const payload: Record<string, any> = {
       name: sanitizedName,
       language: template.language,
       category: template.category,
       components,
+      // Permite que a Meta mude a categoria se necessário (aumenta chance de aprovação)
+      allow_category_change: true,
     };
 
     console.log("[MetaWhatsAppApi] Creating template:", JSON.stringify(payload, null, 2));
@@ -567,14 +574,42 @@ export class MetaWhatsAppApi {
         { headers: this.getHeaders() }
       );
 
-      console.log("[MetaWhatsAppApi] Template created:", response.data);
+      console.log("[MetaWhatsAppApi] Template created - Full response:", JSON.stringify(response.data, null, 2));
       
       // Verifica se foi rejeitado e tenta obter mais detalhes
       if (response.data.status === "REJECTED") {
-        console.log("[MetaWhatsAppApi] Template REJECTED - checking for rejection reason...");
-        // A Meta às vezes retorna o motivo em rejected_reason
-        const rejectionInfo = response.data.rejected_reason || response.data.quality_score || "Motivo não especificado";
-        console.log("[MetaWhatsAppApi] Rejection info:", rejectionInfo);
+        console.log("[MetaWhatsAppApi] Template REJECTED - Full response data:", JSON.stringify(response.data, null, 2));
+        
+        // Tenta obter detalhes do template rejeitado
+        let rejectionReason = response.data.rejected_reason || "";
+        
+        // Verifica se há quality_score com detalhes
+        if (response.data.quality_score) {
+          rejectionReason += ` Quality: ${JSON.stringify(response.data.quality_score)}`;
+        }
+        
+        // Verifica componentes por erros específicos
+        if (response.data.components) {
+          for (const comp of response.data.components) {
+            if (comp.quality_score || comp.rejected_reason) {
+              rejectionReason += ` [${comp.type}]: ${comp.rejected_reason || comp.quality_score}`;
+            }
+          }
+        }
+        
+        console.log("[MetaWhatsAppApi] Rejection reason compiled:", rejectionReason || "Motivo não especificado pela Meta");
+        
+        return {
+          id: response.data.id,
+          status: "REJECTED",
+          category: response.data.category || template.category,
+          rejectedReason: rejectionReason || "Template rejeitado. Sugestões:\n" +
+            "• Use categoria UTILITY (menos restritiva que MARKETING)\n" +
+            "• O texto não pode parecer propaganda ou marketing direto\n" +
+            "• Evite mencionar ofertas, promoções ou vendas\n" +
+            "• Mantenha o texto objetivo e informativo\n" +
+            "• Acesse business.facebook.com > WhatsApp Manager para ver detalhes",
+        };
       }
       
       return {
@@ -586,8 +621,20 @@ export class MetaWhatsAppApi {
     } catch (error) {
       console.error("[MetaWhatsAppApi] Error creating template:", error);
       if (axios.isAxiosError(error)) {
-        const errorData = error.response?.data;
+        const errorData = error.response?.data?.error || error.response?.data;
         console.error("[MetaWhatsAppApi] Error details:", JSON.stringify(errorData, null, 2));
+        
+        // Extrai mensagem de erro mais específica da Meta
+        if (errorData?.message) {
+          let errorMessage = errorData.message;
+          if (errorData.error_user_msg) {
+            errorMessage = errorData.error_user_msg;
+          }
+          if (errorData.error_data?.details) {
+            errorMessage += ` Detalhes: ${errorData.error_data.details}`;
+          }
+          throw new Error(`Meta API Error: ${errorMessage}`);
+        }
       }
       throw this.handleError(error);
     }
