@@ -38,7 +38,7 @@ export default function WhatsApp() {
     }
     
     // Conecta ao Socket.IO - usa variável de ambiente ou localhost em desenvolvimento
-    const backendUrl = import.meta.env.BACKEND_API_URL || "http://localhost:3333";
+    const backendUrl = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3333";
     console.log("[WhatsApp] Connecting to Socket.IO at:", backendUrl);
     
     const socket = io(backendUrl, {

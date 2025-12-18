@@ -11,3 +11,4 @@ dist
 *.md
 coverage
 .nyc_output
+
