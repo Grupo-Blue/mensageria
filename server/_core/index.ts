@@ -52,27 +52,28 @@ async function startServer() {
     app.use((req: any, res, next) => {
       // Apenas sobrescrever se for uma rota de OAuth
       if (req.path.startsWith('/api/auth/google')) {
-        // Forçar protocolo e hostname corretos para OAuth
-        // Isso garante que o Passport use a URL configurada em vez de construir dinamicamente
-        const originalProtocol = req.protocol;
-        const originalHostname = req.hostname;
+        // Forçar protocolo e hostname corretos para OAuth usando Object.defineProperty
+        // req.protocol e req.hostname são propriedades somente leitura, então precisamos sobrescrevê-las
         const originalGet = req.get;
         
-        req.protocol = oauthUrl.protocol.replace(':', '');
-        req.hostname = oauthUrl.hostname;
+        Object.defineProperty(req, 'protocol', {
+          get: () => oauthUrl.protocol.replace(':', ''),
+          configurable: true,
+          enumerable: true
+        });
+        
+        Object.defineProperty(req, 'hostname', {
+          get: () => oauthUrl.hostname,
+          configurable: true,
+          enumerable: true
+        });
+        
         req.get = function(header: string) {
           if (header && header.toLowerCase() === 'host') {
             return oauthUrl.host;
           }
           return originalGet ? originalGet.call(this, header) : req.headers[header?.toLowerCase() || header];
         };
-        
-        // Restaurar valores originais após a requisição (para não afetar outras rotas)
-        res.on('finish', () => {
-          req.protocol = originalProtocol;
-          req.hostname = originalHostname;
-          req.get = originalGet;
-        });
       }
       next();
     });

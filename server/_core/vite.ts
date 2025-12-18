@@ -38,12 +38,18 @@ export async function setupVite(app: Express, server: Server) {
     }
 
     try {
-      const clientTemplate = path.resolve(
-        __dirname,
-        "../..",
-        "client",
-        "index.html"
-      );
+      // Em desenvolvimento, o código pode estar rodando de diferentes locais
+      // Usar process.cwd() como base, que sempre aponta para o diretório de trabalho
+      // No Docker, isso será /usr/src/app
+      // Localmente, será a raiz do projeto
+      const clientTemplate = path.resolve(process.cwd(), "client", "index.html");
+      
+      if (!fs.existsSync(clientTemplate)) {
+        console.error("[Vite] Could not find client/index.html at:", clientTemplate);
+        console.error("[Vite] Current working directory:", process.cwd());
+        console.error("[Vite] __dirname:", __dirname);
+        throw new Error(`Client template not found: ${clientTemplate}`);
+      }
 
       // always reload the index.html file from disk incase it changes
       let template = await fs.promises.readFile(clientTemplate, "utf-8");
