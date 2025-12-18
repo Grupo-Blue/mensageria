@@ -22,7 +22,10 @@ import {
   campaignRecipients,
   InsertCampaignRecipient,
   whatsappTemplates,
-  InsertWhatsappTemplate
+  InsertWhatsappTemplate,
+  webhookConfig,
+  webhookLogs,
+  InsertWebhookLog
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -638,4 +641,96 @@ export async function deleteWhatsappTemplates(businessAccountId: number) {
   if (!db) throw new Error("Database not available");
 
   await db.delete(whatsappTemplates).where(eq(whatsappTemplates.businessAccountId, businessAccountId));
+}
+
+/**
+ * Get all WhatsApp connections with their webhook configurations
+ */
+export async function getAllWhatsappConnectionsWithWebhooks() {
+  const db = await getDb();
+  if (!db) return [];
+
+  const connections = await db.select().from(whatsappConnections);
+
+  // For each connection, get the webhook config if exists
+  const result = await Promise.all(
+    connections.map(async (conn) => {
+      const webhook = await db
+        .select()
+        .from(webhookConfig)
+        .where(
+          and(
+            eq(webhookConfig.userId, conn.userId),
+            eq(webhookConfig.connectionName, conn.identification)
+          )
+        )
+        .limit(1);
+
+      return {
+        id: conn.id,
+        identification: conn.identification,
+        apiKey: conn.apiKey,
+        userId: conn.userId,
+        webhookUrl: conn.webhookUrl || webhook[0]?.webhookUrl || null,
+        webhookSecret: conn.webhookSecret || webhook[0]?.webhookSecret || null,
+        status: conn.status,
+      };
+    })
+  );
+
+  return result;
+}
+
+/**
+ * Update WhatsApp connection by identification (name)
+ */
+export async function updateWhatsappConnectionByIdentification(
+  identification: string,
+  data: Partial<InsertWhatsappConnection>
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db
+    .update(whatsappConnections)
+    .set(data)
+    .where(eq(whatsappConnections.identification, identification));
+}
+
+/**
+ * Create webhook log entry
+ */
+export async function createWebhookLog(data: {
+  connectionName: string;
+  fromNumber: string;
+  messageId: string;
+  text: string;
+  status: "success" | "error";
+  response?: string;
+  errorMessage?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Find webhook config by connection name
+  const config = await db
+    .select()
+    .from(webhookConfig)
+    .where(eq(webhookConfig.connectionName, data.connectionName))
+    .limit(1);
+
+  if (!config.length) {
+    console.warn(`[WebhookLog] No webhook config found for connection: ${data.connectionName}`);
+    return;
+  }
+
+  await db.insert(webhookLogs).values({
+    webhookConfigId: config[0].id,
+    fromNumber: data.fromNumber,
+    messageId: data.messageId,
+    text: data.text,
+    status: data.status,
+    response: data.response,
+    errorMessage: data.errorMessage,
+  });
 }

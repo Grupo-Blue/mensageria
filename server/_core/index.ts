@@ -10,6 +10,7 @@ import passport from "../auth/google";
 import authRoutes from "../auth/routes";
 import whatsappRoutes from "../whatsapp/routes";
 import whatsappBusinessWebhookRoutes from "../whatsappBusiness/webhookRoutes";
+import internalRoutes from "../internal/routes";
 import { campaignScheduler } from "../whatsappBusiness/campaignScheduler";
 import session from "express-session";
 import cookieParser from "cookie-parser";
@@ -114,6 +115,10 @@ async function startServer() {
   
   // WhatsApp routes
   app.use('/api/whatsapp', whatsappRoutes);
+
+  // Internal API routes (backend-to-frontend communication)
+  app.use('/api/internal', internalRoutes);
+  console.log('[Server] Internal API routes registradas em /api/internal');
 
   // WhatsApp Business API webhook routes (for receiving message status updates from Meta)
   app.use('/api/whatsapp-business', whatsappBusinessWebhookRoutes);
