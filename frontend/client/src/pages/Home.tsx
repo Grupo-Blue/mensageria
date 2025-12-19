@@ -47,37 +47,33 @@ export default function Home() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-8">
+      <div className="space-y-6">
         {/* Header */}
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-600 mt-2">
-            Visão geral das suas conexões e mensagens
-          </p>
+          <p className="text-gray-600 mt-1">Visão geral das suas conexões e mensagens</p>
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-3 gap-6">
           {stats.map((stat) => (
-            <Link key={stat.title} href={stat.href} className="block">
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-medium text-gray-600">
-                    {stat.title}
-                  </CardTitle>
-                  <div className={`p-2 rounded-lg ${stat.bgColor}`}>
-                    <stat.icon className={`w-5 h-5 ${stat.color}`} />
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-3xl font-bold text-gray-900">
-                    {stat.value}
-                  </div>
-                  <p className="text-sm text-gray-500 mt-1">
-                    de {stat.total} total
-                  </p>
-                </CardContent>
-              </Card>
+            <Link key={stat.title} href={stat.href}>
+              <a>
+                <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-600">
+                      {stat.title}
+                    </CardTitle>
+                    <div className={`p-2 rounded-lg ${stat.bgColor}`}>
+                      <stat.icon className={`w-5 h-5 ${stat.color}`} />
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-3xl font-bold text-gray-900">{stat.value}</div>
+                    <p className="text-sm text-gray-500 mt-1">de {stat.total} total</p>
+                  </CardContent>
+                </Card>
+              </a>
             </Link>
           ))}
         </div>
@@ -86,47 +82,53 @@ export default function Home() {
         <Card>
           <CardHeader>
             <CardTitle>Ações Rápidas</CardTitle>
-            <CardDescription>
-              Acesse rapidamente as funcionalidades principais
-            </CardDescription>
+            <CardDescription>Acesse rapidamente as funcionalidades principais</CardDescription>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Button variant="outline" className="w-full justify-start h-auto py-4" asChild>
-              <Link href="/whatsapp">
-                <MessageSquare className="w-5 h-5 mr-3 text-green-600" />
-                <div className="text-left">
-                  <div className="font-semibold">Conectar WhatsApp</div>
-                  <div className="text-sm text-gray-500">Adicionar nova conexão</div>
+          <CardContent className="grid grid-cols-2 gap-4">
+            <Link href="/whatsapp">
+              <div className="flex items-center gap-3 p-4 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 hover:shadow-md transition-all cursor-pointer">
+                <div className="p-2 rounded-lg bg-green-50">
+                  <MessageSquare className="w-5 h-5 text-green-600" />
                 </div>
-              </Link>
-            </Button>
-            <Button variant="outline" className="w-full justify-start h-auto py-4" asChild>
-              <Link href="/telegram">
-                <Bot className="w-5 h-5 mr-3 text-blue-600" />
                 <div className="text-left">
-                  <div className="font-semibold">Conectar Telegram</div>
-                  <div className="text-sm text-gray-500">Adicionar bot</div>
+                  <div className="font-semibold text-sm text-gray-900">Conectar WhatsApp</div>
+                  <div className="text-xs text-gray-500">Adicionar nova conexão</div>
                 </div>
-              </Link>
-            </Button>
-            <Button variant="outline" className="w-full justify-start h-auto py-4" asChild>
-              <Link href="/send">
-                <Send className="w-5 h-5 mr-3 text-purple-600" />
+              </div>
+            </Link>
+            <Link href="/telegram">
+              <div className="flex items-center gap-3 p-4 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 hover:shadow-md transition-all cursor-pointer">
+                <div className="p-2 rounded-lg bg-blue-50">
+                  <Bot className="w-5 h-5 text-blue-600" />
+                </div>
                 <div className="text-left">
-                  <div className="font-semibold">Enviar Mensagem</div>
-                  <div className="text-sm text-gray-500">Enviar para WhatsApp ou Telegram</div>
+                  <div className="font-semibold text-sm text-gray-900">Conectar Telegram</div>
+                  <div className="text-xs text-gray-500">Adicionar bot</div>
                 </div>
-              </Link>
-            </Button>
-            <Button variant="outline" className="w-full justify-start h-auto py-4" asChild>
-              <Link href="/settings">
-                <Clock className="w-5 h-5 mr-3 text-orange-600" />
+              </div>
+            </Link>
+            <Link href="/send">
+              <div className="flex items-center gap-3 p-4 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 hover:shadow-md transition-all cursor-pointer">
+                <div className="p-2 rounded-lg bg-purple-50">
+                  <Send className="w-5 h-5 text-purple-600" />
+                </div>
                 <div className="text-left">
-                  <div className="font-semibold">Configurações</div>
-                  <div className="text-sm text-gray-500">Resumo de grupos e mais</div>
+                  <div className="font-semibold text-sm text-gray-900">Enviar Mensagem</div>
+                  <div className="text-xs text-gray-500">Enviar para WhatsApp ou Telegram</div>
                 </div>
-              </Link>
-            </Button>
+              </div>
+            </Link>
+            <Link href="/settings">
+              <div className="flex items-center gap-3 p-4 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 hover:shadow-md transition-all cursor-pointer">
+                <div className="p-2 rounded-lg bg-orange-50">
+                  <Clock className="w-5 h-5 text-orange-600" />
+                </div>
+                <div className="text-left">
+                  <div className="font-semibold text-sm text-gray-900">Configurações</div>
+                  <div className="text-xs text-gray-500">Resumo de grupos e mais</div>
+                </div>
+              </div>
+            </Link>
           </CardContent>
         </Card>
 

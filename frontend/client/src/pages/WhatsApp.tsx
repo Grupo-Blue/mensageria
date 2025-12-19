@@ -222,11 +222,11 @@ export default function WhatsApp() {
 
   return (
     <DashboardLayout>
-      <div className="container py-8">
-      <div className="flex justify-between items-center mb-6">
+      <div className="space-y-8">
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold">WhatsApp</h1>
-          <p className="text-muted-foreground">Gerencie suas conexões WhatsApp</p>
+          <h1 className="text-3xl font-medium text-foreground mb-2">WhatsApp</h1>
+          <p className="text-muted-foreground text-base">Gerencie suas conexões WhatsApp</p>
         </div>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
@@ -235,23 +235,24 @@ export default function WhatsApp() {
               Nova Conexão
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]">
+          <DialogContent className="sm:max-w-[500px] bg-card">
             <DialogHeader>
-              <DialogTitle>Conectar WhatsApp</DialogTitle>
-              <DialogDescription>
+              <DialogTitle className="text-xl font-medium">Conectar WhatsApp</DialogTitle>
+              <DialogDescription className="text-base">
                 Digite uma identificação única para esta conexão
               </DialogDescription>
             </DialogHeader>
 
             {connectionStatus === "idle" && (
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="identification">Identificação</Label>
+              <div className="space-y-6 py-4">
+                <div className="space-y-3">
+                  <Label htmlFor="identification" className="text-base font-medium">Identificação</Label>
                   <Input
                     id="identification"
                     placeholder="Ex: meu-whatsapp"
                     value={identification}
                     onChange={(e) => setIdentification(e.target.value)}
+                    className="w-full"
                   />
                   <p className="text-sm text-muted-foreground">
                     Use apenas letras, números e hífens
@@ -261,26 +262,26 @@ export default function WhatsApp() {
             )}
 
             {(connectionStatus === "generating" || connectionStatus === "waiting" || connectionStatus === "connected") && (
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
+              <div className="space-y-6 py-4">
+                <div className="space-y-3">
                   <div className="flex justify-between items-center">
-                    <span className="text-sm font-medium">
+                    <span className="text-base font-medium text-foreground">
                       {connectionStatus === "generating" && "Gerando QR Code..."}
                       {connectionStatus === "waiting" && "Aguardando leitura do QR Code"}
                       {connectionStatus === "connected" && "Conectado com sucesso!"}
                     </span>
-                    <span className="text-sm text-muted-foreground">{progress}%</span>
+                    <span className="text-sm text-muted-foreground font-medium">{progress}%</span>
                   </div>
-                  <Progress value={progress} className="h-2" />
+                  <Progress value={progress} className="h-3 rounded-full" />
                 </div>
 
                 {connectionStatus === "waiting" && (
                   <>
-                    <div className="flex justify-center">
-                      <div className="relative">
+                    <div className="flex justify-center p-4">
+                      <div className="relative p-4 bg-secondary/30 rounded-lg elevation-2">
                         <canvas
                           ref={canvasRef}
-                          className="border-4 border-border rounded-lg"
+                          className="border-2 border-primary/20 rounded-lg bg-white"
                         />
                         {!canvasRef.current?.toDataURL() && (
                           <div className="absolute inset-0 flex items-center justify-center bg-muted/50 rounded-lg">
@@ -290,12 +291,12 @@ export default function WhatsApp() {
                       </div>
                     </div>
 
-                    <div className="space-y-2">
-                      <h4 className="font-medium text-green-600 flex items-center gap-2">
-                        <QrCode className="h-4 w-4" />
+                    <div className="space-y-3 p-4 bg-primary/5 rounded-lg border border-primary/10">
+                      <h4 className="font-medium text-primary flex items-center gap-2 text-base">
+                        <QrCode className="h-5 w-5" />
                         Escaneie o QR Code
                       </h4>
-                      <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
+                      <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
                         <li>Abra o WhatsApp no seu celular</li>
                         <li>Toque em Mais opções → Aparelhos conectados</li>
                         <li>Toque em Conectar um aparelho</li>
@@ -306,9 +307,9 @@ export default function WhatsApp() {
                 )}
 
                 {connectionStatus === "connected" && (
-                  <Alert className="bg-green-50 border-green-200">
-                    <CheckCircle className="h-4 w-4 text-green-600" />
-                    <AlertDescription className="text-green-800">
+                  <Alert className="bg-green-50 border-green-300 elevation-2">
+                    <CheckCircle className="h-5 w-5 text-green-600" />
+                    <AlertDescription className="text-green-800 font-medium">
                       WhatsApp conectado com sucesso! Fechando...
                     </AlertDescription>
                   </Alert>
@@ -323,18 +324,18 @@ export default function WhatsApp() {
               </div>
             )}
 
-            <DialogFooter>
+            <DialogFooter className="gap-2">
                 {connectionStatus === "idle" ? (
                   <>
-                    <Button variant="outline" onClick={handleCancel}>
+                    <Button variant="outline" onClick={handleCancel} className="flex-1 sm:flex-initial">
                       Cancelar
                     </Button>
-                    <Button onClick={handleCreate}>
+                    <Button onClick={handleCreate} className="flex-1 sm:flex-initial">
                       Gerar QR Code
                     </Button>
                   </>
                 ) : (
-                  <Button variant="outline" onClick={handleCancel}>
+                  <Button variant="outline" onClick={handleCancel} className="w-full sm:w-auto">
                     Cancelar
                   </Button>
                 )}
@@ -344,10 +345,13 @@ export default function WhatsApp() {
       </div>
 
       {connections && connections.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Smartphone className="h-12 w-12 text-muted-foreground mb-4" />
-            <p className="text-muted-foreground text-center">
+        <Card className="material-card-elevated">
+          <CardContent className="flex flex-col items-center justify-center py-16">
+            <div className="p-4 rounded-full bg-primary/10 mb-6">
+              <Smartphone className="h-12 w-12 text-primary" />
+            </div>
+            <h3 className="text-xl font-medium text-foreground mb-2">Nenhuma conexão configurada</h3>
+            <p className="text-muted-foreground text-center max-w-md">
               Nenhuma conexão WhatsApp configurada.
               <br />
               Clique em "Nova Conexão" para começar.
@@ -355,20 +359,23 @@ export default function WhatsApp() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {connections?.map((conn) => (
-            <Card key={conn.id}>
+            <Card key={conn.id} className="material-card-elevated hover:elevation-3 transition-all duration-300">
               <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <span className="truncate">{conn.identification}</span>
+                <CardTitle className="flex items-center justify-between text-lg">
+                  <span className="truncate font-medium">{conn.identification}</span>
                   {conn.status === 'connected' ? (
-                    <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></div>
+                      <CheckCircle className="h-5 w-5 text-green-600" />
+                    </div>
                   ) : (
                     <XCircle className="h-5 w-5 text-red-500 flex-shrink-0" />
                   )}
                 </CardTitle>
-                <CardDescription>
-                  {conn.status === 'connected' ? "Conectado" : "Desconectado"}
+                <CardDescription className="text-base">
+                  {conn.status === 'connected' ? "Conectado e pronto para uso" : "Desconectado"}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -379,6 +386,7 @@ export default function WhatsApp() {
                       size="sm"
                       onClick={() => disconnectMutation.mutate({ id: conn.id, identification: conn.identification })}
                       disabled={disconnectMutation.isPending}
+                      className="flex-1"
                     >
                       {disconnectMutation.isPending ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -392,6 +400,7 @@ export default function WhatsApp() {
                     size="sm"
                     onClick={() => deleteMutation.mutate({ id: conn.id })}
                     disabled={deleteMutation.isPending}
+                    className="flex-1"
                   >
                     {deleteMutation.isPending ? (
                       <Loader2 className="h-4 w-4 animate-spin" />

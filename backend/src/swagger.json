@@ -5,7 +5,6 @@
     "title": "API de Mensageria",
     "description": "API para envio de mensagens via Whatsapp"
   },
-  "host": "http://localhost:3333",
   "basePath": "/",
   "tags": [
     {
