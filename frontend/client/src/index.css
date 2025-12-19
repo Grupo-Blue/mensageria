@@ -4,104 +4,156 @@
 
 @layer base {
   :root {
-    /* Material Design Colors - Light Theme */
+    /* Modern Color Palette - Light Theme */
     --background: 0 0% 100%;
-    --foreground: 0 0% 13%;
+    --foreground: 222 47% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 13%;
+    --card-foreground: 222 47% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 13%;
-    /* Material Design Primary (Blue 600) */
-    --primary: 217 91% 60%;
+    --popover-foreground: 222 47% 11%;
+    
+    /* Primary - Modern Blue with gradient support */
+    --primary: 221 83% 53%;
     --primary-foreground: 0 0% 100%;
-    /* Material Design Secondary (Grey 200) */
-    --secondary: 0 0% 96%;
-    --secondary-foreground: 0 0% 13%;
-    --muted: 0 0% 96%;
-    --muted-foreground: 0 0% 45%;
+    --primary-light: 221 83% 63%;
+    --primary-dark: 221 83% 43%;
+    
+    /* Secondary - Purple accent */
+    --secondary: 262 83% 58%;
+    --secondary-foreground: 0 0% 100%;
+    
+    /* Muted colors */
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    
+    /* Accent - Vibrant colors */
     --accent: 217 91% 60%;
     --accent-foreground: 0 0% 100%;
-    /* Material Design Error (Red 500) */
+    
+    /* Destructive */
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --border: 0 0% 88%;
-    --input: 0 0% 88%;
-    --ring: 217 91% 60%;
-    --radius: 0.25rem;
-    --chart-1: 217 91% 60%;
+    
+    /* Success */
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 100%;
+    
+    /* Warning */
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    
+    /* Border and inputs */
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 221 83% 53%;
+    --radius: 0.5rem;
+    
+    /* Chart colors */
+    --chart-1: 221 83% 53%;
     --chart-2: 142 76% 36%;
     --chart-3: 38 92% 50%;
     --chart-4: 340 82% 52%;
     --chart-5: 262 83% 58%;
-    /* Material Design Surface Colors */
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 0 0% 13%;
-    --sidebar-primary: 217 91% 60%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 0 0% 95%;
-    --sidebar-accent-foreground: 0 0% 13%;
-    --sidebar-border: 0 0% 88%;
-    --sidebar-ring: 217 91% 60%;
     
-    /* Material Design Elevation Shadows - using box-shadow format */
-    --elevation-1: 0px 1px 3px 0px rgba(0, 0, 0, 0.12), 0px 1px 2px 0px rgba(0, 0, 0, 0.24);
-    --elevation-2: 0px 3px 6px 0px rgba(0, 0, 0, 0.16), 0px 3px 6px 0px rgba(0, 0, 0, 0.23);
-    --elevation-3: 0px 10px 20px 0px rgba(0, 0, 0, 0.19), 0px 6px 6px 0px rgba(0, 0, 0, 0.23);
-    --elevation-4: 0px 15px 25px 0px rgba(0, 0, 0, 0.22), 0px 10px 10px 0px rgba(0, 0, 0, 0.24);
-    --elevation-5: 0px 20px 40px 0px rgba(0, 0, 0, 0.25), 0px 15px 12px 0px rgba(0, 0, 0, 0.22);
+    /* Sidebar colors */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 222 47% 11%;
+    --sidebar-primary: 221 83% 53%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 210 40% 96%;
+    --sidebar-accent-foreground: 222 47% 11%;
+    --sidebar-border: 214 32% 91%;
+    --sidebar-ring: 221 83% 53%;
+    
+    /* Modern elevation shadows */
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+    --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+    --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+    
+    /* Gradient colors */
+    --gradient-primary: linear-gradient(135deg, hsl(221 83% 53%) 0%, hsl(262 83% 58%) 100%);
+    --gradient-success: linear-gradient(135deg, hsl(142 76% 36%) 0%, hsl(158 64% 52%) 100%);
+    --gradient-warning: linear-gradient(135deg, hsl(38 92% 50%) 0%, hsl(25 95% 53%) 100%);
+    --gradient-danger: linear-gradient(135deg, hsl(0 84% 60%) 0%, hsl(340 82% 52%) 100%);
   }
 
   .dark {
-    /* Material Design Colors - Dark Theme */
-    --background: 0 0% 13%;
-    --foreground: 0 0% 98%;
-    --card: 0 0% 18%;
-    --card-foreground: 0 0% 98%;
-    --popover: 0 0% 18%;
-    --popover-foreground: 0 0% 98%;
-    /* Material Design Primary (Blue 400) */
-    --primary: 217 91% 70%;
-    --primary-foreground: 0 0% 13%;
-    /* Material Design Secondary (Grey 700) */
-    --secondary: 0 0% 25%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 25%;
-    --muted-foreground: 0 0% 65%;
+    /* Modern Color Palette - Dark Theme */
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 15%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 47% 15%;
+    --popover-foreground: 210 40% 98%;
+    
+    /* Primary - Lighter for dark mode */
+    --primary: 221 83% 63%;
+    --primary-foreground: 222 47% 11%;
+    --primary-light: 221 83% 73%;
+    --primary-dark: 221 83% 53%;
+    
+    /* Secondary */
+    --secondary: 262 83% 68%;
+    --secondary-foreground: 222 47% 11%;
+    
+    /* Muted */
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+    
+    /* Accent */
     --accent: 217 91% 70%;
-    --accent-foreground: 0 0% 13%;
-    /* Material Design Error (Red 400) */
+    --accent-foreground: 222 47% 11%;
+    
+    /* Destructive */
     --destructive: 0 84% 70%;
-    --destructive-foreground: 0 0% 13%;
-    --border: 0 0% 30%;
-    --input: 0 0% 30%;
-    --ring: 217 91% 70%;
-    --chart-1: 217 91% 70%;
+    --destructive-foreground: 222 47% 11%;
+    
+    /* Success */
+    --success: 142 76% 46%;
+    --success-foreground: 222 47% 11%;
+    
+    /* Warning */
+    --warning: 38 92% 60%;
+    --warning-foreground: 222 47% 11%;
+    
+    /* Border and inputs */
+    --border: 217 33% 24%;
+    --input: 217 33% 24%;
+    --ring: 221 83% 63%;
+    
+    /* Chart colors - adjusted for dark mode */
+    --chart-1: 221 83% 63%;
     --chart-2: 142 76% 46%;
     --chart-3: 38 92% 60%;
     --chart-4: 340 82% 62%;
     --chart-5: 262 83% 68%;
-    /* Material Design Surface Colors - Dark */
-    --sidebar-background: 0 0% 18%;
-    --sidebar-foreground: 0 0% 98%;
-    --sidebar-primary: 217 91% 70%;
-    --sidebar-primary-foreground: 0 0% 13%;
-    --sidebar-accent: 0 0% 22%;
-    --sidebar-accent-foreground: 0 0% 98%;
-    --sidebar-border: 0 0% 30%;
-    --sidebar-ring: 217 91% 70%;
     
-    /* Material Design Elevation Shadows - Dark */
-    --elevation-1: 0px 1px 3px 0px rgba(0, 0, 0, 0.3), 0px 1px 2px 0px rgba(0, 0, 0, 0.4);
-    --elevation-2: 0px 3px 6px 0px rgba(0, 0, 0, 0.4), 0px 3px 6px 0px rgba(0, 0, 0, 0.5);
-    --elevation-3: 0px 10px 20px 0px rgba(0, 0, 0, 0.5), 0px 6px 6px 0px rgba(0, 0, 0, 0.6);
-    --elevation-4: 0px 15px 25px 0px rgba(0, 0, 0, 0.6), 0px 10px 10px 0px rgba(0, 0, 0, 0.7);
-    --elevation-5: 0px 20px 40px 0px rgba(0, 0, 0, 0.7), 0px 15px 12px 0px rgba(0, 0, 0, 0.8);
+    /* Sidebar colors - dark */
+    --sidebar-background: 222 47% 13%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 221 83% 63%;
+    --sidebar-primary-foreground: 222 47% 11%;
+    --sidebar-accent: 217 33% 17%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 217 33% 24%;
+    --sidebar-ring: 221 83% 63%;
+    
+    /* Dark mode shadows */
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+    --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.4), 0 1px 2px -1px rgb(0 0 0 / 0.4);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.4);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.4);
+    --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.5), 0 8px 10px -6px rgb(0 0 0 / 0.5);
+    --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.6);
   }
 }
 
 @layer base {
   * {
-    /* Material Design Typography */
+    border-color: hsl(var(--border));
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -113,8 +165,6 @@
     font-size: 14px;
     line-height: 1.5;
     letter-spacing: -0.011em;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   }
   
@@ -122,7 +172,7 @@
   h1, h2, h3, h4, h5, h6 {
     font-weight: 700;
     letter-spacing: -0.02em;
-    color: rgb(15 23 42);
+    color: hsl(var(--foreground));
   }
   
   h1 {
@@ -163,120 +213,275 @@
 }
 
 @layer components {
-  /* Material Design Card Styles */
-  .material-card {
+  /* Modern Card Styles */
+  .modern-card {
     background-color: hsl(var(--card));
-    border-radius: 4px;
-    box-shadow: var(--elevation-1) !important;
-    transition: box-shadow 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    color: hsl(var(--card-foreground));
+    border-radius: 0.75rem;
+    border: 1px solid hsl(var(--border) / 0.5);
+    box-shadow: var(--shadow);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
   
-  .material-card:hover {
-    box-shadow: var(--elevation-2) !important;
+  .modern-card:hover {
+    box-shadow: var(--shadow-lg);
+    border-color: hsl(var(--border));
   }
   
-  .material-card-elevated {
-    box-shadow: var(--elevation-2) !important;
+  .modern-card-elevated {
+    box-shadow: var(--shadow-lg);
   }
   
-  .material-card-elevated:hover {
-    box-shadow: var(--elevation-3) !important;
+  .modern-card-elevated:hover {
+    box-shadow: var(--shadow-xl);
+    transform: translateY(-2px);
   }
   
-  /* Material Design Button Styles */
-  .material-button {
-    border-radius: 4px;
-    text-transform: uppercase;
-    font-weight: 500;
-    letter-spacing: 0.08929em;
+  /* Gradient Card */
+  .gradient-card {
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--secondary)) 100%);
+  }
+  
+  .gradient-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 0.3s;
+    background: linear-gradient(135deg, hsl(var(--primary-light)) 0%, hsl(var(--secondary)) 100%);
+  }
+  
+  .gradient-card:hover::before {
+    opacity: 1;
+  }
+  
+  /* Glassmorphism Effect */
+  .glass-card {
+    background-color: rgb(255 255 255 / 0.1);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgb(255 255 255 / 0.2);
+    box-shadow: var(--shadow-lg);
+  }
+  
+  .dark .glass-card {
+    background-color: rgb(0 0 0 / 0.2);
+    border-color: rgb(255 255 255 / 0.1);
+  }
+  
+  /* Modern Button Styles */
+  .modern-button {
+    border-radius: 0.5rem;
+    font-weight: 600;
+    transition: all 0.2s;
+    box-shadow: var(--shadow-sm);
+  }
+  
+  .modern-button:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-1px);
+  }
+  
+  .modern-button:active {
+    box-shadow: var(--shadow-sm);
+    transform: translateY(0);
+  }
+  
+  /* Gradient Button */
+  .gradient-button {
+    position: relative;
+    overflow: hidden;
+    color: white;
+    font-weight: 600;
+    border-radius: 0.5rem;
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--secondary)) 100%);
+    box-shadow: var(--shadow-md);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .gradient-button::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 0.3s;
+    background: linear-gradient(135deg, hsl(var(--primary-light)) 0%, hsl(var(--secondary)) 100%);
+  }
+  
+  .gradient-button:hover {
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-2px);
+  }
+  
+  .gradient-button:hover::before {
+    opacity: 1;
+  }
+  
+  /* Status Badges */
+  .badge-success {
+    background-color: rgb(220 252 231);
+    color: rgb(22 101 52);
+  }
+  
+  .dark .badge-success {
+    background-color: rgb(22 101 52 / 0.3);
+    color: rgb(134 239 172);
+  }
+  
+  .badge-warning {
+    background-color: rgb(254 249 195);
+    color: rgb(133 77 14);
+  }
+  
+  .dark .badge-warning {
+    background-color: rgb(133 77 14 / 0.3);
+    color: rgb(253 224 71);
+  }
+  
+  .badge-error {
+    background-color: rgb(254 226 226);
+    color: rgb(153 27 27);
+  }
+  
+  .dark .badge-error {
+    background-color: rgb(153 27 27 / 0.3);
+    color: rgb(252 165 165);
+  }
+  
+  .badge-info {
+    background-color: rgb(219 234 254);
+    color: rgb(30 64 175);
+  }
+  
+  .dark .badge-info {
+    background-color: rgb(30 64 175 / 0.3);
+    color: rgb(147 197 253);
+  }
+  
+  /* Modern Input Styles */
+  .modern-input {
+    border-radius: 0.5rem;
+    border: 1px solid hsl(var(--input));
+    background-color: hsl(var(--background));
+    padding: 0.625rem 1rem;
     font-size: 0.875rem;
-    padding: 8px 16px;
-    transition: background-color 0.25s cubic-bezier(0.4, 0, 0.2, 1),
-                box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1),
-                color 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: var(--elevation-1) !important;
+    transition: all 0.2s;
+    outline: none;
   }
   
-  .material-button:hover {
-    box-shadow: var(--elevation-2) !important;
+  .modern-input:focus {
+    border-color: hsl(var(--ring));
+    box-shadow: 0 0 0 2px hsl(var(--ring) / 0.2);
   }
   
-  .material-button:active {
-    box-shadow: var(--elevation-1) !important;
+  .modern-input:hover {
+    border-color: hsl(var(--ring) / 0.5);
   }
   
-  /* Material Design Ripple Effect */
-  .material-ripple {
+  /* Skeleton Loader */
+  .skeleton {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    background-color: hsl(var(--muted));
+    border-radius: 0.25rem;
+  }
+  
+  /* Shimmer Effect */
+  .shimmer {
     position: relative;
     overflow: hidden;
   }
   
-  .material-ripple::before {
+  .shimmer::after {
     content: '';
     position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 0;
-    height: 0;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.5);
-    transform: translate(-50%, -50%);
-    transition: width 0.6s, height 0.6s;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    animation: shimmer 2s infinite;
   }
   
-  .material-ripple:active::before {
-    width: 300px;
-    height: 300px;
+  @keyframes shimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
   }
   
-  /* Material Design Input Styles */
-  .material-input {
-    border-radius: 4px;
-    border: 1px solid hsl(var(--border));
-    padding: 12px 16px;
-    font-size: 1rem;
-    transition: border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
-                box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    background-color: hsl(var(--background));
+  /* Smooth Transitions */
+  .transition-smooth {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
   
-  .material-input:focus {
-    outline: none;
-    border-color: hsl(var(--primary));
-    box-shadow: 0 0 0 2px hsla(var(--primary), 0.2);
-  }
-  
-  .material-input:hover {
-    border-color: hsl(var(--primary) / 0.5);
-  }
-  
-  /* Material Design Elevation Utilities */
-  .elevation-1 {
-    box-shadow: var(--elevation-1) !important;
-  }
-  
-  .elevation-2 {
-    box-shadow: var(--elevation-2) !important;
-  }
-  
-  .elevation-3 {
-    box-shadow: var(--elevation-3) !important;
-  }
-  
-  .elevation-4 {
-    box-shadow: var(--elevation-4) !important;
-  }
-  
-  .elevation-5 {
-    box-shadow: var(--elevation-5) !important;
-  }
-  
-  .hover\:elevation-3:hover {
-    box-shadow: var(--elevation-3) !important;
+  .transition-bounce {
+    transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
   }
 }
 
 @layer utilities {
+  /* Shadow Utilities */
+  .shadow-sm {
+    box-shadow: var(--shadow-sm);
+  }
+  
+  .shadow {
+    box-shadow: var(--shadow);
+  }
+  
+  .shadow-md {
+    box-shadow: var(--shadow-md);
+  }
+  
+  .shadow-lg {
+    box-shadow: var(--shadow-lg);
+  }
+  
+  .shadow-xl {
+    box-shadow: var(--shadow-xl);
+  }
+  
+  .shadow-2xl {
+    box-shadow: var(--shadow-2xl);
+  }
+  
+  /* Gradient Text */
+  .gradient-text {
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+    background-image: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--secondary)) 100%);
+  }
+  
+  /* Backdrop Blur */
+  .backdrop-blur-glass {
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  
+  /* Container */
+  .container {
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 1rem;
+    padding-right: 1rem;
+    max-width: 1280px;
+  }
+  
+  @media (min-width: 640px) {
+    .container {
+      padding-left: 1.5rem;
+      padding-right: 1.5rem;
+    }
+  }
+  
+  @media (min-width: 1024px) {
+    .container {
+      padding-left: 2rem;
+      padding-right: 2rem;
+    }
+  }
+  
   /* Force logo to correct size */
   img[src="/logo.png"],
   img[alt="Logo"] {
@@ -287,7 +492,7 @@
     object-fit: cover !important;
   }
   
-  /* Force sidebar to always be visible */
+  /* Sidebar visibility fixes */
   [data-sidebar],
   [data-sidebar-wrapper] {
     position: relative !important;
@@ -295,30 +500,8 @@
     visibility: visible !important;
     opacity: 1 !important;
   }
-
-  .container {
-    margin-left: auto;
-    margin-right: auto;
-    padding-left: 1rem;
-    padding-right: 1rem;
-    max-width: 1280px;
-  }
-
-  @media (min-width: 640px) {
-    .container {
-      padding-left: 1.5rem;
-      padding-right: 1.5rem;
-    }
-  }
-
-  @media (min-width: 1024px) {
-    .container {
-      padding-left: 2rem;
-      padding-right: 2rem;
-    }
-  }
-
-  /* Override truncate for sidebar menu items when expanded - MORE SPECIFIC */
+  
+  /* Override truncate for sidebar menu items when expanded */
   [data-sidebar-wrapper][data-state="expanded"] [data-sidebar="menu-button"] > span:last-child,
   [data-sidebar][data-state="expanded"] [data-sidebar="menu-button"] > span:last-child {
     overflow: visible !important;
@@ -378,51 +561,37 @@
     opacity: 1 !important;
   }
   
-  /* Material Design Dialog improvements */
+  /* Modern Dialog improvements */
   [data-slot="dialog-content"] {
-    background-color: hsl(var(--card)) !important;
-    color: hsl(var(--card-foreground)) !important;
-    border: none !important;
+    background-color: hsl(var(--card));
+    color: hsl(var(--card-foreground));
+    border: none;
+    border-radius: 0.75rem;
+    box-shadow: var(--shadow-2xl);
   }
   
   [data-slot="dialog-overlay"] {
-    background-color: rgba(0, 0, 0, 0.6) !important;
     backdrop-filter: blur(4px);
+    background-color: rgba(0, 0, 0, 0.6) !important;
   }
   
-  /* Ensure sidebar visibility */
-  [data-sidebar-wrapper] {
-    position: relative;
-    display: flex !important;
-    z-index: 10;
+  /* Scrollbar Styling */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
   }
   
-  [data-sidebar] {
-    position: relative;
-    display: flex !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-    z-index: 10;
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background-color: hsl(var(--muted));
+    border-radius: 9999px;
   }
   
-  /* Material Design improvements for better visibility */
-  .bg-card {
-    background-color: hsl(var(--card)) !important;
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted-foreground) / 0.3);
+    border-radius: 9999px;
   }
   
-  .text-card-foreground {
-    color: hsl(var(--card-foreground)) !important;
-  }
-  
-  .bg-background {
-    background-color: hsl(var(--background)) !important;
-  }
-  
-  .text-foreground {
-    color: hsl(var(--foreground)) !important;
-  }
-  
-  .text-muted-foreground {
-    color: hsl(var(--muted-foreground)) !important;
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.5);
   }
 }
