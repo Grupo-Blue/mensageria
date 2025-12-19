@@ -135,6 +135,7 @@ services:
       - mensageria-tmp-prod:/usr/src/app/tmp
     networks:
       - mensageria-prod
+      - proxy-services
     deploy:
       replicas: 2
       restart_policy:
