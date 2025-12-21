@@ -139,7 +139,8 @@ export default function WhatsApp() {
       
       // Chama endpoint REST do backend para forçar logout
       const apiToken = import.meta.env.VITE_BACKEND_API_TOKEN;
-      const response = await fetch("https://mensageria.grupoblue.com.br/whatsapp/disconnect", {
+      const backendUrl = import.meta.env.VITE_BACKEND_API_URL || "https://mensageria.grupoblue.com.br";
+      const response = await fetch(`${backendUrl}/whatsapp/disconnect`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

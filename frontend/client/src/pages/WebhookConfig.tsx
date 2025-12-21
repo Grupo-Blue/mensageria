@@ -333,9 +333,7 @@ Authorization: Bearer ${webhookSecret || "<seu-secret>"}
             <div className="flex items-center gap-2">
               <ExternalLink className="w-4 h-4 text-muted-foreground" />
               <a
-                href="https://mensageria.grupoblue.com.br/api"
-                target="_blank"
-                rel="noopener noreferrer"
+                href="/api"
                 className="text-primary hover:underline"
               >
                 Documentação da API REST

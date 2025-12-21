@@ -17,7 +17,8 @@ export default function API() {
   const [testResult, setTestResult] = useState("");
   const [testing, setTesting] = useState(false);
 
-  const apiEndpoint = "https://mensageria.grupoblue.com.br/api/send-message";
+  // Usar URL dinâmica baseada no ambiente atual
+  const apiEndpoint = `${window.location.origin}/api/send-message`;
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
