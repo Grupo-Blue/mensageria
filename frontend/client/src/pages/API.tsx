@@ -18,7 +18,7 @@ export default function API() {
   const [testing, setTesting] = useState(false);
 
   // Usar URL dinâmica baseada no ambiente atual
-  const apiEndpoint = `${window.location.origin}/api/send-message`;
+  const apiEndpoint = `${window.location.origin}/api/whatsapp/send-message`;
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
