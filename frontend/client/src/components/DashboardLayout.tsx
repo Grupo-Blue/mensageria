@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/sidebar";
 import { APP_LOGO, APP_TITLE, getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, MessageSquare, Bot, Send, Settings as SettingsIcon, Code, Building2, Megaphone, Moon, Sun } from "lucide-react";
+import { LayoutDashboard, LogOut, MessageSquare, Bot, Send, Settings as SettingsIcon, Code, Building2, Megaphone, Moon, Sun, KeyRound } from "lucide-react";
 import { CSSProperties, useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -35,7 +35,8 @@ const menuItems = [
   { icon: MessageSquare, label: "WhatsApp", path: "/whatsapp", color: "text-green-600", bgColor: "bg-green-50 dark:bg-green-950/30", hoverBg: "hover:bg-green-50/50 dark:hover:bg-green-950/20" },
   { icon: Bot, label: "Telegram", path: "/telegram", color: "text-sky-600", bgColor: "bg-sky-50 dark:bg-sky-950/30", hoverBg: "hover:bg-sky-50/50 dark:hover:bg-sky-950/20" },
   { icon: Send, label: "Enviar Mensagens", path: "/send", color: "text-pink-600", bgColor: "bg-pink-50 dark:bg-pink-950/30", hoverBg: "hover:bg-pink-50/50 dark:hover:bg-pink-950/20" },
-  { icon: Code, label: "API", path: "/api", color: "text-orange-600", bgColor: "bg-orange-50 dark:bg-orange-950/30", hoverBg: "hover:bg-orange-50/50 dark:hover:bg-orange-950/20" },
+  { icon: KeyRound, label: "API & Integrações", path: "/connections", color: "text-amber-600", bgColor: "bg-amber-50 dark:bg-amber-950/30", hoverBg: "hover:bg-amber-50/50 dark:hover:bg-amber-950/20" },
+  { icon: Code, label: "Documentação API", path: "/api", color: "text-orange-600", bgColor: "bg-orange-50 dark:bg-orange-950/30", hoverBg: "hover:bg-orange-50/50 dark:hover:bg-orange-950/20" },
   { icon: SettingsIcon, label: "Configurações", path: "/settings", color: "text-gray-600", bgColor: "bg-gray-50 dark:bg-gray-800/30", hoverBg: "hover:bg-gray-50/50 dark:hover:bg-gray-800/20" },
 ];
 
