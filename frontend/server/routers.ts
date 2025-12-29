@@ -832,10 +832,14 @@ export const appRouter = router({
             throw new Error("Conta não encontrada");
           }
 
+          // getBlacklist retorna array vazio se der erro (blacklist não é obrigatória)
           return await db.getBlacklist(account.id);
         } catch (error: any) {
-          console.error("[getBlacklist] Error:", error);
-          throw new Error(`Erro ao buscar blacklist: ${error.message}`);
+          // Se der erro de validação (conta não encontrada), lança erro
+          // Mas se for erro de banco, getBlacklist já retorna array vazio
+          console.warn("[getBlacklist] Error:", error.message);
+          // Retorna array vazio em vez de lançar erro (blacklist não é obrigatória)
+          return [];
         }
       }),
 

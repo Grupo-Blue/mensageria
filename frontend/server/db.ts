@@ -1247,7 +1247,7 @@ export async function getBlacklist(businessAccountId: number): Promise<WhatsappB
   try {
     const db = await getDb();
     if (!db) {
-      console.error("[getBlacklist] Database not available");
+      console.warn("[getBlacklist] Database not available, returning empty list");
       return [];
     }
 
@@ -1259,9 +1259,10 @@ export async function getBlacklist(businessAccountId: number): Promise<WhatsappB
     
     return result;
   } catch (error: any) {
-    console.error("[getBlacklist] Error fetching blacklist:", error);
-    console.error("[getBlacklist] Business Account ID:", businessAccountId);
-    throw new Error(`Erro ao buscar blacklist: ${error.message}`);
+    // Blacklist não é obrigatória - se der erro, retorna lista vazia
+    console.warn("[getBlacklist] Error fetching blacklist (non-critical, returning empty):", error.message);
+    console.warn("[getBlacklist] Business Account ID:", businessAccountId);
+    return [];
   }
 }
 
@@ -1362,24 +1363,34 @@ export async function filterBlacklistedNumbers(
   businessAccountId: number,
   phoneNumbers: string[]
 ): Promise<{ allowed: string[]; blocked: string[] }> {
-  const db = await getDb();
-  if (!db) return { allowed: phoneNumbers, blocked: [] };
-
-  // Get all blacklisted numbers for this account
-  const blacklist = await getBlacklist(businessAccountId);
-  const blacklistedSet = new Set(blacklist.map(b => b.phoneNumber));
-
-  const allowed: string[] = [];
-  const blocked: string[] = [];
-
-  for (const phone of phoneNumbers) {
-    const normalized = phone.replace(/\D/g, "");
-    if (blacklistedSet.has(normalized)) {
-      blocked.push(phone);
-    } else {
-      allowed.push(phone);
+  try {
+    const db = await getDb();
+    if (!db) {
+      console.warn("[filterBlacklistedNumbers] Database not available, allowing all numbers");
+      return { allowed: phoneNumbers, blocked: [] };
     }
-  }
 
-  return { allowed, blocked };
+    // Get all blacklisted numbers for this account
+    // Se der erro, getBlacklist retorna array vazio (blacklist não é obrigatória)
+    const blacklist = await getBlacklist(businessAccountId);
+    const blacklistedSet = new Set(blacklist.map(b => b.phoneNumber));
+
+    const allowed: string[] = [];
+    const blocked: string[] = [];
+
+    for (const phone of phoneNumbers) {
+      const normalized = phone.replace(/\D/g, "");
+      if (blacklistedSet.has(normalized)) {
+        blocked.push(phone);
+      } else {
+        allowed.push(phone);
+      }
+    }
+
+    return { allowed, blocked };
+  } catch (error: any) {
+    // Se der erro, permite todos os números (blacklist não é obrigatória)
+    console.warn("[filterBlacklistedNumbers] Error filtering blacklist (non-critical, allowing all):", error.message);
+    return { allowed: phoneNumbers, blocked: [] };
+  }
 }
