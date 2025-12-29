@@ -1244,14 +1244,25 @@ export async function removeFromBlacklist(businessAccountId: number, phoneNumber
  * Get all blacklisted numbers for a business account
  */
 export async function getBlacklist(businessAccountId: number): Promise<WhatsappBlacklist[]> {
-  const db = await getDb();
-  if (!db) return [];
+  try {
+    const db = await getDb();
+    if (!db) {
+      console.error("[getBlacklist] Database not available");
+      return [];
+    }
 
-  return await db
-    .select()
-    .from(whatsappBlacklist)
-    .where(eq(whatsappBlacklist.businessAccountId, businessAccountId))
-    .orderBy(desc(whatsappBlacklist.optedOutAt));
+    const result = await db
+      .select()
+      .from(whatsappBlacklist)
+      .where(eq(whatsappBlacklist.businessAccountId, businessAccountId))
+      .orderBy(desc(whatsappBlacklist.optedOutAt));
+    
+    return result;
+  } catch (error: any) {
+    console.error("[getBlacklist] Error fetching blacklist:", error);
+    console.error("[getBlacklist] Business Account ID:", businessAccountId);
+    throw new Error(`Erro ao buscar blacklist: ${error.message}`);
+  }
 }
 
 /**

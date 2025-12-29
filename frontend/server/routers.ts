@@ -826,12 +826,17 @@ export const appRouter = router({
     getBlacklist: protectedProcedure
       .input(z.object({ accountId: z.number() }))
       .query(async ({ ctx, input }) => {
-        const account = await db.getWhatsappBusinessAccountById(input.accountId);
-        if (!account || account.userId !== ctx.user.id) {
-          throw new Error("Conta não encontrada");
-        }
+        try {
+          const account = await db.getWhatsappBusinessAccountById(input.accountId);
+          if (!account || account.userId !== ctx.user.id) {
+            throw new Error("Conta não encontrada");
+          }
 
-        return await db.getBlacklist(account.id);
+          return await db.getBlacklist(account.id);
+        } catch (error: any) {
+          console.error("[getBlacklist] Error:", error);
+          throw new Error(`Erro ao buscar blacklist: ${error.message}`);
+        }
       }),
 
     // Add to blacklist manually
