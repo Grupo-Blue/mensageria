@@ -54,11 +54,22 @@ router.post("/webhook", async (req: Request, res: Response) => {
     const body = req.body;
     
     // Get request origin/referer for validation
+    // Note: Server-to-server webhooks may not send origin/referer headers
     const origin = req.get("origin") || req.get("referer") || "";
     const userAgent = req.get("user-agent") || "";
-    const isFromChatwoot = origin.includes("atendimento.grupoblue.com.br") || 
-                          userAgent.includes("Chatwoot") ||
-                          req.ip?.includes("atendimento.grupoblue.com.br");
+    const forwardedFor = req.get("x-forwarded-for") || "";
+    const realIp = req.get("x-real-ip") || "";
+    const clientIp = req.ip || realIp || forwardedFor.split(",")[0] || "";
+    
+    // Check if request is from Chatwoot
+    // Since Chatwoot doesn't send authorization token, we'll be more permissive
+    // and check multiple indicators
+    const isFromChatwoot = 
+      origin.includes("atendimento.grupoblue.com.br") || 
+      userAgent.includes("Chatwoot") ||
+      clientIp?.includes("atendimento.grupoblue.com.br") ||
+      // If no authorization header is present, might be from Chatwoot
+      (!req.get("authorization") && !req.get("x-webhook-signature"));
 
     // Log the incoming webhook for debugging
     const webhookEvent = {
@@ -92,9 +103,15 @@ router.post("/webhook", async (req: Request, res: Response) => {
     }
 
     // Validate it's a WhatsApp webhook (Meta format)
-    // If it's from Chatwoot, it might have a different format, so we'll be more lenient
-    if (!isFromChatwoot && body.object !== "whatsapp_business_account") {
-      console.log("[WhatsApp Business Webhook] Not a WhatsApp event and not from Chatwoot, ignoring");
+    // If it's from Chatwoot or doesn't have authorization, accept it anyway
+    // (Chatwoot doesn't send authorization tokens)
+    const hasAuthorization = req.get("authorization") || req.get("x-webhook-signature");
+    
+    if (!isFromChatwoot && !hasAuthorization && body.object !== "whatsapp_business_account") {
+      console.log("[WhatsApp Business Webhook] Not a WhatsApp event, not from Chatwoot, and no auth - might be Chatwoot, accepting anyway");
+      // Accept anyway - might be Chatwoot without proper headers
+    } else if (!isFromChatwoot && hasAuthorization && body.object !== "whatsapp_business_account") {
+      console.log("[WhatsApp Business Webhook] Not a WhatsApp event and has auth - ignoring");
       res.sendStatus(200);
       return;
     }
