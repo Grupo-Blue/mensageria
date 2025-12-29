@@ -4,6 +4,18 @@ import * as db from "../db";
 
 const router = Router();
 
+// Store recent webhook events for debugging (last 50 events)
+const recentWebhookEvents: Array<{
+  timestamp: Date;
+  origin?: string;
+  userAgent?: string;
+  ip?: string;
+  body: any;
+  isFromChatwoot: boolean;
+}> = [];
+
+const MAX_RECENT_EVENTS = 50;
+
 /**
  * Webhook verification endpoint (GET)
  * Meta sends a GET request to verify the webhook URL
@@ -35,45 +47,104 @@ router.get("/webhook", async (req: Request, res: Response) => {
 /**
  * Webhook events endpoint (POST)
  * Meta sends message status updates here
+ * Also accepts requests from Chatwoot (https://atendimento.grupoblue.com.br/) without token
  */
 router.post("/webhook", async (req: Request, res: Response) => {
   try {
     const body = req.body;
+    
+    // Get request origin/referer for validation
+    const origin = req.get("origin") || req.get("referer") || "";
+    const userAgent = req.get("user-agent") || "";
+    const isFromChatwoot = origin.includes("atendimento.grupoblue.com.br") || 
+                          userAgent.includes("Chatwoot") ||
+                          req.ip?.includes("atendimento.grupoblue.com.br");
 
     // Log the incoming webhook for debugging
-    console.log("[WhatsApp Business Webhook] Received event:", JSON.stringify(body, null, 2));
+    const webhookEvent = {
+      timestamp: new Date(),
+      origin,
+      userAgent,
+      ip: req.ip,
+      body: JSON.parse(JSON.stringify(body)), // Deep clone
+      isFromChatwoot,
+    };
+    
+    // Store in recent events (keep only last MAX_RECENT_EVENTS)
+    recentWebhookEvents.unshift(webhookEvent);
+    if (recentWebhookEvents.length > MAX_RECENT_EVENTS) {
+      recentWebhookEvents.pop();
+    }
+    
+    console.log("[WhatsApp Business Webhook] Received event:", {
+      timestamp: webhookEvent.timestamp.toISOString(),
+      origin,
+      userAgent,
+      ip: req.ip,
+      isFromChatwoot,
+      bodyKeys: Object.keys(body),
+      bodyPreview: JSON.stringify(body).substring(0, 500),
+    });
 
-    // Validate it's a WhatsApp webhook
-    if (body.object !== "whatsapp_business_account") {
-      console.log("[WhatsApp Business Webhook] Not a WhatsApp event, ignoring");
+    // If coming from Chatwoot, accept without token validation
+    if (isFromChatwoot) {
+      console.log("[WhatsApp Business Webhook] Request from Chatwoot - accepting without token validation");
+    }
+
+    // Validate it's a WhatsApp webhook (Meta format)
+    // If it's from Chatwoot, it might have a different format, so we'll be more lenient
+    if (!isFromChatwoot && body.object !== "whatsapp_business_account") {
+      console.log("[WhatsApp Business Webhook] Not a WhatsApp event and not from Chatwoot, ignoring");
       res.sendStatus(200);
       return;
     }
 
-    // Process each entry
-    for (const entry of body.entry || []) {
-      for (const change of entry.changes || []) {
-        const value = change.value;
+    // Process each entry (Meta format)
+    if (body.entry && Array.isArray(body.entry)) {
+      for (const entry of body.entry) {
+        for (const change of entry.changes || []) {
+          const value = change.value;
 
-        // Handle message status updates
-        if (value?.statuses) {
-          for (const status of value.statuses) {
-            await processStatusUpdate(status);
+          // Handle message status updates
+          if (value?.statuses) {
+            for (const status of value.statuses) {
+              await processStatusUpdate(status);
+            }
+          }
+
+          // Handle incoming messages - process opt-out requests
+          if (value?.messages) {
+            for (const message of value.messages) {
+              console.log("[WhatsApp Business Webhook] Incoming message:", {
+                from: message.from,
+                type: message.type,
+                timestamp: message.timestamp,
+              });
+
+              // Process the message for opt-out keywords
+              await processIncomingMessage(message, value.metadata?.phone_number_id);
+            }
           }
         }
-
-        // Handle incoming messages - process opt-out requests
-        if (value?.messages) {
-          for (const message of value.messages) {
-            console.log("[WhatsApp Business Webhook] Incoming message:", {
-              from: message.from,
-              type: message.type,
-              timestamp: message.timestamp,
-            });
-
-            // Process the message for opt-out keywords
-            await processIncomingMessage(message, value.metadata?.phone_number_id);
-          }
+      }
+    } else if (isFromChatwoot) {
+      // Handle Chatwoot webhook format (if different from Meta)
+      console.log("[WhatsApp Business Webhook] Processing Chatwoot webhook format");
+      // Log the full body for debugging
+      console.log("[WhatsApp Business Webhook] Chatwoot webhook body:", JSON.stringify(body, null, 2));
+      
+      // If Chatwoot sends status updates, process them here
+      // You may need to adjust this based on Chatwoot's actual webhook format
+      if (body.status || body.message_status) {
+        const status = body.status || body.message_status;
+        if (status.messageId || status.id) {
+          await processStatusUpdate({
+            id: status.messageId || status.id,
+            status: status.status || status.state,
+            timestamp: status.timestamp || Math.floor(Date.now() / 1000).toString(),
+            recipient_id: status.recipient || status.to,
+            errors: status.errors,
+          });
         }
       }
     }
@@ -318,5 +389,34 @@ async function updateCampaignCounters(messageId: string) {
     console.error("[WhatsApp Business Webhook] Error updating campaign counters:", error);
   }
 }
+
+/**
+ * GET /api/whatsapp-business/webhook/logs
+ * Get recent webhook events for debugging
+ * No authentication required (for debugging purposes)
+ */
+router.get("/webhook/logs", async (req: Request, res: Response) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 20;
+    const events = recentWebhookEvents.slice(0, limit);
+    
+    res.json({
+      success: true,
+      total: recentWebhookEvents.length,
+      events: events.map(e => ({
+        timestamp: e.timestamp.toISOString(),
+        origin: e.origin,
+        userAgent: e.userAgent,
+        ip: e.ip,
+        isFromChatwoot: e.isFromChatwoot,
+        bodyKeys: Object.keys(e.body),
+        bodyPreview: JSON.stringify(e.body).substring(0, 1000),
+      })),
+    });
+  } catch (error: any) {
+    console.error("[WhatsApp Business Webhook] Error getting logs:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 export default router;
