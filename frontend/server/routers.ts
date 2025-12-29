@@ -595,7 +595,7 @@ export const appRouter = router({
         name: z.string().min(1).max(512),
         language: z.string().default("pt_BR"),
         category: z.enum(["UTILITY", "MARKETING", "AUTHENTICATION"]),
-        headerType: z.enum(["NONE", "TEXT", "IMAGE", "VIDEO", "DOCUMENT"]).optional().default("NONE"),
+        headerType: z.enum(["NONE", "TEXT", "IMAGE", "VIDEO", "DOCUMENT"]).optional(),
         headerText: z.string().optional(),
         bodyText: z.string().min(1).max(1024),
         footerText: z.string().max(60).optional(),
@@ -605,8 +605,6 @@ export const appRouter = router({
           url: z.string().optional(),
           phoneNumber: z.string().optional(),
         })).max(3).optional(),
-        variableType: z.enum(["NAMED", "POSITIONAL"]).optional().default("POSITIONAL"),
-        variableExamples: z.record(z.string()).optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         const account = await db.getWhatsappBusinessAccountById(input.accountId);
@@ -620,13 +618,11 @@ export const appRouter = router({
           name: input.name,
           language: input.language,
           category: input.category,
-          headerType: input.headerType,
+          headerType: input.headerType || "NONE",
           headerText: input.headerText,
           bodyText: input.bodyText,
           footerText: input.footerText,
           buttons: input.buttons,
-          variableType: input.variableType,
-          variableExamples: input.variableExamples,
         });
 
         // Sync templates to get the new one in the database
@@ -769,6 +765,57 @@ export const appRouter = router({
 
         const api = new MetaWhatsAppApi(account.phoneNumberId, account.accessToken);
         return await api.getPhoneNumberInfo();
+      }),
+
+    // Check message status and diagnose issues
+    checkMessageStatus: protectedProcedure
+      .input(z.object({
+        accountId: z.number(),
+        messageId: z.string(),
+        recipientPhone: z.string().optional(),
+      }))
+      .query(async ({ ctx, input }) => {
+        const account = await db.getWhatsappBusinessAccountById(input.accountId);
+        if (!account || account.userId !== ctx.user.id) {
+          throw new Error("Conta não encontrada");
+        }
+
+        const api = new MetaWhatsAppApi(account.phoneNumberId, account.accessToken);
+        
+        // Note: Meta API doesn't provide a direct endpoint to check message status
+        // Status updates come only via webhook
+        // We can only verify if the message ID format is valid
+        
+        const diagnostics: any = {
+          messageId: input.messageId,
+          isValidFormat: input.messageId.startsWith('wamid.'),
+          account: {
+            name: account.name,
+            phoneNumberId: account.phoneNumberId,
+            businessAccountId: account.businessAccountId,
+          },
+          notes: [
+            "Status de mensagens só é disponível via webhook da Meta",
+            "Verifique se o webhook está configurado corretamente no Meta Business Suite",
+            "URL do webhook: " + (process.env.OAUTH_SERVER_URL || "http://localhost:3000") + "/api/whatsapp-business/webhook",
+            "Token de verificação: " + (process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || "mensageria_webhook_token"),
+            "Se o número não recebeu a mensagem, verifique:",
+            "  1. Se o número está na lista de números de teste permitidos (Meta Business Suite)",
+            "  2. Se o número está no formato correto (com código do país, ex: 5511999999999)",
+            "  3. Se o template está aprovado e ativo",
+            "  4. Se o número não está bloqueado ou na blacklist",
+          ],
+        };
+
+        // Try to get phone number info to verify account is working
+        try {
+          const phoneInfo = await api.getPhoneNumberInfo();
+          diagnostics.account.phoneInfo = phoneInfo;
+        } catch (error: any) {
+          diagnostics.account.phoneInfoError = error.message;
+        }
+
+        return diagnostics;
       }),
 
     // =====================================================

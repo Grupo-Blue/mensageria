@@ -355,8 +355,6 @@ export class MetaWhatsAppApi {
         url?: string;
         phoneNumber?: string;
       }>;
-      variableType?: "NAMED" | "POSITIONAL";
-      variableExamples?: Record<string, string>;
     }
   ): Promise<{ id: string; status: string; category: string }> {
     const components: any[] = [];
@@ -677,6 +675,29 @@ export class MetaWhatsAppApi {
       return { type: "unknown", data: body };
     } catch {
       return { type: "unknown", data: body };
+    }
+  }
+
+  /**
+   * Get message status from Meta API
+   */
+  async getMessageStatus(messageId: string): Promise<{
+    id: string;
+    status: string;
+    timestamp: string;
+    recipient_id: string;
+    errors?: Array<{ code: number; title: string; message: string }>;
+  } | null> {
+    try {
+      // Note: Meta API doesn't have a direct endpoint to check message status
+      // Status updates come via webhook only
+      // This is a placeholder for future implementation if Meta adds this feature
+      console.log('[MetaWhatsAppApi] Message status check requested for:', messageId);
+      console.log('[MetaWhatsAppApi] Note: Status updates are only available via webhook');
+      return null;
+    } catch (error) {
+      console.error('[MetaWhatsAppApi] Error checking message status:', error);
+      return null;
     }
   }
 

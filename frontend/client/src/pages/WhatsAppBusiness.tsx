@@ -264,8 +264,6 @@ export default function WhatsAppBusiness() {
       bodyText: newTemplate.bodyText,
       footerText: newTemplate.footerText || undefined,
       buttons: newTemplate.buttons.length > 0 ? newTemplate.buttons : undefined,
-      variableType: newTemplate.variableType,
-      variableExamples: Object.keys(newTemplate.variableExamples).length > 0 ? newTemplate.variableExamples : undefined,
     });
   };
 
