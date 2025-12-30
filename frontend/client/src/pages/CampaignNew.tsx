@@ -79,6 +79,7 @@ export default function CampaignNew() {
   const [newRecipient, setNewRecipient] = useState({ phoneNumber: "", name: "" });
   const [csvText, setCsvText] = useState("");
   const [selectedListId, setSelectedListId] = useState<number | null>(null);
+  const [selectedExcludeListIds, setSelectedExcludeListIds] = useState<number[]>([]);
   const [recipientSource, setRecipientSource] = useState<"list" | "manual" | "csv">("list");
 
   // Scheduling state
@@ -253,13 +254,45 @@ export default function CampaignNew() {
     return contactLists.find((l) => l.id === selectedListId);
   }, [selectedListId, contactLists]);
 
-  // Get total recipients count (from list or manual)
+  // Normalize phone number (remove non-digits)
+  const normalizePhoneNumber = (phone: string): string => {
+    return phone.replace(/\D/g, "");
+  };
+
+  // Note: We'll fetch exclusion list contacts in handleCreate when needed
+  // This avoids using hooks conditionally and keeps the logic simpler
+
+  // Calculate filtered recipients count (after exclusions)
+  // For preview purposes, we estimate based on list sizes
+  // Actual filtering happens in handleCreate
+  const filteredRecipientsCount = useMemo(() => {
+    if (recipientSource !== "list" || !listContacts) {
+      return totalRecipients;
+    }
+    if (selectedExcludeListIds.length === 0) {
+      return listContacts.length;
+    }
+    // For preview, we show the total from main list
+    // Actual count will be calculated in handleCreate after fetching exclusion lists
+    return listContacts.length;
+  }, [recipientSource, listContacts]);
+
+  // Get total recipients count (from list or manual) - before exclusions
   const totalRecipients = useMemo(() => {
     if (recipientSource === "list" && listContacts) {
       return listContacts.length;
     }
     return recipients.length;
   }, [recipientSource, listContacts, recipients]);
+
+  // Calculate excluded count (estimated for preview)
+  const excludedCount = useMemo(() => {
+    if (recipientSource !== "list" || selectedExcludeListIds.length === 0) {
+      return 0;
+    }
+    // For preview, we show 0 (actual count calculated in handleCreate)
+    return 0;
+  }, [recipientSource, selectedExcludeListIds.length]);
 
   // Handle CSV import
   const handleImportCSV = () => {
@@ -337,7 +370,60 @@ export default function CampaignNew() {
         toast.error("Selecione uma lista com contatos ativos");
         return;
       }
-      finalRecipients = listContacts.map((c) => ({
+      
+      // Fetch contacts from exclusion lists if any are selected
+      let excludedPhoneNumbersSet = new Set<string>();
+      if (selectedExcludeListIds.length > 0) {
+        try {
+          // Fetch contacts from all exclusion lists in parallel using fetch
+          const exclusionContactsPromises = selectedExcludeListIds.map(async (listId) => {
+            const response = await fetch(
+              `/api/trpc/contactLists.getContacts?input=${encodeURIComponent(
+                JSON.stringify({ json: { listId, statusFilter: "active" } })
+              )}`,
+              { credentials: "include" }
+            );
+            if (!response.ok) {
+              throw new Error(`Failed to fetch contacts for list ${listId}`);
+            }
+            const data = await response.json();
+            // tRPC returns data in format: { result: { data: [...] } }
+            return data.result?.data || [];
+          });
+          const exclusionContactsArrays = await Promise.all(exclusionContactsPromises);
+          
+          // Create set of excluded phone numbers (normalized)
+          exclusionContactsArrays.forEach((contacts) => {
+            contacts.forEach((contact: { phoneNumber: string; name?: string }) => {
+              excludedPhoneNumbersSet.add(normalizePhoneNumber(contact.phoneNumber));
+            });
+          });
+        } catch (error) {
+          console.error("Error fetching exclusion list contacts:", error);
+          toast.error("Erro ao carregar contatos das listas de exclusão. Tente novamente.");
+          return;
+        }
+      }
+      
+      // Apply exclusion filter if exclusion lists are selected
+      let filteredContacts = listContacts;
+      if (selectedExcludeListIds.length > 0 && excludedPhoneNumbersSet.size > 0) {
+        filteredContacts = listContacts.filter(
+          (contact) => !excludedPhoneNumbersSet.has(normalizePhoneNumber(contact.phoneNumber))
+        );
+        
+        // Validate that we still have recipients after exclusion
+        if (filteredContacts.length === 0) {
+          toast.error("Todos os contatos foram excluídos pelas listas de exclusão selecionadas. Por favor, selecione outras listas de exclusão ou remova algumas.");
+          return;
+        }
+        
+        // Show info toast about exclusions
+        const excludedCount = listContacts.length - filteredContacts.length;
+        toast.info(`${excludedCount} contato(s) excluído(s) das ${selectedExcludeListIds.length} lista(s) de exclusão. ${filteredContacts.length} contato(s) serão enviados.`);
+      }
+      
+      finalRecipients = filteredContacts.map((c) => ({
         phoneNumber: c.phoneNumber,
         name: c.name || undefined,
       }));
@@ -808,7 +894,12 @@ export default function CampaignNew() {
                     ) : contactLists && contactLists.length > 0 ? (
                       <Select
                         value={selectedListId?.toString() || ""}
-                        onValueChange={(val) => setSelectedListId(parseInt(val))}
+                        onValueChange={(val) => {
+                          const newListId = parseInt(val);
+                          setSelectedListId(newListId);
+                          // Remove the newly selected list from exclusion lists if it was there
+                          setSelectedExcludeListIds((prev) => prev.filter((id) => id !== newListId));
+                        }}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Selecione uma lista" />
@@ -882,6 +973,95 @@ export default function CampaignNew() {
                       <p className="text-xs text-blue-600 mt-2">
                         Apenas contatos ativos receberão a mensagem
                       </p>
+                      {selectedExcludeListIds.length > 0 && (
+                        <p className="text-xs text-orange-600 mt-2">
+                          {selectedExcludeListIds.length} lista(s) de exclusão selecionada(s) - contatos serão removidos ao criar a campanha
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Exclusion Lists Selection */}
+                  {selectedListId && contactLists && contactLists.length > 1 && (
+                    <div className="space-y-2">
+                      <Label>Listas de Exclusão (Opcional)</Label>
+                      <p className="text-xs text-gray-500 mb-2">
+                        Selecione listas cujos contatos devem ser removidos da lista principal antes do envio
+                      </p>
+                      <div className="border rounded-lg p-3 max-h-48 overflow-y-auto">
+                        {contactLists
+                          .filter((list) => list.id !== selectedListId)
+                          .map((list) => {
+                            const activeContacts = list.totalContacts - list.invalidContacts - list.optedOutContacts;
+                            const isSelected = selectedExcludeListIds.includes(list.id);
+                            return (
+                              <div
+                                key={list.id}
+                                className="flex items-center space-x-2 py-2 hover:bg-gray-50 rounded px-2 cursor-pointer"
+                                onClick={() => {
+                                  if (isSelected) {
+                                    setSelectedExcludeListIds(selectedExcludeListIds.filter((id) => id !== list.id));
+                                  } else {
+                                    setSelectedExcludeListIds([...selectedExcludeListIds, list.id]);
+                                  }
+                                }}
+                              >
+                                <Checkbox
+                                  checked={isSelected}
+                                  onCheckedChange={(checked) => {
+                                    if (checked) {
+                                      setSelectedExcludeListIds([...selectedExcludeListIds, list.id]);
+                                    } else {
+                                      setSelectedExcludeListIds(selectedExcludeListIds.filter((id) => id !== list.id));
+                                    }
+                                  }}
+                                />
+                                <div className="flex-1 flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm font-medium">{list.name}</span>
+                                    {list.company && (
+                                      <Badge variant="outline" className="text-xs">
+                                        {list.company}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <span className="text-xs text-gray-500">
+                                    {activeContacts} ativos
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </div>
+                      {selectedExcludeListIds.length > 0 && (
+                        <div className="flex items-center gap-2 flex-wrap mt-2">
+                          <span className="text-xs text-gray-600">Selecionadas:</span>
+                          {selectedExcludeListIds.map((listId) => {
+                            const list = contactLists.find((l) => l.id === listId);
+                            if (!list) return null;
+                            return (
+                              <Badge
+                                key={listId}
+                                variant="secondary"
+                                className="text-xs cursor-pointer"
+                                onClick={() => {
+                                  setSelectedExcludeListIds(selectedExcludeListIds.filter((id) => id !== listId));
+                                }}
+                              >
+                                {list.name}
+                                <span className="ml-1">×</span>
+                              </Badge>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {selectedExcludeListIds.length > 0 && (
+                        <div className="p-3 border rounded-lg bg-orange-50">
+                          <p className="text-sm text-orange-900">
+                            A exclusão será aplicada ao criar a campanha. Os contatos das {selectedExcludeListIds.length} lista(s) selecionada(s) serão removidos da lista principal.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1147,9 +1327,17 @@ export default function CampaignNew() {
                             {isLoadingListContacts ? (
                               <Loader2 className="w-3 h-3 animate-spin inline" />
                             ) : (
-                              listContacts?.length || 0
+                              <>
+                                {listContacts?.length || 0} contatos
+                                {selectedExcludeListIds.length > 0 && (
+                                  <> (exclusão será aplicada ao criar)</>
+                                )}
+                              </>
                             )}{" "}
                             (Lista: {selectedList.name})
+                            {selectedExcludeListIds.length > 0 && (
+                              <> - {selectedExcludeListIds.length} lista(s) de exclusão</>
+                            )}
                           </>
                         ) : (
                           "Selecione uma lista"
