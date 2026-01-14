@@ -97,6 +97,30 @@ export const appRouter = router({
           const apiToken = process.env.BACKEND_API_TOKEN;
           if (!apiToken) throw new Error('BACKEND_API_TOKEN não configurado');
 
+          // Sincronizar o tokenCache no backend Docker
+          try {
+            console.log('[whatsapp.create] Syncing token cache in backend');
+            await axios.post(`${BACKEND_API_URL}/connections/sync`, {}, {
+              headers: { 'x-auth-api': apiToken },
+              timeout: 5000
+            });
+          } catch (syncError: any) {
+            console.warn('[whatsapp.create] Token cache sync failed (non-critical):', syncError.message);
+          }
+
+          // Criar conexão Baileys no backend Docker
+          try {
+            console.log('[whatsapp.create] Creating Baileys connection in backend');
+            await axios.post(`${BACKEND_API_URL}/connections/${input.identification}/connect`, {}, {
+              headers: { 'x-auth-api': apiToken },
+              timeout: 10000
+            });
+            console.log('[whatsapp.create] Baileys connection created successfully');
+          } catch (backendError: any) {
+            console.error('[whatsapp.create] Backend connection creation failed:', backendError.message);
+            // Não lança erro aqui, apenas loga - a conexão já está no banco e pode ser criada depois
+          }
+
           // Retorna URL para o usuário acessar e escanear o QR Code
           const qrCodeUrl = `${BACKEND_API_URL}/whatsapp/qrcode?token=${apiToken}`;
           console.log('[whatsapp.create] QR Code URL:', qrCodeUrl);
