@@ -144,17 +144,26 @@ router.post("/webhook", async (req: Request, res: Response) => {
           }
         }
       }
-    } else if (isFromChatwoot) {
-      // Handle Chatwoot webhook format (if different from Meta)
-      console.log("[WhatsApp Business Webhook] Processing Chatwoot webhook format");
-      // Log the full body for debugging
-      console.log("[WhatsApp Business Webhook] Chatwoot webhook body:", JSON.stringify(body, null, 2));
+    } else {
+      // Handle other webhook formats (Chatwoot, etc.)
+      // If no entry array, might be a different format
+      console.log("[WhatsApp Business Webhook] Processing non-Meta webhook format");
+      console.log("[WhatsApp Business Webhook] Webhook body structure:", {
+        hasEntry: !!body.entry,
+        hasStatus: !!body.status,
+        hasMessageStatus: !!body.message_status,
+        bodyKeys: Object.keys(body),
+      });
       
-      // If Chatwoot sends status updates, process them here
-      // You may need to adjust this based on Chatwoot's actual webhook format
+      // Log the full body for debugging (truncated to avoid huge logs)
+      const bodyStr = JSON.stringify(body, null, 2);
+      console.log("[WhatsApp Business Webhook] Full webhook body (first 2000 chars):", bodyStr.substring(0, 2000));
+      
+      // Try to process Chatwoot format if detected
       if (body.status || body.message_status) {
         const status = body.status || body.message_status;
         if (status.messageId || status.id) {
+          console.log("[WhatsApp Business Webhook] Processing status update from alternative format");
           await processStatusUpdate({
             id: status.messageId || status.id,
             status: status.status || status.state,
@@ -163,6 +172,15 @@ router.post("/webhook", async (req: Request, res: Response) => {
             errors: status.errors,
           });
         }
+      }
+      
+      // Try to process message if in alternative format
+      if (body.message && !body.entry) {
+        console.log("[WhatsApp Business Webhook] Processing message from alternative format");
+        await processIncomingMessage(
+          body.message,
+          body.phone_number_id || body.phoneNumberId
+        );
       }
     }
 
