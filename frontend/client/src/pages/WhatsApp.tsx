@@ -28,6 +28,7 @@ export default function WhatsApp() {
   const saveConnectionMutation = trpc.whatsapp.saveConnection.useMutation();
 
   const connectToSocket = (forceNew: boolean = false) => {
+    console.log("[WhatsApp] connectToSocket chamado - identification:", identification);
     setConnectionStatus("generating");
     setProgress(33);
     setQrCodeTimeout(false);
@@ -37,9 +38,17 @@ export default function WhatsApp() {
       clearTimeout(qrTimeoutRef.current);
     }
     
+    // Desconecta socket anterior se existir
+    if (socketRef.current) {
+      console.log("[WhatsApp] Desconectando socket anterior");
+      socketRef.current.removeAllListeners();
+      socketRef.current.disconnect();
+    }
+    
     // Conecta ao Socket.IO - usa variável de ambiente ou localhost em desenvolvimento
     const backendUrl = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3333";
     console.log("[WhatsApp] Connecting to Socket.IO at:", backendUrl);
+    console.log("[WhatsApp] Socket.IO path:", "/socket.io");
     
     const socket = io(backendUrl, {
       path: "/socket.io",
@@ -51,6 +60,9 @@ export default function WhatsApp() {
     socketRef.current = socket;
 
     socket.on("connect", () => {
+      console.log("[WhatsApp] Socket.IO conectado! Socket ID:", socket.id);
+      console.log("[WhatsApp] Emitindo requestQRCode com identification:", identification);
+      
       // Solicita QR Code ao backend
       socket.emit("requestQRCode", { identification });
       
@@ -64,10 +76,30 @@ export default function WhatsApp() {
       //   setConnectionStatus("already_connected");
       // }, 8000);
     });
+
+    socket.on("connect_error", (error) => {
+      console.error("[WhatsApp] Erro ao conectar Socket.IO:", error);
+      console.error("[WhatsApp] Error message:", error.message);
+      console.error("[WhatsApp] Error type:", error.type);
+      toast.error(`Erro ao conectar: ${error.message}`);
+    });
     
 
 
-    socket.on("qrcode", (qrData: { connected: boolean; qrcode?: string }) => {
+    socket.on("qrcode", (qrData: { connected?: boolean; qrcode?: string; id?: string; error?: string }) => {
+      console.log("[WhatsApp] Evento 'qrcode' recebido!");
+      console.log("[WhatsApp] Dados recebidos:", JSON.stringify(qrData, null, 2));
+      console.log("[WhatsApp] qrData.connected:", qrData.connected);
+      console.log("[WhatsApp] qrData.qrcode presente:", !!qrData.qrcode);
+      console.log("[WhatsApp] qrData.qrcode length:", qrData.qrcode?.length || 0);
+      console.log("[WhatsApp] canvasRef.current existe:", !!canvasRef.current);
+      
+      // Verificar se há erro
+      if (qrData.error) {
+        console.error("[WhatsApp] Erro recebido no evento qrcode:", qrData.error);
+        toast.error(`Erro: ${qrData.error}`);
+        return;
+      }
       
       // Limpa o timeout pois recebemos resposta
       if (qrTimeoutRef.current) {
@@ -77,16 +109,24 @@ export default function WhatsApp() {
       setQrCodeTimeout(false);
       
       if (!qrData.connected && qrData.qrcode && canvasRef.current) {
-        // Renderiza o QR Code no canvas
-        new QRious({
-          element: canvasRef.current,
-          value: qrData.qrcode,
-          size: 256,
-        });
-        setConnectionStatus("waiting");
-        setProgress(66);
-        toast.info("QR Code gerado! Escaneie com seu WhatsApp");
+        console.log("[WhatsApp] Renderizando QR Code no canvas");
+        try {
+          // Renderiza o QR Code no canvas
+          new QRious({
+            element: canvasRef.current,
+            value: qrData.qrcode,
+            size: 256,
+          });
+          console.log("[WhatsApp] QR Code renderizado com sucesso!");
+          setConnectionStatus("waiting");
+          setProgress(66);
+          toast.info("QR Code gerado! Escaneie com seu WhatsApp");
+        } catch (error) {
+          console.error("[WhatsApp] Erro ao renderizar QR Code:", error);
+          toast.error("Erro ao renderizar QR Code");
+        }
       } else if (qrData.connected) {
+        console.log("[WhatsApp] Conexão estabelecida (connected: true)");
         setConnectionStatus("connected");
         setProgress(100);
         toast.success("WhatsApp conectado com sucesso!");
@@ -116,13 +156,22 @@ export default function WhatsApp() {
       }
     });
 
-    socket.on("disconnect", () => {
-      // WebSocket desconectado
+    socket.on("disconnect", (reason) => {
+      console.log("[WhatsApp] Socket.IO desconectado. Motivo:", reason);
     });
 
-    socket.on("error", () => {
+    socket.on("error", (error) => {
+      console.error("[WhatsApp] Erro no Socket.IO:", error);
       toast.error("Erro na conexão com o servidor");
     });
+
+    // Log todos os eventos para debug
+    const originalOnevent = socket.onevent;
+    socket.onevent = function (packet) {
+      const args = packet.data || [];
+      console.log("[WhatsApp] Socket.IO evento recebido:", args[0], args.slice(1));
+      originalOnevent.call(this, packet);
+    };
   };
 
   const handleCreate = () => {
