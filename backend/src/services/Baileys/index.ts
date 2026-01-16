@@ -209,20 +209,19 @@ export const addConnection = async (id: string): Promise<void> => {
 
 
   sock.ev.on('connection.update', update => {
-    if (update.qr) {
-      io.emit(`qrcode`, {
+    const { connection, lastDisconnect, qr } = update;
+    
+    // Emitir QR code quando disponível
+    if (qr) {
+      console.log(`[QR Code] Gerando QR para conexão: ${id}`);
+      io.emit('qrcode', {
         id,
-        qrcode: update.qr,
+        qrcode: qr,
         connected: false,
       });
-    } else {
-      io.emit(`qrcode`, {
-        id,
-        qrcode: null,
-        connected: true,
-      });
     }
-    const { connection, lastDisconnect } = update;
+    
+    // Tratar mudanças de estado de conexão
     if (connection === 'close') {
       updateConnectionStatus(id, false);
       const shouldReconnect =
@@ -250,6 +249,13 @@ export const addConnection = async (id: string): Promise<void> => {
     } else if (connection === 'open') {
       console.log('Conexão aberta para o usuário', id);
       updateConnectionStatus(id, true);
+      io.emit('qrcode', {
+        id,
+        qrcode: null,
+        connected: true,
+      });
+    } else if (connection === 'connecting') {
+      console.log(`[Connection] Conexão ${id} está conectando...`);
     }
   });
   sock.ev.on('messages.upsert', async m => {
