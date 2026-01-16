@@ -349,7 +349,7 @@ export default function CampaignNew() {
   };
 
   // Handle create campaign
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!name.trim()) {
       toast.error("Nome da campanha e obrigatorio");
       return;
