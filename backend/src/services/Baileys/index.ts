@@ -219,17 +219,33 @@ export const addConnection = async (id: string): Promise<void> => {
     const { connection, lastDisconnect, qr } = update;
     
     console.log(`[Connection Update] Conexão ${id} - connection: ${connection}, qr: ${qr ? 'presente' : 'ausente'}`);
+    console.log(`[Connection Update] Update completo:`, JSON.stringify({
+      connection,
+      qr: qr ? `presente (${qr.length} chars)` : 'ausente',
+      lastDisconnect: lastDisconnect ? 'presente' : 'ausente'
+    }, null, 2));
     
     // Emitir QR code quando disponível
     if (qr) {
-      console.log(`[QR Code] Gerando QR para conexão: ${id}`);
+      console.log(`[QR Code] ✅ QR Code gerado para conexão: ${id}`);
       console.log(`[QR Code] Tamanho do QR: ${qr.length} caracteres`);
-      io.emit('qrcode', {
+      console.log(`[QR Code] Primeiros 50 caracteres: ${qr.substring(0, 50)}...`);
+      
+      const qrData = {
         id,
         qrcode: qr,
         connected: false,
-      });
-      console.log(`[QR Code] Evento 'qrcode' emitido para conexão: ${id}`);
+      };
+      
+      console.log(`[QR Code] Emitindo evento 'qrcode' para TODOS os clientes conectados`);
+      io.emit('qrcode', qrData);
+      console.log(`[QR Code] ✅ Evento 'qrcode' emitido com sucesso para conexão: ${id}`);
+    } else if (connection === 'open') {
+      console.log(`[Connection Update] ⚠️ Conexão ${id} está 'open' mas não há QR - pode já estar autenticada`);
+    } else if (connection === 'connecting') {
+      console.log(`[Connection Update] 🔄 Conexão ${id} está 'connecting' - aguardando QR...`);
+    } else {
+      console.log(`[Connection Update] ℹ️ Conexão ${id} - estado: ${connection}, sem QR code ainda`);
     }
     
     // Tratar mudanças de estado de conexão

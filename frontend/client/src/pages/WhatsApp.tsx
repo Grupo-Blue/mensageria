@@ -64,17 +64,20 @@ export default function WhatsApp() {
       console.log("[WhatsApp] Emitindo requestQRCode com identification:", identification);
       
       // Solicita QR Code ao backend
-      socket.emit("requestQRCode", { identification });
+      socket.emit("requestQRCode", { identification }, (response: any) => {
+        console.log("[WhatsApp] Resposta do requestQRCode (ack):", response);
+      });
       
       setConnectionStatus("waiting");
       setProgress(66);
       
-      // Timeout desativado temporariamente para permitir QR Code carregar
-      // qrTimeoutRef.current = setTimeout(() => {
-      //   console.log("Timeout: QR Code não recebido em 8 segundos");
-      //   setQrCodeTimeout(true);
-      //   setConnectionStatus("already_connected");
-      // }, 8000);
+      // Timeout para verificar se QR Code foi recebido
+      qrTimeoutRef.current = setTimeout(() => {
+        console.warn("[WhatsApp] ⚠️ TIMEOUT: QR Code não recebido em 15 segundos");
+        console.warn("[WhatsApp] Verifique os logs do backend para ver se o QR foi gerado");
+        setQrCodeTimeout(true);
+        toast.warning("QR Code não recebido. Verifique se o backend está gerando o QR code.");
+      }, 15000);
     });
 
     socket.on("connect_error", (error) => {
@@ -169,9 +172,16 @@ export default function WhatsApp() {
     const originalOnevent = socket.onevent;
     socket.onevent = function (packet) {
       const args = packet.data || [];
-      console.log("[WhatsApp] Socket.IO evento recebido:", args[0], args.slice(1));
+      console.log("[WhatsApp] 📡 Socket.IO evento recebido:", args[0], args.slice(1));
       originalOnevent.call(this, packet);
     };
+
+    // Verificar se o socket está realmente conectado após 2 segundos
+    setTimeout(() => {
+      console.log("[WhatsApp] Status do socket após 2s - connected:", socket.connected);
+      console.log("[WhatsApp] Status do socket após 2s - disconnected:", socket.disconnected);
+      console.log("[WhatsApp] Socket ID atual:", socket.id);
+    }, 2000);
   };
 
   const handleCreate = () => {
