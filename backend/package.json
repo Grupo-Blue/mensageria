@@ -8,7 +8,7 @@
     "prebuild": "rimraf build",
     "postbuild": "mkdirp build/views && cpy src/views/* build/views --parents && cpy src/swagger.json build",
     "swagger": "tsx src/swagger_autogen.ts",
-    "dev": "tsx src/swagger_autogen.ts && tsx watch src/server.ts",
+    "dev": "tsx src/swagger_autogen.ts && nodemon",
     "start": "cross-env NODE_ENV=production node ./build/server.js"
   },
   "dependencies": {
@@ -43,6 +43,8 @@
     "telegraf": "^4.15.3",
     "tsup": "^6.7.0",
     "tsx": "^3.12.6",
+    "ts-node": "^10.9.2",
+    "nodemon": "^3.0.2",
     "uuid": "^9.0.0",
     "yup": "^1.1.1",
     "zod": "^3.21.4"
