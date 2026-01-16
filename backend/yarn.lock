@@ -942,11 +942,6 @@
   resolved "https://registry.npmjs.org/@esbuild/darwin-arm64/-/darwin-arm64-0.18.20.tgz"
   integrity sha512-bxRHW5kHU38zS2lPTPOyuyTm+S+eobPUnTNkdJEfAddYgEcll4xkT8DB9d2008DtTbl7uJag2HuE5NZAZgnNEA==
 
-"@eshaz/web-worker@1.2.1":
-  version "1.2.1"
-  resolved "https://registry.npmjs.org/@eshaz/web-worker/-/web-worker-1.2.1.tgz"
-  integrity sha512-v5AKAVtM0toVD2rDCGjzhySWlXG/sG5HVialdzrxFKTAnFZNCjQelX0n2tPK0tE86jf4s3hpWlpRtOh8OObktg==
-
 "@eslint-community/eslint-utils@^4.2.0":
   version "4.4.0"
   resolved "https://registry.npmjs.org/@eslint-community/eslint-utils/-/eslint-utils-4.4.0.tgz"
@@ -1912,18 +1907,6 @@
   resolved "https://registry.npmjs.org/@telegraf/types/-/types-6.9.1.tgz"
   integrity sha512-bzqwhicZq401T0e09tu8b1KvGfJObPmzKU/iKCT5V466AsAZZWQrBYQ5edbmD1VZuHLEwopoOVY5wPP4HaLtug==
 
-"@thi.ng/bitstream@^2.2.12":
-  version "2.2.32"
-  resolved "https://registry.npmjs.org/@thi.ng/bitstream/-/bitstream-2.2.32.tgz"
-  integrity sha512-snzFrxmzMiqZxgiZ5tqoPA2QPfOJH2eE6PIr5+nPcm50jjRiyaYoP5gN2hwB7zad8L+gyW6lxNLPwj4SX/bFyg==
-  dependencies:
-    "@thi.ng/errors" "^2.4.2"
-
-"@thi.ng/errors@^2.4.2":
-  version "2.4.2"
-  resolved "https://registry.npmjs.org/@thi.ng/errors/-/errors-2.4.2.tgz"
-  integrity sha512-LmctoNnZIlHVlK6JduLXZlrO/xXRimECSLs+qzb/QHW5E/M7wZdrrlhUJbfXc7cY4tcPJlf2kJm0hk8ELMPMEw==
-
 "@tokenizer/inflate@^0.4.1":
   version "0.4.1"
   resolved "https://registry.npmjs.org/@tokenizer/inflate/-/inflate-0.4.1.tgz"
@@ -2431,17 +2414,10 @@
     loupe "^2.3.6"
     pretty-format "^27.5.1"
 
-"@wasm-audio-decoders/common@9.0.2":
-  version "9.0.2"
-  resolved "https://registry.npmjs.org/@wasm-audio-decoders/common/-/common-9.0.2.tgz"
-  integrity sha512-yZ2ZjqwUYsoGa5WYPWNjV2cD8fqrT4LiYvj45oPQF4v05TnPkbt9eVURW75ONRmntzFt9RFqc+Z0zmTyZritcQ==
-  dependencies:
-    "@eshaz/web-worker" "1.2.1"
-
-"@whiskeysockets/baileys@^6.7.19":
-  version "6.7.21"
-  resolved "https://registry.npmjs.org/@whiskeysockets/baileys/-/baileys-6.7.21.tgz"
-  integrity sha512-xx9OHd6jlPiu5yZVuUdwEgFNAOXiEG8sULHxC6XfzNwssnwxnA9Lp44pR05H621GQcKyCfsH33TGy+Na6ygX4w==
+"@whiskeysockets/baileys@6.7.19":
+  version "6.7.19"
+  resolved "https://registry.npmjs.org/@whiskeysockets/baileys/-/baileys-6.7.19.tgz"
+  integrity sha512-pdt+6W6bRgO2arW1MwmofQpV3ZyPR+hrrMna/YcKwRGVZyir9uqeSKm6cFUTLFnjxg9gG90iVSktJ+kph6OBfw==
   dependencies:
     "@cacheable/node-cache" "^1.4.0"
     "@hapi/boom" "^9.1.3"
@@ -3107,11 +3083,6 @@ co@^4.6.0:
   version "4.6.0"
   resolved "https://registry.npmjs.org/co/-/co-4.6.0.tgz"
   integrity sha512-QVb0dM5HvG+uaxitm8wONl7jltx8dqhfU33DcqtOZcLSVIKSDDLDi7+0LbAKiyI8hD9u42m2YxXSkMGWThaecQ==
-
-codec-parser@2.4.3:
-  version "2.4.3"
-  resolved "https://registry.npmjs.org/codec-parser/-/codec-parser-2.4.3.tgz"
-  integrity sha512-3dAvFtdpxn4YLstqsB2ZiJXXNg7n1j7R5ONeDuk+2kBkb39PwrCRytOFHlSWA8q5jCjW3PumeMv9q37bFHsijg==
 
 collect-v8-coverage@^1.0.0:
   version "1.0.2"
@@ -6206,13 +6177,6 @@ optionator@^0.9.3:
     levn "^0.4.1"
     prelude-ls "^1.2.1"
     type-check "^0.4.0"
-
-opus-decoder@0.7.3:
-  version "0.7.3"
-  resolved "https://registry.npmjs.org/opus-decoder/-/opus-decoder-0.7.3.tgz"
-  integrity sha512-UdBEiGnmMOqT4VvH0+32//cIkGLIHvP0MpM5TPOLDHaLAAHc+tDzhAto84f5tWoHYH4nPR/oRb+jhxwcuQfbzA==
-  dependencies:
-    "@wasm-audio-decoders/common" "9.0.2"
 
 otplib@*, otplib@^12.0.1:
   version "12.0.1"
