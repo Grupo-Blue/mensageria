@@ -134,7 +134,7 @@ export const removeConnection = (id: string): void => {
 };
 
 export const addConnection = async (id: string): Promise<void> => {
-  console.log('Entrou no addConnection')
+  console.log(`[addConnection] Iniciando conexão para: ${id}`);
   const io = socket.getIO();
   removeConnection(id);
   const dir = path.resolve(
@@ -143,12 +143,19 @@ export const addConnection = async (id: string): Promise<void> => {
     id,
   );
 
+  // Verificar se já existem credenciais salvas
+  const hasExistingAuth = fs.existsSync(dir) && fs.readdirSync(dir).length > 0;
+  console.log(`[addConnection] Credenciais existentes para ${id}: ${hasExistingAuth ? 'sim' : 'não'}`);
+
   const { state, saveCreds } = await useMultiFileAuthState(dir);
 
   const sock = makeWASocket({
     // version,
     printQRInTerminal: true,
     auth: state,
+    getMessage: async (key) => {
+      return undefined;
+    },
     // patchMessageBeforeSending: msg => {
     //   let message = msg;
     //   const requiresPatch = !!(
@@ -211,14 +218,18 @@ export const addConnection = async (id: string): Promise<void> => {
   sock.ev.on('connection.update', update => {
     const { connection, lastDisconnect, qr } = update;
     
+    console.log(`[Connection Update] Conexão ${id} - connection: ${connection}, qr: ${qr ? 'presente' : 'ausente'}`);
+    
     // Emitir QR code quando disponível
     if (qr) {
       console.log(`[QR Code] Gerando QR para conexão: ${id}`);
+      console.log(`[QR Code] Tamanho do QR: ${qr.length} caracteres`);
       io.emit('qrcode', {
         id,
         qrcode: qr,
         connected: false,
       });
+      console.log(`[QR Code] Evento 'qrcode' emitido para conexão: ${id}`);
     }
     
     // Tratar mudanças de estado de conexão

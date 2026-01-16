@@ -14,7 +14,7 @@
   "dependencies": {
     "@adiwajshing/keyed-db": "^0.2.4",
     "@hapi/boom": "^10.0.0",
-    "@whiskeysockets/baileys": "^6.7.19",
+    "@whiskeysockets/baileys": "6.7.19",
     "axios": "^1.6.4",
     "bcryptjs": "^2.4.3",
     "bullmq": "^3.11.0",

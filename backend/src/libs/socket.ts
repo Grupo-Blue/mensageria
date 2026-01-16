@@ -14,16 +14,21 @@ export default {
       socket.on('requestQRCode', async (data: { identification: string }) => {
         try {
           console.log('[Socket.IO] requestQRCode recebido para:', data.identification);
+          console.log('[Socket.IO] Socket ID:', socket.id);
           if (!data.identification) {
             console.error('[Socket.IO] Identification não fornecida');
+            socket.emit('qrcode', { connected: false, qrcode: null, error: 'Identification não fornecida' });
             return;
           }
           
           // Chama addConnection que vai gerar o QR Code
+          console.log('[Socket.IO] Chamando addConnection para:', data.identification);
           await addConnection(data.identification);
-          console.log('[Socket.IO] addConnection chamado para:', data.identification);
+          console.log('[Socket.IO] addConnection concluído para:', data.identification);
         } catch (error: any) {
           console.error('[Socket.IO] Erro ao processar requestQRCode:', error.message);
+          console.error('[Socket.IO] Stack trace:', error.stack);
+          socket.emit('qrcode', { connected: false, qrcode: null, error: error.message });
         }
       });
     });
