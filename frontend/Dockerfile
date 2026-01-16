@@ -24,6 +24,9 @@ COPY . .
 # Isso garante que patches e overrides sejam aplicados corretamente
 RUN pnpm install --no-frozen-lockfile
 
+# Criar .env vazio se não existir (para evitar erro no COPY posterior)
+RUN if [ ! -f .env ]; then touch .env; fi
+
 # Build completo: Vite (frontend) + esbuild (servidor Express/tRPC)
 RUN pnpm build
 
