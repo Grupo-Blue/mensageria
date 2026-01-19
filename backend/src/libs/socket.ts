@@ -23,8 +23,8 @@ export default {
             return;
           }
           
-          // Chama addConnection que vai gerar o QR Code
           console.log('[Socket.IO] 🔄 Chamando addConnection para:', data.identification);
+          // Chama addConnection que vai gerar o QR Code
           await addConnection(data.identification);
           console.log('[Socket.IO] ✅ addConnection concluído para:', data.identification);
           console.log('[Socket.IO] ⏳ Aguardando evento connection.update com QR code...');

@@ -8,6 +8,7 @@ import { multiTenantAuth, requireConnection, AuthenticatedRequest } from '../../
 import {
   addConnection,
   removeConnection,
+  logoutConnection,
   getConnection,
   listConnections,
   sendMessage,
@@ -90,7 +91,7 @@ router.post('/:connectionId/connect', multiTenantAuth, async (req: Authenticated
 
 /**
  * POST /connections/:connectionId/disconnect
- * Disconnect a WhatsApp connection
+ * Disconnect a WhatsApp connection (keeps session for reconnect)
  */
 router.post('/:connectionId/disconnect', multiTenantAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -106,6 +107,31 @@ router.post('/:connectionId/disconnect', multiTenantAuth, async (req: Authentica
     return res.json({
       success: true,
       message: 'Conexão desconectada.',
+      connectionId,
+    });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /connections/:connectionId/logout
+ * Full logout: disconnect and delete session files (forces new QR code)
+ */
+router.post('/:connectionId/logout', multiTenantAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { connectionId } = req.params;
+
+    // Verify authorization for this connection
+    if (req.tenant?.identification && req.tenant.identification !== connectionId) {
+      return res.status(403).json({ error: 'Não autorizado para esta conexão' });
+    }
+
+    logoutConnection(connectionId);
+
+    return res.json({
+      success: true,
+      message: 'Logout completo. Sessão removida, um novo QR Code será necessário.',
       connectionId,
     });
   } catch (error: any) {
@@ -178,6 +204,15 @@ router.post('/sync', multiTenantAuth, async (_req: AuthenticatedRequest, res: Re
 });
 
 export default router;
+
+
+
+
+
+
+
+
+
 
 
 

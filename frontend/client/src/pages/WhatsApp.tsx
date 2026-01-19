@@ -83,7 +83,6 @@ export default function WhatsApp() {
     socket.on("connect_error", (error) => {
       console.error("[WhatsApp] Erro ao conectar Socket.IO:", error);
       console.error("[WhatsApp] Error message:", error.message);
-      console.error("[WhatsApp] Error type:", error.type);
       toast.error(`Erro ao conectar: ${error.message}`);
     });
     
@@ -194,27 +193,25 @@ export default function WhatsApp() {
 
   const handleForceNew = async () => {
     try {
-      toast.info("Desconectando sessão ativa...");
+      toast.info("Fazendo logout completo...");
       
-      // Chama endpoint REST do backend para forçar logout
+      // Chama endpoint REST do backend para fazer logout completo (remove sessão)
       const apiToken = import.meta.env.VITE_BACKEND_API_TOKEN;
       const backendUrl = import.meta.env.VITE_BACKEND_API_URL || "https://mensageria.grupoblue.com.br";
-      const response = await fetch(`${backendUrl}/whatsapp/disconnect`, {
+      const targetId = identification || "mensageria";
+      const response = await fetch(`${backendUrl}/connections/${targetId}/logout`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-auth-api": apiToken || ""
-        },
-        body: JSON.stringify({
-          identification: identification || "mensageria"
-        })
+        }
       });
       
       if (!response.ok) {
-        throw new Error("Erro ao desconectar");
+        throw new Error("Erro ao fazer logout");
       }
       
-      toast.success("Sessão desconectada! Gerando novo QR Code...");
+      toast.success("Sessão removida! Gerando novo QR Code...");
       
       // Aguarda 1 segundo para garantir que o backend processou o logout
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -222,7 +219,7 @@ export default function WhatsApp() {
       // Agora solicita novo QR Code
       connectToSocket(true);
     } catch (error) {
-      toast.error("Erro ao desconectar. Tente novamente.");
+      toast.error("Erro ao fazer logout. Tente novamente.");
     }
   };
 
@@ -363,6 +360,22 @@ export default function WhatsApp() {
                         <li>Aponte seu celular para esta tela</li>
                       </ol>
                     </div>
+                    
+                    <Alert className="bg-amber-50 border-amber-200">
+                      <AlertTriangle className="h-4 w-4 text-amber-600" />
+                      <AlertDescription className="text-amber-800 text-sm">
+                        Se o QR Code não aparecer, clique em "Forçar Novo QR Code" para reiniciar a conexão.
+                      </AlertDescription>
+                    </Alert>
+                    
+                    <Button 
+                      variant="outline" 
+                      onClick={handleForceNew}
+                      className="w-full"
+                    >
+                      <QrCode className="mr-2 h-4 w-4" />
+                      Forçar Novo QR Code
+                    </Button>
                   </>
                 )}
 

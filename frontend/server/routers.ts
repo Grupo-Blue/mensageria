@@ -170,7 +170,7 @@ export const appRouter = router({
         const apiToken = process.env.BACKEND_API_TOKEN;
         if (!apiToken) throw new Error('BACKEND_API_TOKEN não configurado');
         
-        const response = await axios.get(`${BACKEND_API_URL}/whatsapp/status/${input.identification}`, {
+        const response = await axios.get(`${BACKEND_API_URL}/connections/${input.identification}`, {
           headers: { 'x-auth-api': apiToken }
         });
         const connection = await db.getWhatsappConnectionByIdentification(input.identification);
@@ -191,12 +191,14 @@ export const appRouter = router({
         const apiToken = process.env.BACKEND_API_TOKEN;
         if (!apiToken) throw new Error('BACKEND_API_TOKEN não configurado');
         
-        await axios.post(`${BACKEND_API_URL}/whatsapp/disconnect`, { identification: input.identification }, {
+        // Usa logout para remover sessão completamente (necessário para gerar novo QR code)
+        await axios.post(`${BACKEND_API_URL}/connections/${input.identification}/logout`, {}, {
           headers: { 'x-auth-api': apiToken }
         });
         await db.updateWhatsappConnection(input.id, { status: "disconnected", qrCode: null });
         return { success: true };
       } catch (error: any) {
+        console.error('[whatsapp.disconnect] Erro:', error.message);
         throw new Error("Erro ao desconectar");
       }
     }),

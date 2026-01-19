@@ -133,6 +133,25 @@ export const removeConnection = (id: string): void => {
   }
 };
 
+/**
+ * Remove conexão e apaga arquivos de sessão (força novo QR code)
+ */
+export const logoutConnection = (id: string): void => {
+  console.log('[Baileys] Logout completo para:', id);
+  removeConnection(id);
+  
+  // Remove arquivos de sessão para forçar novo QR code
+  const authDir = path.resolve(process.cwd(), 'auth_info_baileys', id);
+  try {
+    if (fs.existsSync(authDir)) {
+      fs.rmSync(authDir, { recursive: true, force: true });
+      console.log('[Baileys] Arquivos de sessão removidos:', authDir);
+    }
+  } catch (error) {
+    console.error('[Baileys] Erro ao remover arquivos de sessão:', error);
+  }
+};
+
 export const addConnection = async (id: string): Promise<void> => {
   console.log(`[addConnection] Iniciando conexão para: ${id}`);
   const io = socket.getIO();
@@ -156,64 +175,12 @@ export const addConnection = async (id: string): Promise<void> => {
     getMessage: async (key) => {
       return undefined;
     },
-    // patchMessageBeforeSending: msg => {
-    //   let message = msg;
-    //   const requiresPatch = !!(
-    //     message.buttonsMessage ||
-    //     // || message.templateMessage
-    //     message.listMessage
-    //   );
-    //   if (requiresPatch) {
-    //     message = {
-    //       viewOnceMessage: {
-    //         message: {
-    //           messageContextInfo: {
-    //             deviceListMetadataVersion: 2,
-    //             deviceListMetadata: {},
-    //           },
-    //           ...message,
-    //         },
-    //       },
-    //     };
-    //   }
-
-    //   return message;
-    // },
   });
 
   // store?.bind(sock.ev);
   // eslint-disable-next-line @typescript-eslint/no-misused-promises
   sock.ev.on('creds.update', saveCreds);
-  // sock.ev.on('chats.set', data => console.log('chats.set', data));
-  // sock.ev.on('messages.set', data => console.log('messages.set', data));
-  // sock.ev.on('contacts.set', data => console.log('contacts.set', data));
-  // sock.ev.on('chats.upsert', data => console.log('chats.upsert', data));
-  // sock.ev.on('chats.update', data => console.log('chats.update', data));
-  // sock.ev.on('chats.delete', data => console.log('chats.delete', data));
   sock.ev.on('presence.update', data => console.log('presence.update', data));
-  // sock.ev.on('contacts.upsert', data => console.log('contacts.upsert', data));
-  // sock.ev.on('contacts.update', data => console.log('contacts.update', data));
-  // sock.ev.on('messages.delete', data => console.log('messages.delete', data));
-  // sock.ev.on('messages.update', data => console.log('messages.update', data));
-  // sock.ev.on('messages.media-update', data =>
-  //   console.log('messages.media-update', data),
-  // );
-  // sock.ev.on('messages.reaction', data =>
-  //   console.log('messages.reaction', data),
-  // );
-  // sock.ev.on('message-receipt.update', data =>
-  //   console.log('message-receipt.update', data),
-  // );
-  // sock.ev.on('groups.upsert', data => console.log('groups.upsert', data));
-  // sock.ev.on('groups.update', data => console.log('groups.update', data));
-  // sock.ev.on('group-participants.update', data =>
-  //   console.log('group-participants.update', data),
-  // );
-  // sock.ev.on('blocklist.set', data => console.log('blocklist.set', data));
-  // sock.ev.on('blocklist.update', data => console.log('blocklist.update', data));
-  // sock.ev.on('call', data => console.log('call', data));
-
-
 
   sock.ev.on('connection.update', update => {
     const { connection, lastDisconnect, qr } = update;
