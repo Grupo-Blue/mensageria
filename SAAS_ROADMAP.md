@@ -166,14 +166,16 @@ export const payments = mysqlTable('payments', {
 });
 ```
 
-**Sugestão de Planos:**
+**Planos Definidos:**
 
 | Plano | Preço/mês | Conexões Baileys | Contas Meta | Campanhas/mês | Mensagens/mês |
 |-------|-----------|------------------|-------------|---------------|---------------|
 | **Free** | R$ 0 | 1 | 0 | 1 | 100 |
-| **Starter** | R$ 97 | 3 | 1 | 10 | 5.000 |
+| **Starter** | R$ 57 | 3 | 1 | 10 | 5.000 |
 | **Pro** | R$ 297 | 10 | 3 | 50 | 25.000 |
-| **Enterprise** | R$ 997+ | Ilimitado | 10 | Ilimitado | 100.000+ |
+| **Enterprise** | Sob consulta | Ilimitado | 10+ | Ilimitado | 100.000+ |
+
+> **Nota:** O plano Enterprise terá um botão "Fale Conosco" que abre email para contato comercial, pois o preço será avaliado caso a caso.
 
 #### 1.2 Middleware de Verificação de Limites
 
@@ -305,30 +307,308 @@ export const messageLimiter = rateLimit({
 
 ### FASE 3: Admin e Operações
 
-#### 3.1 Painel Administrativo
+#### 3.1 Painel Administrativo Completo
 
-**Tabela necessária:**
+**Rota:** `/admin` (apenas para usuários com role: 'admin')
+
+---
+
+##### 3.1.1 Dashboard Admin (Visão Geral)
+
+**Cards de métricas principais:**
+
+| Métrica | Descrição |
+|---------|-----------|
+| **Total de Usuários** | Quantidade total de usuários cadastrados |
+| **Usuários Ativos** | Usuários com assinatura ativa (últimos 30 dias) |
+| **Conexões WhatsApp** | Total de conexões Baileys ativas |
+| **Conexões Offline** | Conexões com status 'disconnected' |
+| **Contas Business** | Total de contas WhatsApp Business cadastradas |
+| **Campanhas em Execução** | Campanhas com status 'running' |
+| **Erros nas Últimas 24h** | Mensagens com status 'failed' |
+| **MRR (Receita Mensal)** | Soma de todas assinaturas ativas |
+
+**Gráficos:**
+- Novos usuários por dia (últimos 30 dias)
+- Mensagens enviadas por dia
+- Receita por mês (últimos 12 meses)
+- Distribuição de planos (pizza)
+
+---
+
+##### 3.1.2 Gerenciamento de Usuários
+
+**Tabela de usuários com:**
+- ID, Nome, Email
+- Plano atual
+- Status da assinatura
+- Data de cadastro
+- Último login
+- Conexões ativas
+- Ações (ver detalhes, editar, suspender)
+
+**Filtros:**
+- Por plano (Free, Starter, Pro, Enterprise)
+- Por status (ativo, cancelado, inadimplente)
+- Por data de cadastro
+- Busca por nome/email
+
+**Ações disponíveis:**
+- Ver perfil completo do usuário
+- Alterar plano manualmente
+- Cancelar/pausar assinatura
+- Adicionar créditos extras
+- Enviar email
+- Fazer login como usuário (impersonate)
+
+---
+
+##### 3.1.3 Gerenciamento de Assinaturas
+
+**Visão de assinaturas:**
+- Lista de todas assinaturas
+- Status em tempo real
+- Próxima cobrança
+- Histórico de pagamentos
+
+**Ações:**
+- Cancelar assinatura
+- Pausar assinatura
+- Reativar assinatura
+- Aplicar desconto
+- Estender período
+- Forçar retry de pagamento
+
+**Relatório de Churn:**
+- Usuários que cancelaram no mês
+- Motivos de cancelamento
+- Tempo médio de vida do cliente
+
+---
+
+##### 3.1.4 Monitoramento de Conexões
+
+**Tabela de conexões WhatsApp (Baileys):**
+- Usuário
+- Identificação
+- Status (connected/disconnected/qr_code)
+- Número de telefone
+- Última conexão
+- Mensagens enviadas
+
+**Tabela de contas Business (Meta):**
+- Usuário
+- Nome da conta
+- Phone Number ID
+- Status
+- Templates aprovados
+
+**Alertas automáticos:**
+- Conexões offline há mais de 1 hora
+- Muitas falhas de envio
+- QR Code pendente há mais de 24h
+
+---
+
+##### 3.1.5 Monitoramento de Erros
+
+**Dashboard de erros:**
+- Total de erros por tipo
+- Erros por hora (gráfico)
+- Taxa de erro (% de falhas)
+
+**Tipos de erro monitorados:**
+- Falha de envio WhatsApp (Baileys)
+- Falha de envio Meta API
+- Falha de webhook
+- Erros de autenticação
+- Rate limit atingido
+
+**Tabela de erros recentes:**
+- Timestamp
+- Usuário
+- Tipo de erro
+- Mensagem de erro
+- Contexto (campanha, conexão, etc)
+- Stack trace (colapsável)
+
+---
+
+##### 3.1.6 Configurações do Sistema
+
+**Stripe:**
+- Status da conexão com Stripe
+- Webhook URL configurada
+- Último evento recebido
+- Botão para testar conexão
+- Link para dashboard Stripe
+
+**Planos:**
+- Editar limites dos planos
+- Ativar/desativar planos
+- Criar novo plano
+- Definir preços
+
+**Email:**
+- Configuração SMTP
+- Templates de email
+- Teste de envio
+
+**Sistema:**
+- Modo manutenção (ativar/desativar)
+- Variáveis de ambiente (readonly)
+- Versão do sistema
+- Status dos serviços (frontend, backend Docker, banco)
+
+---
+
+##### 3.1.7 Logs e Auditoria
+
+**Logs de admin:**
+- Todas ações dos administradores
+- Quem fez, o quê, quando
+- Filtro por admin, ação, data
+
+**Logs de sistema:**
+- Erros de aplicação
+- Requisições lentas
+- Eventos importantes
+
+---
+
+**Tabelas necessárias:**
 
 ```typescript
+// Logs de ações administrativas
 export const adminLogs = mysqlTable('admin_logs', {
   id: serial('id').primaryKey(),
-  adminUserId: int('admin_user_id').notNull(),
+  adminUserId: int('admin_user_id').notNull().references(() => users.id),
   action: varchar('action', { length: 100 }).notNull(),
-  targetType: varchar('target_type', { length: 50 }), // user, subscription, etc
+  // Ações: user.view, user.edit, user.suspend, subscription.cancel,
+  // subscription.pause, subscription.change_plan, settings.update, etc
+  targetType: varchar('target_type', { length: 50 }), // user, subscription, plan, settings
   targetId: int('target_id'),
-  details: json('details'),
+  previousValue: json('previous_value'), // Estado anterior
+  newValue: json('new_value'), // Estado novo
+  details: json('details'), // Detalhes adicionais
   ipAddress: varchar('ip_address', { length: 45 }),
+  userAgent: text('user_agent'),
   createdAt: timestamp('created_at').defaultNow(),
+});
+
+// Logs de erros do sistema
+export const errorLogs = mysqlTable('error_logs', {
+  id: serial('id').primaryKey(),
+  userId: int('user_id').references(() => users.id), // Pode ser null para erros de sistema
+  errorType: varchar('error_type', { length: 50 }).notNull(),
+  // Tipos: message_send_failed, webhook_failed, auth_failed, rate_limit, api_error
+  errorCode: varchar('error_code', { length: 50 }),
+  message: text('message').notNull(),
+  stackTrace: text('stack_trace'),
+  context: json('context'), // campaignId, connectionId, etc
+  resolved: boolean('resolved').default(false),
+  resolvedAt: timestamp('resolved_at'),
+  resolvedBy: int('resolved_by').references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+// Configurações globais do sistema
+export const systemSettings = mysqlTable('system_settings', {
+  id: serial('id').primaryKey(),
+  key: varchar('key', { length: 100 }).notNull().unique(),
+  value: text('value'),
+  type: varchar('type', { length: 20 }).default('string'), // string, number, boolean, json
+  description: text('description'),
+  isPublic: boolean('is_public').default(false), // Se pode ser exposto no frontend
+  updatedBy: int('updated_by').references(() => users.id),
+  updatedAt: timestamp('updated_at').defaultNow().onUpdateNow(),
 });
 ```
 
-**Funcionalidades Admin:**
-- Lista de todos os usuários
-- Visualizar/editar assinatura de usuário
-- Cancelar/pausar assinaturas
-- Ver métricas gerais (MRR, churn, novos usuários)
-- Logs de atividade
-- Gerenciar planos
+---
+
+##### 3.1.8 Endpoints do Admin Router
+
+```typescript
+// server/routers/admin.ts
+
+export const adminRouter = router({
+  // Dashboard
+  getDashboardStats: adminProcedure.query(/* ... */),
+  getRevenueChart: adminProcedure.query(/* ... */),
+  getUserGrowthChart: adminProcedure.query(/* ... */),
+  getMessagesChart: adminProcedure.query(/* ... */),
+
+  // Usuários
+  listUsers: adminProcedure.input(paginationSchema).query(/* ... */),
+  getUser: adminProcedure.input(z.object({ userId: z.number() })).query(/* ... */),
+  updateUser: adminProcedure.input(updateUserSchema).mutation(/* ... */),
+  suspendUser: adminProcedure.input(z.object({ userId: z.number(), reason: z.string() })).mutation(/* ... */),
+  impersonateUser: adminProcedure.input(z.object({ userId: z.number() })).mutation(/* ... */),
+
+  // Assinaturas
+  listSubscriptions: adminProcedure.input(paginationSchema).query(/* ... */),
+  getSubscription: adminProcedure.input(z.object({ subscriptionId: z.number() })).query(/* ... */),
+  cancelSubscription: adminProcedure.input(z.object({ subscriptionId: z.number(), reason: z.string() })).mutation(/* ... */),
+  pauseSubscription: adminProcedure.input(z.object({ subscriptionId: z.number() })).mutation(/* ... */),
+  resumeSubscription: adminProcedure.input(z.object({ subscriptionId: z.number() })).mutation(/* ... */),
+  changePlan: adminProcedure.input(z.object({ subscriptionId: z.number(), planId: z.number() })).mutation(/* ... */),
+  extendSubscription: adminProcedure.input(z.object({ subscriptionId: z.number(), days: z.number() })).mutation(/* ... */),
+  addCredits: adminProcedure.input(z.object({ userId: z.number(), credits: z.number(), type: z.string() })).mutation(/* ... */),
+
+  // Conexões
+  listAllConnections: adminProcedure.input(paginationSchema).query(/* ... */),
+  listOfflineConnections: adminProcedure.query(/* ... */),
+  getConnectionDetails: adminProcedure.input(z.object({ connectionId: z.number() })).query(/* ... */),
+
+  // Erros
+  listErrors: adminProcedure.input(errorFilterSchema).query(/* ... */),
+  getErrorStats: adminProcedure.query(/* ... */),
+  resolveError: adminProcedure.input(z.object({ errorId: z.number() })).mutation(/* ... */),
+
+  // Planos
+  listPlans: adminProcedure.query(/* ... */),
+  createPlan: adminProcedure.input(createPlanSchema).mutation(/* ... */),
+  updatePlan: adminProcedure.input(updatePlanSchema).mutation(/* ... */),
+  togglePlan: adminProcedure.input(z.object({ planId: z.number(), isActive: z.boolean() })).mutation(/* ... */),
+
+  // Configurações
+  getSystemSettings: adminProcedure.query(/* ... */),
+  updateSystemSetting: adminProcedure.input(z.object({ key: z.string(), value: z.string() })).mutation(/* ... */),
+  testStripeConnection: adminProcedure.mutation(/* ... */),
+  testEmailConnection: adminProcedure.mutation(/* ... */),
+  toggleMaintenanceMode: adminProcedure.mutation(/* ... */),
+
+  // Logs
+  getAdminLogs: adminProcedure.input(logFilterSchema).query(/* ... */),
+  getSystemLogs: adminProcedure.input(logFilterSchema).query(/* ... */),
+
+  // Relatórios
+  getChurnReport: adminProcedure.input(dateRangeSchema).query(/* ... */),
+  getRevenueReport: adminProcedure.input(dateRangeSchema).query(/* ... */),
+  exportUsers: adminProcedure.input(exportFilterSchema).mutation(/* ... */),
+});
+```
+
+---
+
+##### 3.1.9 Layout do Admin Panel
+
+```
+/admin
+├── /admin                     → Dashboard (visão geral)
+├── /admin/users               → Lista de usuários
+│   └── /admin/users/:id       → Detalhes do usuário
+├── /admin/subscriptions       → Gerenciamento de assinaturas
+├── /admin/connections         → Monitoramento de conexões
+├── /admin/errors              → Dashboard de erros
+├── /admin/plans               → Gerenciamento de planos
+├── /admin/settings            → Configurações do sistema
+│   ├── /admin/settings/stripe → Configurações Stripe
+│   ├── /admin/settings/email  → Configurações de email
+│   └── /admin/settings/system → Configurações gerais
+└── /admin/logs                → Logs e auditoria
+```
 
 #### 3.2 Logs de Auditoria
 
@@ -431,22 +711,28 @@ export const apiKeys = mysqlTable('api_keys', {
 
 ### Prioridade 2 - Pós-Lançamento (Semanas seguintes)
 
+- [ ] **Admin Panel Completo**
+  - [ ] Dashboard com métricas (usuários, conexões, MRR, erros)
+  - [ ] Gerenciamento de usuários (lista, filtros, ações)
+  - [ ] Gerenciamento de assinaturas (cancelar, pausar, alterar plano)
+  - [ ] Monitoramento de conexões (status, alertas)
+  - [ ] Dashboard de erros (tipos, gráficos, resolução)
+  - [ ] Configurações do sistema (Stripe, email, manutenção)
+  - [ ] Gerenciamento de planos (criar, editar, ativar/desativar)
+  - [ ] Logs de auditoria (ações admin, logs sistema)
+
+- [ ] **Tabelas para Admin**
+  - [ ] admin_logs
+  - [ ] error_logs
+  - [ ] system_settings
+
 - [ ] **Onboarding melhorado**
   - [ ] Wizard de primeira configuração
   - [ ] Checklist de setup
 
-- [ ] **Dashboard com métricas**
+- [ ] **Dashboard do usuário com métricas**
   - [ ] Uso vs limites
   - [ ] Gráficos de envio
-
-- [ ] **Admin panel**
-  - [ ] Lista de usuários
-  - [ ] Gerenciamento de assinaturas
-  - [ ] Métricas de negócio
-
-- [ ] **Logs de auditoria**
-  - [ ] Tabela audit_logs
-  - [ ] Logging em ações críticas
 
 - [ ] **Documentação API pública**
   - [ ] Swagger/OpenAPI
@@ -473,7 +759,14 @@ export const apiKeys = mysqlTable('api_keys', {
 | Rate limiting | Baixa | Middleware Express |
 | Landing page | Média | Novo componente React |
 | Termos/Privacidade | Baixa | 2 páginas estáticas |
-| Admin panel | Alta | Novos componentes + routers |
+| **Admin Panel - Dashboard** | Média | 1 página + queries agregadas |
+| **Admin Panel - Usuários** | Média | 2 páginas + CRUD completo |
+| **Admin Panel - Assinaturas** | Alta | 1 página + integração Stripe |
+| **Admin Panel - Conexões** | Baixa | 1 página + queries existentes |
+| **Admin Panel - Erros** | Média | 1 página + nova tabela |
+| **Admin Panel - Configurações** | Alta | 3 páginas + lógica sistema |
+| **Admin Panel - Logs** | Baixa | 1 página + queries |
+| **Admin Router completo** | Alta | ~500 linhas de código |
 
 ---
 
@@ -490,11 +783,25 @@ STRIPE_PRICE_STARTER_MONTHLY=price_xxx
 STRIPE_PRICE_STARTER_YEARLY=price_xxx
 STRIPE_PRICE_PRO_MONTHLY=price_xxx
 STRIPE_PRICE_PRO_YEARLY=price_xxx
-STRIPE_PRICE_ENTERPRISE_MONTHLY=price_xxx
+# Enterprise não tem price_id pois é sob consulta
+
+# Email (SMTP)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=email@seudominio.com
+SMTP_PASS=xxx
+SMTP_FROM_NAME=Sistema de Mensageria
+SMTP_FROM_EMAIL=noreply@seudominio.com
+
+# Email de contato para Enterprise
+ENTERPRISE_CONTACT_EMAIL=comercial@seudominio.com
 
 # URLs
 APP_URL=https://app.seudominio.com
 LANDING_URL=https://seudominio.com
+
+# Admin
+ADMIN_EMAILS=admin@seudominio.com,outro@seudominio.com
 ```
 
 ---
