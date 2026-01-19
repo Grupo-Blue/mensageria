@@ -1,4 +1,4 @@
-CREATE TABLE `whatsapp_groups` (
+CREATE TABLE IF NOT EXISTS `whatsapp_groups` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`connection_id` int NOT NULL,
 	`group_id` varchar(100) NOT NULL,

@@ -1,4 +1,4 @@
-CREATE TABLE `webhook_config` (
+CREATE TABLE IF NOT EXISTS `webhook_config` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`user_id` int NOT NULL,
 	`webhook_url` varchar(500) NOT NULL,
@@ -10,7 +10,7 @@ CREATE TABLE `webhook_config` (
 	CONSTRAINT `webhook_config_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE TABLE `webhook_logs` (
+CREATE TABLE IF NOT EXISTS `webhook_logs` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`webhook_config_id` int NOT NULL,
 	`from` varchar(50) NOT NULL,

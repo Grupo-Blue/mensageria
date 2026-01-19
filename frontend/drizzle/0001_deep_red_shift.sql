@@ -1,4 +1,4 @@
-CREATE TABLE `messages` (
+CREATE TABLE IF NOT EXISTS `messages` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`user_id` int NOT NULL,
 	`platform` enum('whatsapp','telegram') NOT NULL,
@@ -12,7 +12,7 @@ CREATE TABLE `messages` (
 	CONSTRAINT `messages_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE TABLE `settings` (
+CREATE TABLE IF NOT EXISTS `settings` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`user_id` int NOT NULL,
 	`google_api_key` varchar(255),
@@ -26,7 +26,7 @@ CREATE TABLE `settings` (
 	CONSTRAINT `settings_user_id_unique` UNIQUE(`user_id`)
 );
 --> statement-breakpoint
-CREATE TABLE `telegram_connections` (
+CREATE TABLE IF NOT EXISTS `telegram_connections` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`user_id` int NOT NULL,
 	`bot_token` varchar(255) NOT NULL,
@@ -38,7 +38,7 @@ CREATE TABLE `telegram_connections` (
 	CONSTRAINT `telegram_connections_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE TABLE `whatsapp_connections` (
+CREATE TABLE IF NOT EXISTS `whatsapp_connections` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`user_id` int NOT NULL,
 	`identification` varchar(100) NOT NULL,

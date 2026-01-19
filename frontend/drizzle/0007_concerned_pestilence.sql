@@ -1,4 +1,4 @@
-CREATE TABLE `campaign_recipients` (
+CREATE TABLE IF NOT EXISTS `campaign_recipients` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`campaign_id` int NOT NULL,
 	`phone_number` varchar(20) NOT NULL,
@@ -16,7 +16,7 @@ CREATE TABLE `campaign_recipients` (
 	CONSTRAINT `campaign_recipients_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE TABLE `campaigns` (
+CREATE TABLE IF NOT EXISTS `campaigns` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`user_id` int NOT NULL,
 	`business_account_id` int NOT NULL,
@@ -43,7 +43,7 @@ CREATE TABLE `campaigns` (
 	CONSTRAINT `campaigns_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE TABLE `whatsapp_business_accounts` (
+CREATE TABLE IF NOT EXISTS `whatsapp_business_accounts` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`user_id` int NOT NULL,
 	`name` varchar(255) NOT NULL,
@@ -57,7 +57,7 @@ CREATE TABLE `whatsapp_business_accounts` (
 	CONSTRAINT `whatsapp_business_accounts_id` PRIMARY KEY(`id`)
 );
 --> statement-breakpoint
-CREATE TABLE `whatsapp_templates` (
+CREATE TABLE IF NOT EXISTS `whatsapp_templates` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`business_account_id` int NOT NULL,
 	`template_id` varchar(100) NOT NULL,
