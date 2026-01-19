@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # Script seguro para aplicar migrations do Drizzle
 # Corrige migrations que tentam criar tabelas que já existem

@@ -198,7 +198,7 @@ export const addConnection = async (id: string): Promise<void> => {
 
   const sock = makeWASocket({
     // version,
-    printQRInTerminal: true,
+    printQRInTerminal: false, // Deprecated, vamos usar apenas o evento connection.update
     auth: state,
     getMessage: async (key) => {
       return undefined;
@@ -235,12 +235,24 @@ export const addConnection = async (id: string): Promise<void> => {
       
       const connectedClients = io.sockets.sockets.size;
       console.log(`[QR Code] Emitindo evento 'qrcode' para ${connectedClients} cliente(s) conectado(s)`);
-      io.emit('qrcode', qrData);
-      console.log(`[QR Code] ✅ Evento 'qrcode' emitido com sucesso para conexão: ${id}`);
+      console.log(`[QR Code] Socket.IO disponível:`, !!io);
+      console.log(`[QR Code] Dados a emitir:`, JSON.stringify({ id, hasQr: !!qr, connected: false }));
+      
+      try {
+        io.emit('qrcode', qrData);
+        console.log(`[QR Code] ✅ Evento 'qrcode' emitido com sucesso para conexão: ${id}`);
+      } catch (error: any) {
+        console.error(`[QR Code] ❌ Erro ao emitir QR code:`, error.message);
+        console.error(`[QR Code] Stack:`, error.stack);
+      }
     } else if (connection === 'open') {
       console.log(`[Connection Update] ⚠️ Conexão ${id} está 'open' mas não há QR - pode já estar autenticada`);
     } else if (connection === 'connecting') {
       console.log(`[Connection Update] 🔄 Conexão ${id} está 'connecting' - aguardando QR...`);
+      // Se está connecting e não há QR ainda, pode ser que o Baileys esteja tentando usar credenciais antigas
+      // Vamos aguardar um pouco e verificar se o QR aparece
+    } else if (connection === 'close') {
+      console.log(`[Connection Update] 🔴 Conexão ${id} fechada - pode precisar de novo QR`);
     } else {
       console.log(`[Connection Update] ℹ️ Conexão ${id} - estado: ${connection}, sem QR code ainda`);
     }

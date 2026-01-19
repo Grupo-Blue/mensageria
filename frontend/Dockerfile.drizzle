@@ -23,8 +23,9 @@ COPY drizzle ./drizzle
 COPY scripts/fix-migration.js ./scripts/fix-migration.js
 COPY scripts/migrate-safe.sh ./scripts/migrate-safe.sh
 
-# Tornar script executável
-RUN chmod +x scripts/migrate-safe.sh
+# Tornar script executável e garantir que sh está disponível
+RUN chmod +x scripts/migrate-safe.sh && \
+    apk add --no-cache bash || true
 
 # Executa as migrações usando a DATABASE_URL recebida via ambiente
 CMD ["pnpm", "db:push"]
