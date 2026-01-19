@@ -187,9 +187,47 @@ export const addConnection = async (id: string): Promise<void> => {
   );
   console.log(`[addConnection] Diretório de autenticação: ${dir}`);
 
-  // Verificar se já existem credenciais salvas
+  // CRÍTICO: Carregar estado primeiro para verificar se há sessão válida
+  // Se não houver 'me', limpar tudo para forçar QR code (evita "registration" loop)
+  console.log(`[addConnection] Carregando estado de autenticação para verificação...`);
+  let tempState = await useMultiFileAuthState(dir);
+  const tempHasValidAuth = tempState.state.creds && tempState.state.creds.me;
+  const tempHasCredsButNoMe = tempState.state.creds && !tempState.state.creds.me;
+  
+  console.log(`[addConnection] Verificação inicial:`, {
+    hasCreds: !!tempState.state.creds,
+    hasMe: !!tempHasValidAuth,
+    hasRegistered: !!(tempState.state.creds?.registered),
+    credsKeys: tempState.state.creds ? Object.keys(tempState.state.creds) : []
+  });
+  
+  // Se há credenciais mas SEM 'me', limpar completamente para forçar QR code
+  // Isso evita que o Baileys tente "registration" ao invés de gerar QR
+  if (tempHasCredsButNoMe) {
+    console.log(`[addConnection] ⚠️ CREDENCIAIS PARCIAIS DETECTADAS (sem 'me')!`);
+    console.log(`[addConnection] Isso pode fazer o Baileys tentar 'registration' ao invés de gerar QR code`);
+    console.log(`[addConnection] Limpando diretório completamente para forçar geração de QR code...`);
+    
+    try {
+      if (fs.existsSync(dir)) {
+        fs.rmSync(dir, { recursive: true, force: true });
+        console.log(`[addConnection] ✅ Diretório removido completamente`);
+        
+        // Aguardar para garantir remoção completa
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Recriar diretório vazio
+        fs.mkdirSync(dir, { recursive: true });
+        console.log(`[addConnection] ✅ Diretório recriado (limpo)`);
+      }
+    } catch (error: any) {
+      console.error(`[addConnection] ❌ Erro ao limpar diretório:`, error.message);
+    }
+  }
+  
+  // Verificar se já existem credenciais salvas (após possível limpeza)
   const hasExistingAuth = fs.existsSync(dir) && fs.readdirSync(dir).length > 0;
-  console.log(`[addConnection] Credenciais existentes para ${id}: ${hasExistingAuth ? 'sim' : 'não'}`);
+  console.log(`[addConnection] Credenciais existentes após verificação: ${hasExistingAuth ? 'sim' : 'não'}`);
   
   if (hasExistingAuth) {
     const files = fs.readdirSync(dir);
@@ -203,20 +241,20 @@ export const addConnection = async (id: string): Promise<void> => {
     }
   }
 
-  console.log(`[addConnection] Carregando estado de autenticação...`);
+  // Carregar estado final (limpo ou existente válido)
+  console.log(`[addConnection] Carregando estado de autenticação final...`);
   const { state, saveCreds } = await useMultiFileAuthState(dir);
   console.log(`[addConnection] Estado carregado`);
   
-  // Log detalhado do estado
+  // Log detalhado do estado final
   console.log(`[addConnection] Estado detalhado:`, {
     hasCreds: !!state.creds,
     hasMe: !!(state.creds && state.creds.me),
+    hasRegistered: !!(state.creds?.registered),
     credsKeys: state.creds ? Object.keys(state.creds) : []
   });
   
   // Verificar se o state tem credenciais válidas (sessão autenticada)
-  // IMPORTANTE: hasCreds=true e hasMe=false é o estado NORMAL para uma nova conexão
-  // O Baileys gera chaves criptográficas automaticamente, e 'me' só é preenchido após escanear o QR
   const hasValidAuth = state.creds && state.creds.me;
   
   console.log(`[addConnection] State tem credenciais válidas (sessão autenticada): ${hasValidAuth ? 'sim' : 'não'}`);
@@ -225,7 +263,12 @@ export const addConnection = async (id: string): Promise<void> => {
     console.log(`[addConnection] Me (usuário):`, state.creds.me);
   } else {
     console.log(`[addConnection] ✅ Sem sessão autenticada - Baileys DEVE gerar QR code`);
-    console.log(`[addConnection] ℹ️ hasCreds=true é normal - são as chaves criptográficas para o handshake`);
+    if (state.creds) {
+      console.log(`[addConnection] ℹ️ hasCreds=true é normal - são as chaves criptográficas para o handshake`);
+      console.log(`[addConnection] ℹ️ O Baileys vai gerar QR code automaticamente`);
+    } else {
+      console.log(`[addConnection] ℹ️ Estado completamente limpo - Baileys vai gerar novas chaves e QR code`);
+    }
   }
 
   console.log(`[addConnection] Criando socket Baileys...`);
