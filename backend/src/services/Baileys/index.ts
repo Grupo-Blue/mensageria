@@ -246,11 +246,22 @@ export const addConnection = async (id: string): Promise<void> => {
   const { state, saveCreds } = await useMultiFileAuthState(dir);
   console.log(`[addConnection] Estado carregado`);
   
+  // CRÍTICO: Se não há 'me', garantir que 'registered' seja false
+  // Isso evita que o Baileys tente "registration" ao invés de gerar QR code
+  if (state.creds && !state.creds.me) {
+    console.log(`[addConnection] ⚠️ Forçando registered=false para evitar tentativa de 'registration'`);
+    state.creds.registered = false;
+    // Salvar imediatamente para garantir que a mudança persista
+    await saveCreds();
+    console.log(`[addConnection] ✅ registered=false aplicado e salvo`);
+  }
+  
   // Log detalhado do estado final
   console.log(`[addConnection] Estado detalhado:`, {
     hasCreds: !!state.creds,
     hasMe: !!(state.creds && state.creds.me),
     hasRegistered: !!(state.creds?.registered),
+    registeredValue: state.creds?.registered,
     credsKeys: state.creds ? Object.keys(state.creds) : []
   });
   
@@ -265,7 +276,7 @@ export const addConnection = async (id: string): Promise<void> => {
     console.log(`[addConnection] ✅ Sem sessão autenticada - Baileys DEVE gerar QR code`);
     if (state.creds) {
       console.log(`[addConnection] ℹ️ hasCreds=true é normal - são as chaves criptográficas para o handshake`);
-      console.log(`[addConnection] ℹ️ O Baileys vai gerar QR code automaticamente`);
+      console.log(`[addConnection] ℹ️ registered=${state.creds.registered} - Baileys vai gerar QR code`);
     } else {
       console.log(`[addConnection] ℹ️ Estado completamente limpo - Baileys vai gerar novas chaves e QR code`);
     }
