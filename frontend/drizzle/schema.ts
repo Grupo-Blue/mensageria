@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, boolean, unique } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, boolean, unique, decimal, date, json, serial } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -310,3 +310,219 @@ export const whatsappBlacklist = mysqlTable("whatsapp_blacklist", {
 
 export type WhatsappBlacklist = typeof whatsappBlacklist.$inferSelect;
 export type InsertWhatsappBlacklist = typeof whatsappBlacklist.$inferInsert;
+
+// ==========================================
+// BILLING & SUBSCRIPTION TABLES
+// ==========================================
+
+/**
+ * Plans table - Available subscription plans
+ */
+export const plans = mysqlTable("plans", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 100 }).notNull(),
+  slug: varchar("slug", { length: 50 }).notNull().unique(),
+  description: text("description"),
+
+  // Pricing
+  priceMonthly: decimal("price_monthly", { precision: 10, scale: 2 }).notNull(),
+  priceYearly: decimal("price_yearly", { precision: 10, scale: 2 }),
+  currency: varchar("currency", { length: 3 }).default("BRL").notNull(),
+
+  // Limits
+  maxWhatsappConnections: int("max_whatsapp_connections").notNull(),
+  maxBusinessAccounts: int("max_business_accounts").notNull(),
+  maxCampaignsPerMonth: int("max_campaigns_per_month").notNull(),
+  maxContactsPerList: int("max_contacts_per_list").notNull(),
+  maxMessagesPerMonth: int("max_messages_per_month").notNull(),
+  maxTemplateMessagesPerMonth: int("max_template_messages_per_month").notNull(),
+
+  // Features
+  hasWebhooks: boolean("has_webhooks").default(false).notNull(),
+  hasApiAccess: boolean("has_api_access").default(false).notNull(),
+  hasAiFeatures: boolean("has_ai_features").default(false).notNull(),
+  hasPrioritySupport: boolean("has_priority_support").default(false).notNull(),
+  hasCustomBranding: boolean("has_custom_branding").default(false).notNull(),
+
+  // Stripe
+  stripePriceIdMonthly: varchar("stripe_price_id_monthly", { length: 255 }),
+  stripePriceIdYearly: varchar("stripe_price_id_yearly", { length: 255 }),
+
+  isActive: boolean("is_active").default(true).notNull(),
+  isEnterprise: boolean("is_enterprise").default(false).notNull(),
+  sortOrder: int("sort_order").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Plan = typeof plans.$inferSelect;
+export type InsertPlan = typeof plans.$inferInsert;
+
+/**
+ * Subscriptions table - User subscriptions
+ */
+export const subscriptions = mysqlTable("subscriptions", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("user_id").notNull(),
+  planId: int("plan_id").notNull(),
+
+  // Status
+  status: mysqlEnum("status", [
+    "active", "canceled", "past_due", "trialing", "paused", "incomplete"
+  ]).default("active").notNull(),
+
+  // Billing cycle
+  billingCycle: mysqlEnum("billing_cycle", ["monthly", "yearly"]).default("monthly").notNull(),
+
+  // Dates
+  currentPeriodStart: timestamp("current_period_start").notNull(),
+  currentPeriodEnd: timestamp("current_period_end").notNull(),
+  canceledAt: timestamp("canceled_at"),
+  cancelReason: text("cancel_reason"),
+  trialEndsAt: timestamp("trial_ends_at"),
+  pausedAt: timestamp("paused_at"),
+
+  // Stripe
+  stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
+  stripeSubscriptionId: varchar("stripe_subscription_id", { length: 255 }),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Subscription = typeof subscriptions.$inferSelect;
+export type InsertSubscription = typeof subscriptions.$inferInsert;
+
+/**
+ * Usage Records table - Monthly usage tracking per user
+ */
+export const usageRecords = mysqlTable("usage_records", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("user_id").notNull(),
+
+  // Period
+  periodStart: date("period_start").notNull(),
+  periodEnd: date("period_end").notNull(),
+
+  // Counters
+  whatsappConnectionsCount: int("whatsapp_connections_count").default(0).notNull(),
+  businessAccountsCount: int("business_accounts_count").default(0).notNull(),
+  campaignsCreated: int("campaigns_created").default(0).notNull(),
+  messagesViaApi: int("messages_via_api").default(0).notNull(),
+  messagesViaTemplate: int("messages_via_template").default(0).notNull(),
+  contactsCreated: int("contacts_created").default(0).notNull(),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+}, (table) => ({
+  userPeriodUnique: unique().on(table.userId, table.periodStart),
+}));
+
+export type UsageRecord = typeof usageRecords.$inferSelect;
+export type InsertUsageRecord = typeof usageRecords.$inferInsert;
+
+/**
+ * Payments table - Payment history
+ */
+export const payments = mysqlTable("payments", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("user_id").notNull(),
+  subscriptionId: int("subscription_id"),
+
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 3 }).default("BRL").notNull(),
+  status: mysqlEnum("status", ["pending", "succeeded", "failed", "refunded"]).default("pending").notNull(),
+  description: text("description"),
+
+  // Stripe
+  stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
+  stripeInvoiceId: varchar("stripe_invoice_id", { length: 255 }),
+  stripeChargeId: varchar("stripe_charge_id", { length: 255 }),
+
+  paidAt: timestamp("paid_at"),
+  refundedAt: timestamp("refunded_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type Payment = typeof payments.$inferSelect;
+export type InsertPayment = typeof payments.$inferInsert;
+
+// ==========================================
+// ADMIN & SYSTEM TABLES
+// ==========================================
+
+/**
+ * Admin Logs table - Audit trail for admin actions
+ */
+export const adminLogs = mysqlTable("admin_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  adminUserId: int("admin_user_id").notNull(),
+  action: varchar("action", { length: 100 }).notNull(),
+  targetType: varchar("target_type", { length: 50 }),
+  targetId: int("target_id"),
+  previousValue: text("previous_value"),
+  newValue: text("new_value"),
+  details: text("details"),
+  ipAddress: varchar("ip_address", { length: 45 }),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type AdminLog = typeof adminLogs.$inferSelect;
+export type InsertAdminLog = typeof adminLogs.$inferInsert;
+
+/**
+ * Error Logs table - System error tracking
+ */
+export const errorLogs = mysqlTable("error_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("user_id"),
+  errorType: varchar("error_type", { length: 50 }).notNull(),
+  errorCode: varchar("error_code", { length: 50 }),
+  message: text("message").notNull(),
+  stackTrace: text("stack_trace"),
+  context: text("context"),
+  resolved: boolean("resolved").default(false).notNull(),
+  resolvedAt: timestamp("resolved_at"),
+  resolvedBy: int("resolved_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type ErrorLog = typeof errorLogs.$inferSelect;
+export type InsertErrorLog = typeof errorLogs.$inferInsert;
+
+/**
+ * System Settings table - Global system configuration
+ */
+export const systemSettings = mysqlTable("system_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  key: varchar("key", { length: 100 }).notNull().unique(),
+  value: text("value"),
+  type: varchar("type", { length: 20 }).default("string").notNull(),
+  description: text("description"),
+  isPublic: boolean("is_public").default(false).notNull(),
+  updatedBy: int("updated_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+
+export type SystemSetting = typeof systemSettings.$inferSelect;
+export type InsertSystemSetting = typeof systemSettings.$inferInsert;
+
+/**
+ * Audit Logs table - User action tracking
+ */
+export const auditLogs = mysqlTable("audit_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("user_id").notNull(),
+  action: varchar("action", { length: 100 }).notNull(),
+  resourceType: varchar("resource_type", { length: 50 }),
+  resourceId: varchar("resource_id", { length: 100 }),
+  metadata: text("metadata"),
+  ipAddress: varchar("ip_address", { length: 45 }),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type AuditLog = typeof auditLogs.$inferSelect;
+export type InsertAuditLog = typeof auditLogs.$inferInsert;
