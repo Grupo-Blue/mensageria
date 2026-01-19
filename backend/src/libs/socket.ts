@@ -39,8 +39,8 @@ export default {
           if (data.forceNew !== false) {
             console.log('[Socket.IO] 🔄 Fazendo logout para forçar novo QR Code...');
             logoutConnection(data.identification);
-            // Aguarda um pouco para garantir que os arquivos foram removidos
-            await new Promise(resolve => setTimeout(resolve, 500));
+            // Aguarda mais tempo para garantir que os arquivos foram completamente removidos
+            await new Promise(resolve => setTimeout(resolve, 1500));
             console.log('[Socket.IO] ✅ Logout concluído, arquivos de sessão removidos');
           }
           
