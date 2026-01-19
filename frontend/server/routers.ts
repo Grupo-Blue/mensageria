@@ -6,6 +6,8 @@ import { z } from "zod";
 import * as db from "./db";
 import axios from "axios";
 import { MetaWhatsAppApi, mapVariablesToOrderedArray } from "./whatsappBusiness/metaApi";
+import { billingRouter } from "./routers/billing";
+import { adminRouter } from "./routers/admin";
 
 // Special marker for variables that should use recipient name
 const RECIPIENT_NAME_MARKER = "__RECIPIENT_NAME__";
@@ -36,6 +38,8 @@ const BACKEND_API_URL = process.env.BACKEND_API_URL || "http://localhost:5600";
 export const appRouter = router({
     // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
+  billing: billingRouter,
+  admin: adminRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => {
