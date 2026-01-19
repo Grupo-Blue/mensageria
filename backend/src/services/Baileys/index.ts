@@ -137,18 +137,33 @@ export const removeConnection = (id: string): void => {
  * Remove conexão e apaga arquivos de sessão (força novo QR code)
  */
 export const logoutConnection = (id: string): void => {
-  console.log('[Baileys] Logout completo para:', id);
+  console.log('[Baileys] 🔄 Iniciando logout completo para:', id);
   removeConnection(id);
+  console.log('[Baileys] ✅ Conexão removida da lista');
   
   // Remove arquivos de sessão para forçar novo QR code
   const authDir = path.resolve(process.cwd(), 'auth_info_baileys', id);
+  console.log('[Baileys] Verificando diretório de sessão:', authDir);
+  
   try {
     if (fs.existsSync(authDir)) {
+      const filesBefore = fs.readdirSync(authDir);
+      console.log('[Baileys] Arquivos encontrados antes da remoção:', filesBefore);
       fs.rmSync(authDir, { recursive: true, force: true });
-      console.log('[Baileys] Arquivos de sessão removidos:', authDir);
+      console.log('[Baileys] ✅ Arquivos de sessão removidos:', authDir);
+      
+      // Verificar se realmente foi removido
+      if (fs.existsSync(authDir)) {
+        console.error('[Baileys] ⚠️ ATENÇÃO: Diretório ainda existe após remoção!');
+      } else {
+        console.log('[Baileys] ✅ Diretório confirmado como removido');
+      }
+    } else {
+      console.log('[Baileys] ℹ️ Diretório de sessão não existe (já estava limpo)');
     }
-  } catch (error) {
-    console.error('[Baileys] Erro ao remover arquivos de sessão:', error);
+  } catch (error: any) {
+    console.error('[Baileys] ❌ Erro ao remover arquivos de sessão:', error.message);
+    console.error('[Baileys] Stack trace:', error.stack);
   }
 };
 
@@ -165,8 +180,21 @@ export const addConnection = async (id: string): Promise<void> => {
   // Verificar se já existem credenciais salvas
   const hasExistingAuth = fs.existsSync(dir) && fs.readdirSync(dir).length > 0;
   console.log(`[addConnection] Credenciais existentes para ${id}: ${hasExistingAuth ? 'sim' : 'não'}`);
+  
+  if (hasExistingAuth) {
+    const files = fs.readdirSync(dir);
+    console.log(`[addConnection] Arquivos de sessão encontrados:`, files);
+  }
 
   const { state, saveCreds } = await useMultiFileAuthState(dir);
+  
+  // Verificar se o state tem credenciais válidas
+  const hasValidAuth = state.creds && state.creds.me;
+  console.log(`[addConnection] State tem credenciais válidas: ${hasValidAuth ? 'sim' : 'não'}`);
+  if (hasValidAuth) {
+    console.log(`[addConnection] ⚠️ ATENÇÃO: Credenciais válidas encontradas! Baileys pode conectar sem gerar QR code.`);
+    console.log(`[addConnection] Se o QR code não aparecer, pode ser porque a sessão ainda está ativa.`);
+  }
 
   const sock = makeWASocket({
     // version,

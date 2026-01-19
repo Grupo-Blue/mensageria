@@ -63,21 +63,29 @@ export default function WhatsApp() {
       console.log("[WhatsApp] Socket.IO conectado! Socket ID:", socket.id);
       console.log("[WhatsApp] Emitindo requestQRCode com identification:", identification);
       
-      // Solicita QR Code ao backend
+      // Solicita QR Code ao backend com callback para confirmar recebimento
       socket.emit("requestQRCode", { identification }, (response: any) => {
-        console.log("[WhatsApp] Resposta do requestQRCode (ack):", response);
+        if (response) {
+          console.log("[WhatsApp] ✅ Backend confirmou recebimento do requestQRCode:", response);
+        } else {
+          console.log("[WhatsApp] ⚠️ Backend não retornou acknowledgment (pode ser normal)");
+        }
       });
+      
+      // Log adicional para debug
+      console.log("[WhatsApp] 📤 Evento requestQRCode emitido, aguardando resposta...");
       
       setConnectionStatus("waiting");
       setProgress(66);
       
-      // Timeout para verificar se QR Code foi recebido
+      // Timeout aumentado para 30 segundos (Baileys pode demorar para gerar QR, especialmente após logout)
       qrTimeoutRef.current = setTimeout(() => {
-        console.warn("[WhatsApp] ⚠️ TIMEOUT: QR Code não recebido em 15 segundos");
+        console.warn("[WhatsApp] ⚠️ TIMEOUT: QR Code não recebido em 30 segundos");
         console.warn("[WhatsApp] Verifique os logs do backend para ver se o QR foi gerado");
+        console.warn("[WhatsApp] Socket ainda conectado?", socket.connected);
         setQrCodeTimeout(true);
-        toast.warning("QR Code não recebido. Verifique se o backend está gerando o QR code.");
-      }, 15000);
+        toast.warning("QR Code não recebido após 30 segundos. Verifique os logs do backend.");
+      }, 30000);
     });
 
     socket.on("connect_error", (error) => {

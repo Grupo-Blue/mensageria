@@ -18,11 +18,16 @@ export default {
       console.log('[Socket.IO] ✅ Cliente conectado! Socket ID:', socket.id);
       
       // Handler para requestQRCode - cria/inicia conexão Baileys
-      socket.on('requestQRCode', async (data: { identification: string; forceNew?: boolean }) => {
+      socket.on('requestQRCode', async (data: { identification: string; forceNew?: boolean }, callback?: (response: any) => void) => {
         try {
           console.log('[Socket.IO] 📥 requestQRCode recebido para:', data.identification);
           console.log('[Socket.IO] Socket ID:', socket.id);
           console.log('[Socket.IO] forceNew:', data.forceNew || false);
+          
+          // Envia acknowledgment imediato
+          if (callback) {
+            callback({ received: true, identification: data.identification });
+          }
           
           if (!data.identification) {
             console.error('[Socket.IO] ❌ Identification não fornecida');
@@ -36,6 +41,7 @@ export default {
             logoutConnection(data.identification);
             // Aguarda um pouco para garantir que os arquivos foram removidos
             await new Promise(resolve => setTimeout(resolve, 500));
+            console.log('[Socket.IO] ✅ Logout concluído, arquivos de sessão removidos');
           }
           
           console.log('[Socket.IO] 🔄 Chamando addConnection para:', data.identification);
