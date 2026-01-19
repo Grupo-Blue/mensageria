@@ -14,7 +14,7 @@
   "dependencies": {
     "@adiwajshing/keyed-db": "^0.2.4",
     "@hapi/boom": "^10.0.0",
-    "@whiskeysockets/baileys": "6.7.19",
+    "@whiskeysockets/baileys": "^6.7.21",
     "axios": "^1.6.4",
     "bcryptjs": "^2.4.3",
     "bullmq": "^3.11.0",
@@ -33,6 +33,7 @@
     "node-schedule": "^2.1.0",
     "nodemailer": "^6.9.6",
     "nodemailer-express-handlebars": "^6.1.0",
+    "nodemon": "^3.0.2",
     "otplib": "^12.0.1",
     "qrcode": "^1.5.3",
     "qrcode-terminal": "^0.12.0",
@@ -41,10 +42,9 @@
     "socket.io": "^4.7.2",
     "swagger-ui-express": "^5.0.0",
     "telegraf": "^4.15.3",
+    "ts-node": "^10.9.2",
     "tsup": "^6.7.0",
     "tsx": "^3.12.6",
-    "ts-node": "^10.9.2",
-    "nodemon": "^3.0.2",
     "uuid": "^9.0.0",
     "yup": "^1.1.1",
     "zod": "^3.21.4"
