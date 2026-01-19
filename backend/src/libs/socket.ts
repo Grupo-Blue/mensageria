@@ -1,14 +1,21 @@
 import { Server as HttpServer } from 'http';
 import { Server, Socket } from 'socket.io';
-import { addConnection } from '../services/Baileys';
+import { addConnection, logoutConnection } from '../services/Baileys';
 
 let io: Server;
 
 export default {
   init: (httpServer: HttpServer): void => {
-    io = new Server(httpServer, { cors: { origin: '*' } });
+    io = new Server(httpServer, { 
+      cors: { origin: '*' },
+      path: '/socket.io',
+      transports: ['polling', 'websocket']
+    });
+    
+    console.log('[Socket.IO] Servidor Socket.IO inicializado no path: /socket.io');
+    
     io.on('connection', (socket: Socket) => {
-      console.log('WebSocket conectado!');
+      console.log('[Socket.IO] ✅ Cliente conectado! Socket ID:', socket.id);
       
       // Handler para requestQRCode - cria/inicia conexão Baileys
       socket.on('requestQRCode', async (data: { identification: string; forceNew?: boolean }) => {
@@ -21,6 +28,14 @@ export default {
             console.error('[Socket.IO] ❌ Identification não fornecida');
             socket.emit('qrcode', { connected: false, qrcode: null, error: 'Identification não fornecida' });
             return;
+          }
+          
+          // Se forceNew ou se não especificado, fazer logout primeiro para garantir novo QR
+          if (data.forceNew !== false) {
+            console.log('[Socket.IO] 🔄 Fazendo logout para forçar novo QR Code...');
+            logoutConnection(data.identification);
+            // Aguarda um pouco para garantir que os arquivos foram removidos
+            await new Promise(resolve => setTimeout(resolve, 500));
           }
           
           console.log('[Socket.IO] 🔄 Chamando addConnection para:', data.identification);

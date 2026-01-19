@@ -185,6 +185,7 @@ export const addConnection = async (id: string): Promise<void> => {
   sock.ev.on('connection.update', update => {
     const { connection, lastDisconnect, qr } = update;
     
+    console.log(`[Connection Update] 🔔 Evento recebido para conexão ${id}`);
     console.log(`[Connection Update] Conexão ${id} - connection: ${connection}, qr: ${qr ? 'presente' : 'ausente'}`);
     console.log(`[Connection Update] Update completo:`, JSON.stringify({
       connection,
@@ -204,7 +205,8 @@ export const addConnection = async (id: string): Promise<void> => {
         connected: false,
       };
       
-      console.log(`[QR Code] Emitindo evento 'qrcode' para TODOS os clientes conectados`);
+      const connectedClients = io.sockets.sockets.size;
+      console.log(`[QR Code] Emitindo evento 'qrcode' para ${connectedClients} cliente(s) conectado(s)`);
       io.emit('qrcode', qrData);
       console.log(`[QR Code] ✅ Evento 'qrcode' emitido com sucesso para conexão: ${id}`);
     } else if (connection === 'open') {
