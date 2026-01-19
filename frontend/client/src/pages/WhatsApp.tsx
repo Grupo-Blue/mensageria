@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { trpc } from "@/lib/trpc";
-import { CheckCircle, Loader2, Plus, QrCode, Smartphone, Trash2, XCircle, AlertTriangle } from "lucide-react";
+import { CheckCircle, Loader2, Plus, QrCode, Smartphone, Trash2, XCircle, AlertTriangle, Copy, Key, Webhook } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { io, Socket } from "socket.io-client";
@@ -15,6 +15,10 @@ import { Progress } from "@/components/ui/progress";
 
 export default function WhatsApp() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isConnectionDetailsOpen, setIsConnectionDetailsOpen] = useState(false);
+  const [selectedConnection, setSelectedConnection] = useState<{ id: number; identification: string; apiKey: string | null; webhookUrl: string | null; webhookSecret: string | null } | null>(null);
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [webhookSecret, setWebhookSecret] = useState("");
   const [identification, setIdentification] = useState("");
   const [connectionStatus, setConnectionStatus] = useState<"idle" | "generating" | "waiting" | "connected">("idle");
   const [progress, setProgress] = useState(0);
@@ -26,6 +30,35 @@ export default function WhatsApp() {
   const utils = trpc.useUtils();
   const { data: connections, isLoading } = trpc.whatsapp.list.useQuery();
   const saveConnectionMutation = trpc.whatsapp.saveConnection.useMutation();
+  const generateApiKeyMutation = trpc.whatsapp.generateApiKey.useMutation({
+    onSuccess: (data) => {
+      console.log("[WhatsApp] API Key gerada com sucesso:", data);
+      utils.whatsapp.list.invalidate();
+      if (selectedConnection && data.apiKey) {
+        setSelectedConnection({
+          ...selectedConnection,
+          apiKey: data.apiKey,
+        });
+      }
+      toast.success("API Key gerada com sucesso!");
+    },
+    onError: (error) => {
+      console.error("[WhatsApp] Erro ao gerar API Key:", error);
+      toast.error(`Erro ao gerar API Key: ${error.message}`);
+    },
+  });
+  const updateWebhookMutation = trpc.whatsapp.updateWebhook.useMutation({
+    onSuccess: () => {
+      console.log("[WhatsApp] Webhook atualizado com sucesso");
+      utils.whatsapp.list.invalidate();
+      toast.success("Webhook atualizado com sucesso!");
+      setIsConnectionDetailsOpen(false);
+    },
+    onError: (error) => {
+      console.error("[WhatsApp] Erro ao atualizar webhook:", error);
+      toast.error(`Erro ao atualizar webhook: ${error.message}`);
+    },
+  });
 
   const connectToSocket = (forceNew: boolean = false) => {
     console.log("[WhatsApp] connectToSocket chamado - identification:", identification);
@@ -97,44 +130,78 @@ export default function WhatsApp() {
 
 
     socket.on("qrcode", (qrData: { connected?: boolean; qrcode?: string; id?: string; error?: string }) => {
-      console.log("[WhatsApp] Evento 'qrcode' recebido!");
+      console.log("[WhatsApp] 🔔 Evento 'qrcode' recebido!");
       console.log("[WhatsApp] Dados recebidos:", JSON.stringify(qrData, null, 2));
       console.log("[WhatsApp] qrData.connected:", qrData.connected);
       console.log("[WhatsApp] qrData.qrcode presente:", !!qrData.qrcode);
       console.log("[WhatsApp] qrData.qrcode length:", qrData.qrcode?.length || 0);
       console.log("[WhatsApp] canvasRef.current existe:", !!canvasRef.current);
+      console.log("[WhatsApp] connectionStatus atual:", connectionStatus);
       
       // Verificar se há erro
       if (qrData.error) {
-        console.error("[WhatsApp] Erro recebido no evento qrcode:", qrData.error);
+        console.error("[WhatsApp] ❌ Erro recebido no evento qrcode:", qrData.error);
         toast.error(`Erro: ${qrData.error}`);
         return;
       }
       
       // Limpa o timeout pois recebemos resposta
       if (qrTimeoutRef.current) {
+        console.log("[WhatsApp] ✅ Limpando timeout");
         clearTimeout(qrTimeoutRef.current);
         qrTimeoutRef.current = null;
       }
       setQrCodeTimeout(false);
       
-      if (!qrData.connected && qrData.qrcode && canvasRef.current) {
-        console.log("[WhatsApp] Renderizando QR Code no canvas");
+      // Verificar condições para renderizar QR code
+      const hasQrCode = !qrData.connected && qrData.qrcode;
+      const hasCanvas = !!canvasRef.current;
+      
+      console.log("[WhatsApp] Condições para renderizar:");
+      console.log("  - hasQrCode:", hasQrCode);
+      console.log("  - hasCanvas:", hasCanvas);
+      console.log("  - qrData.connected:", qrData.connected);
+      
+      if (hasQrCode && hasCanvas) {
+        console.log("[WhatsApp] ✅ Renderizando QR Code no canvas");
         try {
+          // Limpar canvas anterior se existir
+          const ctx = canvasRef.current.getContext('2d');
+          if (ctx) {
+            ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+          }
+          
           // Renderiza o QR Code no canvas
           new QRious({
             element: canvasRef.current,
             value: qrData.qrcode,
             size: 256,
           });
-          console.log("[WhatsApp] QR Code renderizado com sucesso!");
+          console.log("[WhatsApp] ✅ QR Code renderizado com sucesso!");
           setConnectionStatus("waiting");
           setProgress(66);
           toast.info("QR Code gerado! Escaneie com seu WhatsApp");
-        } catch (error) {
-          console.error("[WhatsApp] Erro ao renderizar QR Code:", error);
-          toast.error("Erro ao renderizar QR Code");
+        } catch (error: any) {
+          console.error("[WhatsApp] ❌ Erro ao renderizar QR Code:", error);
+          console.error("[WhatsApp] Stack:", error.stack);
+          toast.error("Erro ao renderizar QR Code: " + error.message);
         }
+      } else if (hasQrCode && !hasCanvas) {
+        console.warn("[WhatsApp] ⚠️ QR Code recebido mas canvas não está disponível ainda");
+        console.warn("[WhatsApp] Tentando novamente em 100ms...");
+        setTimeout(() => {
+          if (canvasRef.current && qrData.qrcode) {
+            console.log("[WhatsApp] Tentando renderizar novamente...");
+            new QRious({
+              element: canvasRef.current,
+              value: qrData.qrcode,
+              size: 256,
+            });
+            setConnectionStatus("waiting");
+            setProgress(66);
+            toast.info("QR Code gerado! Escaneie com seu WhatsApp");
+          }
+        }, 100);
       } else if (qrData.connected) {
         console.log("[WhatsApp] Conexão estabelecida (connected: true)");
         setConnectionStatus("connected");
@@ -276,6 +343,48 @@ export default function WhatsApp() {
       toast.error(`Erro ao desconectar: ${error.message}`);
     },
   });
+
+  const handleConnectionClick = (conn: any) => {
+    setSelectedConnection({
+      id: conn.id,
+      identification: conn.identification,
+      apiKey: conn.apiKey || null,
+      webhookUrl: conn.webhookUrl || null,
+      webhookSecret: conn.webhookSecret || null,
+    });
+    setWebhookUrl(conn.webhookUrl || "");
+    setWebhookSecret(conn.webhookSecret || "");
+    setIsConnectionDetailsOpen(true);
+  };
+
+  const handleCopyApiKey = async () => {
+    if (selectedConnection?.apiKey) {
+      await navigator.clipboard.writeText(selectedConnection.apiKey);
+      toast.success("API Key copiada!");
+    }
+  };
+
+  const handleGenerateApiKey = () => {
+    if (selectedConnection) {
+      generateApiKeyMutation.mutate({ connectionId: selectedConnection.id });
+    }
+  };
+
+  const handleSaveWebhook = () => {
+    if (selectedConnection) {
+      // Validação: se webhookUrl está preenchido, deve ser uma URL válida
+      if (webhookUrl && !webhookUrl.match(/^https?:\/\/.+/)) {
+        toast.error("URL do webhook deve começar com http:// ou https://");
+        return;
+      }
+      
+      updateWebhookMutation.mutate({
+        connectionId: selectedConnection.id,
+        webhookUrl: webhookUrl.trim() || undefined,
+        webhookSecret: webhookSecret.trim() || undefined,
+      });
+    }
+  };
 
   if (isLoading) {
     return (
@@ -442,7 +551,11 @@ export default function WhatsApp() {
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {connections?.map((conn) => (
-            <Card key={conn.id} className="material-card-elevated hover:elevation-3 transition-all duration-300">
+            <Card 
+              key={conn.id} 
+              className="material-card-elevated hover:elevation-3 transition-all duration-300 cursor-pointer"
+              onClick={() => handleConnectionClick(conn)}
+            >
               <CardHeader>
                 <CardTitle className="flex items-center justify-between text-lg">
                   <span className="truncate font-medium">{conn.identification}</span>
@@ -465,7 +578,10 @@ export default function WhatsApp() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => disconnectMutation.mutate({ id: conn.id, identification: conn.identification })}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        disconnectMutation.mutate({ id: conn.id, identification: conn.identification });
+                      }}
                       disabled={disconnectMutation.isPending}
                       className="flex-1"
                     >
@@ -479,7 +595,10 @@ export default function WhatsApp() {
                   <Button
                     variant="destructive"
                     size="sm"
-                    onClick={() => deleteMutation.mutate({ id: conn.id })}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteMutation.mutate({ id: conn.id });
+                    }}
                     disabled={deleteMutation.isPending}
                     className="flex-1"
                   >
@@ -498,6 +617,121 @@ export default function WhatsApp() {
           ))}
         </div>
       )}
+
+      {/* Modal de Detalhes da Conexão */}
+      <Dialog open={isConnectionDetailsOpen} onOpenChange={setIsConnectionDetailsOpen}>
+        <DialogContent className="sm:max-w-[600px] bg-card">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-medium flex items-center gap-2">
+              <Key className="h-5 w-5" />
+              Configurações da Conexão
+            </DialogTitle>
+            <DialogDescription className="text-base">
+              {selectedConnection?.identification}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6 py-4">
+            {/* API Key Section */}
+            <div className="space-y-3">
+              <Label htmlFor="apiKey" className="text-base font-medium flex items-center gap-2">
+                <Key className="h-4 w-4" />
+                API Key
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  id="apiKey"
+                  value={selectedConnection?.apiKey || "Não configurada"}
+                  readOnly
+                  className="flex-1 font-mono text-sm bg-muted"
+                />
+                {selectedConnection?.apiKey ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCopyApiKey}
+                    className="flex-shrink-0"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleGenerateApiKey}
+                    disabled={generateApiKeyMutation.isPending}
+                    className="flex-shrink-0"
+                  >
+                    {generateApiKeyMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      "Gerar"
+                    )}
+                  </Button>
+                )}
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Use esta API Key para autenticar suas requisições à API
+              </p>
+            </div>
+
+            {/* Webhook Section */}
+            <div className="space-y-3">
+              <Label htmlFor="webhookUrl" className="text-base font-medium flex items-center gap-2">
+                <Webhook className="h-4 w-4" />
+                Webhook URL
+              </Label>
+              <Input
+                id="webhookUrl"
+                type="url"
+                placeholder="https://seu-servidor.com/webhook"
+                value={webhookUrl}
+                onChange={(e) => setWebhookUrl(e.target.value)}
+                className="w-full"
+              />
+              <p className="text-sm text-muted-foreground">
+                URL que receberá os eventos desta conexão
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <Label htmlFor="webhookSecret" className="text-base font-medium">
+                Webhook Secret
+              </Label>
+              <Input
+                id="webhookSecret"
+                type="password"
+                placeholder="Seu secret para validar o webhook"
+                value={webhookSecret}
+                onChange={(e) => setWebhookSecret(e.target.value)}
+                className="w-full"
+              />
+              <p className="text-sm text-muted-foreground">
+                Secret usado para validar requisições do webhook
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setIsConnectionDetailsOpen(false)}>
+              Fechar
+            </Button>
+            <Button 
+              onClick={handleSaveWebhook}
+              disabled={updateWebhookMutation.isPending}
+            >
+              {updateWebhookMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Salvando...
+                </>
+              ) : (
+                "Salvar Webhook"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       </div>
     </DashboardLayout>
   );

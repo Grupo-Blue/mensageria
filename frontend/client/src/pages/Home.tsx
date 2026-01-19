@@ -25,12 +25,20 @@ export default function Home() {
   const { data: whatsappConnections, isLoading: loadingWhatsapp } = trpc.whatsapp.list.useQuery();
   const { data: telegramConnections, isLoading: loadingTelegram } = trpc.telegram.list.useQuery();
   const { data: messages, isLoading: loadingMessages } = trpc.messages.list.useQuery({ limit: 10 });
+  const { data: statsData, isLoading: loadingStats } = trpc.messages.stats.useQuery();
 
   const whatsappConnected = whatsappConnections?.filter(c => c.status === "connected").length || 0;
   const telegramConnected = telegramConnections?.filter(c => c.status === "connected").length || 0;
   const totalMessages = messages?.length || 0;
   const messagesSent = messages?.filter(m => m.status === "sent").length || 0;
   const successRate = totalMessages > 0 ? Math.round((messagesSent / totalMessages) * 100) : 0;
+
+  // Format trend percentage
+  const formatTrend = (trend: number, trendUp: boolean): string => {
+    if (trend === 0) return "0%";
+    const sign = trendUp ? "+" : "";
+    return `${sign}${trend}%`;
+  };
 
   const stats = [
     {
@@ -41,8 +49,8 @@ export default function Home() {
       gradient: "from-green-500 to-emerald-600",
       iconBg: "bg-green-500",
       href: "/whatsapp",
-      trend: "+12%",
-      trendUp: true,
+      trend: loadingStats ? "..." : formatTrend(statsData?.whatsapp.trend || 0, statsData?.whatsapp.trendUp ?? true),
+      trendUp: statsData?.whatsapp.trendUp ?? true,
     },
     {
       title: "Telegram Conectados",
@@ -52,8 +60,8 @@ export default function Home() {
       gradient: "from-blue-500 to-cyan-600",
       iconBg: "bg-blue-500",
       href: "/telegram",
-      trend: "+8%",
-      trendUp: true,
+      trend: loadingStats ? "..." : formatTrend(statsData?.telegram.trend || 0, statsData?.telegram.trendUp ?? true),
+      trendUp: statsData?.telegram.trendUp ?? true,
     },
     {
       title: "Mensagens Enviadas",
@@ -63,8 +71,8 @@ export default function Home() {
       gradient: "from-purple-500 to-pink-600",
       iconBg: "bg-purple-500",
       href: "/send",
-      trend: "+24%",
-      trendUp: true,
+      trend: loadingStats ? "..." : formatTrend(statsData?.messages.trend || 0, statsData?.messages.trendUp ?? true),
+      trendUp: statsData?.messages.trendUp ?? true,
     },
     {
       title: "Taxa de Sucesso",
@@ -74,8 +82,8 @@ export default function Home() {
       gradient: "from-orange-500 to-red-600",
       iconBg: "bg-orange-500",
       href: "/send",
-      trend: "+5%",
-      trendUp: true,
+      trend: loadingStats ? "..." : formatTrend(statsData?.successRate.trend || 0, statsData?.successRate.trendUp ?? true),
+      trendUp: statsData?.successRate.trendUp ?? true,
     },
   ];
 

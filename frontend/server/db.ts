@@ -1,4 +1,4 @@
-import { eq, and, desc, lt, or, isNull, sql } from "drizzle-orm";
+import { eq, and, desc, lt, or, isNull, sql, gte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import crypto from "crypto";
@@ -1393,4 +1393,139 @@ export async function filterBlacklistedNumbers(
     console.warn("[filterBlacklistedNumbers] Error filtering blacklist (non-critical, allowing all):", error.message);
     return { allowed: phoneNumbers, blocked: [] };
   }
+}
+
+/**
+ * Get dashboard statistics with trends (current period vs previous period)
+ */
+export async function getDashboardStats(userId: number) {
+  const db = await getDb();
+  if (!db) {
+    return {
+      whatsapp: { current: 0, previous: 0, trend: 0, trendUp: true },
+      telegram: { current: 0, previous: 0, trend: 0, trendUp: true },
+      messages: { current: 0, previous: 0, trend: 0, trendUp: true },
+      successRate: { current: 0, previous: 0, trend: 0, trendUp: true },
+    };
+  }
+
+  const now = new Date();
+  const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const previousMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+
+  // WhatsApp connections - compare current connected vs connected at start of previous month
+  const allWhatsapp = await db.select().from(whatsappConnections).where(eq(whatsappConnections.userId, userId));
+  const whatsappCurrent = allWhatsapp.filter(c => c.status === "connected").length;
+  
+  // Para conexões, vamos contar quantas estavam conectadas no início do mês anterior
+  // (baseado em lastConnectedAt antes do início do mês anterior)
+  const whatsappPrevious = allWhatsapp.filter(c => 
+    c.lastConnectedAt && 
+    c.lastConnectedAt < previousMonthStart &&
+    c.status === "connected"
+  ).length;
+
+  // Telegram connections - same logic
+  const allTelegram = await db.select().from(telegramConnections).where(eq(telegramConnections.userId, userId));
+  const telegramCurrent = allTelegram.filter(c => c.status === "connected").length;
+  const telegramPrevious = allTelegram.filter(c => 
+    c.lastConnectedAt && 
+    c.lastConnectedAt < previousMonthStart &&
+    c.status === "connected"
+  ).length;
+
+  // Messages sent (current vs previous month)
+  const messagesCurrentList = await db.select()
+    .from(messages)
+    .where(
+      and(
+        eq(messages.userId, userId),
+        eq(messages.status, "sent"),
+        gte(messages.sentAt, currentMonthStart)
+      )
+    );
+  
+  const messagesPreviousList = await db.select()
+    .from(messages)
+    .where(
+      and(
+        eq(messages.userId, userId),
+        eq(messages.status, "sent"),
+        gte(messages.sentAt, previousMonthStart),
+        lt(messages.sentAt, currentMonthStart)
+      )
+    );
+
+  const messagesCurrentCount = messagesCurrentList.length;
+  const messagesPreviousCount = messagesPreviousList.length;
+
+  // Success rate (current vs previous month)
+  const allMessagesCurrent = await db.select()
+    .from(messages)
+    .where(
+      and(
+        eq(messages.userId, userId),
+        gte(messages.sentAt, currentMonthStart)
+      )
+    );
+
+  const allMessagesPrevious = await db.select()
+    .from(messages)
+    .where(
+      and(
+        eq(messages.userId, userId),
+        gte(messages.sentAt, previousMonthStart),
+        lt(messages.sentAt, currentMonthStart)
+      )
+    );
+
+  const currentSent = allMessagesCurrent.filter(m => m.status === "sent").length;
+  const currentTotal = allMessagesCurrent.length;
+  const successRateCurrent = currentTotal > 0 ? Math.round((currentSent / currentTotal) * 100) : 0;
+
+  const previousSent = allMessagesPrevious.filter(m => m.status === "sent").length;
+  const previousTotal = allMessagesPrevious.length;
+  const successRatePrevious = previousTotal > 0 ? Math.round((previousSent / previousTotal) * 100) : 0;
+
+  // Calculate trends
+  const calculateTrend = (current: number, previous: number): { trend: number; trendUp: boolean } => {
+    if (previous === 0) {
+      return { trend: current > 0 ? 100 : 0, trendUp: current > 0 };
+    }
+    const change = ((current - previous) / previous) * 100;
+    return { trend: Math.round(change), trendUp: change >= 0 };
+  };
+
+  const whatsappTrend = calculateTrend(whatsappCurrent, whatsappPrevious);
+  const telegramTrend = calculateTrend(telegramCurrent, telegramPrevious);
+  const messagesTrend = calculateTrend(messagesCurrentCount, messagesPreviousCount);
+  const successRateTrend = calculateTrend(successRateCurrent, successRatePrevious);
+
+  return {
+    whatsapp: {
+      current: whatsappCurrent,
+      previous: whatsappPrevious,
+      trend: whatsappTrend.trend,
+      trendUp: whatsappTrend.trendUp,
+    },
+    telegram: {
+      current: telegramCurrent,
+      previous: telegramPrevious,
+      trend: telegramTrend.trend,
+      trendUp: telegramTrend.trendUp,
+    },
+    messages: {
+      current: messagesCurrentCount,
+      previous: messagesPreviousCount,
+      trend: messagesTrend.trend,
+      trendUp: messagesTrend.trendUp,
+    },
+    successRate: {
+      current: successRateCurrent,
+      previous: successRatePrevious,
+      trend: successRateTrend.trend,
+      trendUp: successRateTrend.trendUp,
+    },
+  };
 }

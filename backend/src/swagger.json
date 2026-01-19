@@ -5,6 +5,7 @@
     "title": "API de Mensageria",
     "description": "API para envio de mensagens via Whatsapp"
   },
+  "host": "http://localhost:3333",
   "basePath": "/",
   "tags": [
     {
@@ -158,6 +159,50 @@
       }
     },
     "/{connectionId}/disconnect": {
+      "post": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "connectionId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "type": "string"
+          },
+          {
+            "name": "x-auth-api",
+            "in": "header",
+            "type": "string"
+          },
+          {
+            "name": "connection",
+            "in": "query",
+            "type": "string"
+          },
+          {
+            "name": "token",
+            "in": "query",
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/{connectionId}/logout": {
       "post": {
         "description": "",
         "parameters": [

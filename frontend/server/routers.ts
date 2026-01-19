@@ -134,30 +134,46 @@ export const appRouter = router({
     generateApiKey: protectedProcedure
       .input(z.object({ connectionId: z.number() }))
       .mutation(async ({ ctx, input }) => {
+        console.log('[whatsapp.generateApiKey] Recebido:', { connectionId: input.connectionId, userId: ctx.user.id });
+        
         // Verify user owns this connection
         const connections = await db.getWhatsappConnections(ctx.user.id);
         const connection = connections.find(c => c.id === input.connectionId);
-        if (!connection) throw new Error("Conexão não encontrada");
+        if (!connection) {
+          console.error('[whatsapp.generateApiKey] Conexão não encontrada:', input.connectionId);
+          throw new Error("Conexão não encontrada");
+        }
 
+        console.log('[whatsapp.generateApiKey] Gerando API key para conexão:', connection.identification);
         const apiKey = await db.generateConnectionApiKey(input.connectionId);
+        console.log('[whatsapp.generateApiKey] API key gerada com sucesso:', apiKey.substring(0, 10) + '...');
+        
         return { success: true, apiKey };
       }),
     updateWebhook: protectedProcedure
       .input(z.object({
         connectionId: z.number(),
-        webhookUrl: z.string().url().optional(),
-        webhookSecret: z.string().optional(),
+        webhookUrl: z.union([z.string().url(), z.literal(""), z.undefined()]).optional(),
+        webhookSecret: z.union([z.string(), z.literal(""), z.undefined()]).optional(),
       }))
       .mutation(async ({ ctx, input }) => {
+        console.log('[whatsapp.updateWebhook] Recebido:', { connectionId: input.connectionId, webhookUrl: input.webhookUrl ? '***' : null, hasSecret: !!input.webhookSecret });
+        
         // Verify user owns this connection
         const connections = await db.getWhatsappConnections(ctx.user.id);
         const connection = connections.find(c => c.id === input.connectionId);
         if (!connection) throw new Error("Conexão não encontrada");
 
+        // Normalize empty strings to null
+        const webhookUrl = input.webhookUrl && input.webhookUrl.trim() ? input.webhookUrl.trim() : null;
+        const webhookSecret = input.webhookSecret && input.webhookSecret.trim() ? input.webhookSecret.trim() : null;
+
         await db.updateConnectionWebhook(input.connectionId, {
-          webhookUrl: input.webhookUrl,
-          webhookSecret: input.webhookSecret,
+          webhookUrl,
+          webhookSecret,
         });
+        
+        console.log('[whatsapp.updateWebhook] Webhook atualizado com sucesso');
         return { success: true };
       }),
     getQRCode: protectedProcedure.input(z.object({ identification: z.string() })).query(async ({ input }) => {
@@ -355,6 +371,9 @@ export const appRouter = router({
   messages: router({
     list: protectedProcedure.input(z.object({ limit: z.number().optional().default(50) })).query(async ({ ctx, input }) => {
       return await db.getMessages(ctx.user.id, input.limit);
+    }),
+    stats: protectedProcedure.query(async ({ ctx }) => {
+      return await db.getDashboardStats(ctx.user.id);
     }),
   }),
   webhook: router({

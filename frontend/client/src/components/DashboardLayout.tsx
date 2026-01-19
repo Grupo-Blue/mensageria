@@ -142,7 +142,7 @@ function DashboardLayoutContent({
   const [location, setLocation] = useLocation();
   const activeMenuItem = menuItems.find(item => item.path === location);
   const isMobile = useIsMobile();
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, toggleTheme } = useTheme();
 
   return (
     <>
@@ -187,7 +187,13 @@ function DashboardLayoutContent({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            onClick={() => {
+              if (setTheme) {
+                setTheme(theme === "dark" ? "light" : "dark");
+              } else if (toggleTheme) {
+                toggleTheme();
+              }
+            }}
             className="w-full justify-start gap-3 rounded-xl"
           >
             {theme === "dark" ? (
