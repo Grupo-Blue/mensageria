@@ -1,5 +1,7 @@
 import makeWASocket, {
+  Browsers,
   DisconnectReason,
+  fetchLatestBaileysVersion,
   useMultiFileAuthState,
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
@@ -282,11 +284,23 @@ export const addConnection = async (id: string): Promise<void> => {
     }
   }
 
+  console.log(`[addConnection] Buscando versão mais recente do Baileys (WhatsApp Web)...`);
+  let waVersion: [number, number, number] | undefined;
+  try {
+    const { version, isLatest } = await fetchLatestBaileysVersion();
+    waVersion = version;
+    console.log(`[addConnection] ✅ Versão WA Web: ${version.join('.')}, isLatest=${isLatest}`);
+  } catch (error: any) {
+    console.error(`[addConnection] ❌ Erro ao buscar versão WA Web:`, error.message);
+    console.error(`[addConnection] Stack:`, error.stack);
+  }
+
   console.log(`[addConnection] Criando socket Baileys...`);
   let sock;
   try {
     sock = makeWASocket({
-      // version,
+      ...(waVersion ? { version: waVersion } : {}),
+      browser: Browsers.ubuntu('Chrome'),
       printQRInTerminal: false, // Deprecated, vamos usar apenas o evento connection.update
       auth: state,
       getMessage: async (key) => {
