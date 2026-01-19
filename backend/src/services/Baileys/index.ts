@@ -99,6 +99,9 @@ const forwardToWebhook = async (connectionName: string, from: string, messageId:
 
 const connections: ConnectionInterface[] = [];
 
+// Rastrear tentativas consecutivas de Connection Failure por conexão
+const connectionFailureCounts = new Map<string, number>();
+
 const updateConnectionStatus = (id: string, status: boolean): void => {
   const target = connections.find(connectionItem => connectionItem.id === id);
   if (target) {
@@ -131,6 +134,8 @@ export const removeConnection = (id: string): void => {
     closeBaileysConnection(connections[index].connection);
     connections.splice(index, 1);
   }
+  // Resetar contador de falhas quando a conexão é removida
+  connectionFailureCounts.delete(id);
 };
 
 /**
@@ -224,8 +229,8 @@ export const addConnection = async (id: string): Promise<void> => {
         fs.rmSync(dir, { recursive: true, force: true });
         console.log(`[addConnection] ✅ Diretório removido para limpar credenciais parciais`);
         
-        // Aguardar um pouco para garantir que os arquivos foram removidos
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Aguardar mais tempo para garantir que os arquivos foram completamente removidos
+        await new Promise(resolve => setTimeout(resolve, 1500));
         
         // Recriar diretório vazio
         if (!fs.existsSync(dir)) {
@@ -233,12 +238,18 @@ export const addConnection = async (id: string): Promise<void> => {
           console.log(`[addConnection] ✅ Diretório recriado (limpo)`);
         }
         
+        // Aguardar mais um pouco antes de recarregar o estado
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
         // Recarregar estado (agora deve estar limpo)
         const newAuthState = await useMultiFileAuthState(dir);
         state = newAuthState.state;
         saveCreds = newAuthState.saveCreds;
         console.log(`[addConnection] ✅ Estado recarregado após limpeza`);
         console.log(`[addConnection] Novo estado - hasCreds: ${!!state.creds}, hasMe: ${!!(state.creds && state.creds.me)}`);
+        
+        // Resetar contador de falhas após limpar credenciais parciais
+        connectionFailureCounts.delete(id);
       }
     } catch (error: any) {
       console.error(`[addConnection] ❌ Erro ao limpar credenciais parciais:`, error.message);
@@ -326,6 +337,9 @@ export const addConnection = async (id: string): Promise<void> => {
         console.log(`[QR Code] ✅ Timeout cancelado - QR code gerado`);
       }
       
+      // Resetar contador de falhas quando QR é gerado
+      connectionFailureCounts.delete(id);
+      
       console.log(`[QR Code] ✅ QR Code gerado para conexão: ${id}`);
       console.log(`[QR Code] Tamanho do QR: ${qr.length} caracteres`);
       console.log(`[QR Code] Primeiros 50 caracteres: ${qr.substring(0, 50)}...`);
@@ -378,8 +392,10 @@ export const addConnection = async (id: string): Promise<void> => {
         
         // Se for Connection Failure repetido, pode ser credenciais parciais
         if (error.message?.includes('Connection Failure') || statusCode === 408) {
-          console.log(`[Connection Update] ⚠️ Connection Failure detectado - pode ser credenciais parciais`);
-          console.log(`[Connection Update] Limpando sessão e tentando novamente...`);
+          const failureCount = (connectionFailureCounts.get(id) || 0) + 1;
+          connectionFailureCounts.set(id, failureCount);
+          
+          console.log(`[Connection Update] ⚠️ Connection Failure detectado (tentativa ${failureCount})`);
           
           // Limpar sessão completamente
           const authDir = path.resolve(process.cwd(), 'auth_info_baileys', id);
@@ -388,12 +404,17 @@ export const addConnection = async (id: string): Promise<void> => {
               fs.rmSync(authDir, { recursive: true, force: true });
               console.log(`[Connection Update] ✅ Sessão limpa após Connection Failure`);
               
-              // Aguardar antes de reconectar
-              await new Promise(resolve => setTimeout(resolve, 1000));
+              // Aguardar mais tempo se houver múltiplas falhas consecutivas
+              const waitTime = Math.min(1000 * failureCount, 5000); // Máximo 5 segundos
+              console.log(`[Connection Update] ⏳ Aguardando ${waitTime}ms antes de tentar novamente...`);
+              await new Promise(resolve => setTimeout(resolve, waitTime));
             }
           } catch (cleanError: any) {
             console.error(`[Connection Update] ❌ Erro ao limpar sessão:`, cleanError.message);
           }
+        } else {
+          // Resetar contador se não for Connection Failure
+          connectionFailureCounts.delete(id);
         }
       }
     } else {
@@ -406,8 +427,25 @@ export const addConnection = async (id: string): Promise<void> => {
       const shouldReconnect =
         (lastDisconnect?.error as Boom)?.output?.statusCode !==
         DisconnectReason.loggedOut;
-      // reconnect if not logged out
-      if (shouldReconnect) {
+      
+      // Verificar se foi Connection Failure sem credenciais válidas
+      const wasConnectionFailure = lastDisconnect?.error && 
+        (lastDisconnect.error as Boom).message?.includes('Connection Failure');
+      const failureCount = connectionFailureCounts.get(id) || 0;
+      
+      // Se foi Connection Failure e não há credenciais válidas, aguardar mais tempo
+      if (wasConnectionFailure && !connectionHasValidAuth) {
+        // Delay progressivo baseado no número de falhas
+        const delay = Math.min(3000 + (failureCount * 2000), 10000); // 3s, 5s, 7s, 9s, 10s (máx)
+        console.log(`[Connection Update] ⚠️ Connection Failure sem credenciais válidas - aguardando ${delay}ms antes de reconectar`);
+        
+        removeConnection(id);
+        setTimeout(() => {
+          addConnection(id).catch(err => {
+            console.error(`[Connection Update] ❌ Erro ao reconectar:`, err.message);
+          });
+        }, delay);
+      } else if (shouldReconnect) {
         console.log(`[Connection Update] Tentando reconectar...`);
         removeConnection(id);
         // Aguardar um pouco antes de reconectar para evitar loop infinito
@@ -439,6 +477,8 @@ export const addConnection = async (id: string): Promise<void> => {
     } else if (connection === 'open') {
       console.log('Conexão aberta para o usuário', id);
       updateConnectionStatus(id, true);
+      // Resetar contador de falhas quando conexão é aberta com sucesso
+      connectionFailureCounts.delete(id);
       io.emit('qrcode', {
         id,
         qrcode: null,
