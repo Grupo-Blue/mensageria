@@ -168,14 +168,19 @@ export const logoutConnection = (id: string): void => {
 };
 
 export const addConnection = async (id: string): Promise<void> => {
-  console.log(`[addConnection] Iniciando conexão para: ${id}`);
+  console.log(`[addConnection] ========== INICIANDO CONEXÃO PARA: ${id} ==========`);
   const io = socket.getIO();
+  
+  // Remove conexão anterior
   removeConnection(id);
+  console.log(`[addConnection] Conexão anterior removida`);
+  
   const dir = path.resolve(
     process.cwd(),
     'auth_info_baileys',
     id,
   );
+  console.log(`[addConnection] Diretório de autenticação: ${dir}`);
 
   // Verificar se já existem credenciais salvas
   const hasExistingAuth = fs.existsSync(dir) && fs.readdirSync(dir).length > 0;
@@ -183,10 +188,26 @@ export const addConnection = async (id: string): Promise<void> => {
   
   if (hasExistingAuth) {
     const files = fs.readdirSync(dir);
-    console.log(`[addConnection] Arquivos de sessão encontrados:`, files);
+    console.log(`[addConnection] Arquivos de sessão encontrados (${files.length} arquivos):`, files.slice(0, 10), files.length > 10 ? '...' : '');
+  } else {
+    console.log(`[addConnection] ✅ Diretório limpo - QR code será gerado`);
+    // Garantir que o diretório existe (mas vazio) para o useMultiFileAuthState
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+      console.log(`[addConnection] Diretório criado: ${dir}`);
+    }
   }
 
+  console.log(`[addConnection] Carregando estado de autenticação...`);
   const { state, saveCreds } = await useMultiFileAuthState(dir);
+  console.log(`[addConnection] Estado carregado`);
+  
+  // Log detalhado do estado
+  console.log(`[addConnection] Estado detalhado:`, {
+    hasCreds: !!state.creds,
+    hasMe: !!(state.creds && state.creds.me),
+    credsKeys: state.creds ? Object.keys(state.creds) : []
+  });
   
   // Verificar se o state tem credenciais válidas
   const hasValidAuth = state.creds && state.creds.me;
@@ -194,22 +215,63 @@ export const addConnection = async (id: string): Promise<void> => {
   if (hasValidAuth) {
     console.log(`[addConnection] ⚠️ ATENÇÃO: Credenciais válidas encontradas! Baileys pode conectar sem gerar QR code.`);
     console.log(`[addConnection] Se o QR code não aparecer, pode ser porque a sessão ainda está ativa.`);
+    console.log(`[addConnection] Me (usuário):`, state.creds.me);
+  } else {
+    console.log(`[addConnection] ✅ Sem credenciais válidas - Baileys DEVE gerar QR code`);
   }
 
-  const sock = makeWASocket({
-    // version,
-    printQRInTerminal: false, // Deprecated, vamos usar apenas o evento connection.update
-    auth: state,
-    getMessage: async (key) => {
-      return undefined;
-    },
-  });
+  console.log(`[addConnection] Criando socket Baileys...`);
+  let sock;
+  try {
+    sock = makeWASocket({
+      // version,
+      printQRInTerminal: false, // Deprecated, vamos usar apenas o evento connection.update
+      auth: state,
+      getMessage: async (key) => {
+        return undefined;
+      },
+    });
+    console.log(`[addConnection] ✅ Socket Baileys criado com sucesso`);
+  } catch (error: any) {
+    console.error(`[addConnection] ❌ ERRO ao criar socket Baileys:`, error.message);
+    console.error(`[addConnection] Stack:`, error.stack);
+    throw error;
+  }
 
   // store?.bind(sock.ev);
   // eslint-disable-next-line @typescript-eslint/no-misused-promises
   sock.ev.on('creds.update', saveCreds);
   sock.ev.on('presence.update', data => console.log('presence.update', data));
+  
+  // Adicionar handler de erros do socket
+  sock.ev.on('error', (error: any) => {
+    console.error(`[Baileys Error] ❌ Erro no socket para conexão ${id}:`, error);
+    console.error(`[Baileys Error] Stack:`, error.stack);
+  });
 
+  console.log(`[addConnection] Registrando handler connection.update...`);
+  // Armazenar hasValidAuth no escopo para uso no handler
+  const connectionHasValidAuth = hasValidAuth;
+  
+  // Timeout para verificar se o QR code foi gerado
+  let qrTimeout: NodeJS.Timeout | null = null;
+  if (!connectionHasValidAuth) {
+    console.log(`[addConnection] ⏰ Configurando timeout de 15s para verificar se QR foi gerado...`);
+    qrTimeout = setTimeout(() => {
+      console.log(`[addConnection] ⚠️ TIMEOUT: QR code não foi gerado em 15 segundos`);
+      console.log(`[addConnection] Isso pode indicar um problema com a conexão do Baileys`);
+      console.log(`[addConnection] Verificando estado atual da conexão...`);
+      
+      // Verificar se a conexão ainda está ativa
+      const currentConnection = connections.find(c => c.id === id);
+      if (currentConnection) {
+        console.log(`[addConnection] Conexão ainda existe na lista`);
+      } else {
+        console.log(`[addConnection] ⚠️ Conexão não encontrada na lista - pode ter sido removida`);
+      }
+    }, 15000);
+  }
+  
   sock.ev.on('connection.update', update => {
     const { connection, lastDisconnect, qr } = update;
     
@@ -223,6 +285,13 @@ export const addConnection = async (id: string): Promise<void> => {
     
     // Emitir QR code quando disponível
     if (qr) {
+      // Limpar timeout se QR foi gerado
+      if (qrTimeout) {
+        clearTimeout(qrTimeout);
+        qrTimeout = null;
+        console.log(`[QR Code] ✅ Timeout cancelado - QR code gerado`);
+      }
+      
       console.log(`[QR Code] ✅ QR Code gerado para conexão: ${id}`);
       console.log(`[QR Code] Tamanho do QR: ${qr.length} caracteres`);
       console.log(`[QR Code] Primeiros 50 caracteres: ${qr.substring(0, 50)}...`);
@@ -246,11 +315,23 @@ export const addConnection = async (id: string): Promise<void> => {
         console.error(`[QR Code] Stack:`, error.stack);
       }
     } else if (connection === 'open') {
+      // Limpar timeout se conexão foi aberta
+      if (qrTimeout) {
+        clearTimeout(qrTimeout);
+        qrTimeout = null;
+      }
       console.log(`[Connection Update] ⚠️ Conexão ${id} está 'open' mas não há QR - pode já estar autenticada`);
     } else if (connection === 'connecting') {
       console.log(`[Connection Update] 🔄 Conexão ${id} está 'connecting' - aguardando QR...`);
       // Se está connecting e não há QR ainda, pode ser que o Baileys esteja tentando usar credenciais antigas
       // Vamos aguardar um pouco e verificar se o QR aparece
+      
+      // Se não há credenciais válidas e está connecting sem QR, pode ser um problema
+      if (!connectionHasValidAuth && !qr) {
+        console.log(`[Connection Update] ⚠️ ATENÇÃO: Conexão está 'connecting' sem QR e sem credenciais válidas`);
+        console.log(`[Connection Update] Isso pode indicar que o Baileys está tentando reconectar mas falhando`);
+        console.log(`[Connection Update] Aguardando mais alguns segundos para ver se o QR aparece...`);
+      }
     } else if (connection === 'close') {
       console.log(`[Connection Update] 🔴 Conexão ${id} fechada - pode precisar de novo QR`);
     } else {
@@ -398,6 +479,10 @@ if (!remoteJid || !remoteJid.endsWith('@g.us')) {
     connection: sock,
     connected: false,
   });
+  
+  console.log(`[addConnection] ✅ Conexão ${id} adicionada à lista. Total de conexões: ${connections.length}`);
+  console.log(`[addConnection] ⏳ Aguardando eventos do Baileys (connection.update, qr, etc)...`);
+  console.log(`[addConnection] ========== FIM DA INICIALIZAÇÃO ==========`);
 };
 
 const connect = async (): Promise<void> => {
