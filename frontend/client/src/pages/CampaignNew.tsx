@@ -262,6 +262,14 @@ export default function CampaignNew() {
   // Note: We'll fetch exclusion list contacts in handleCreate when needed
   // This avoids using hooks conditionally and keeps the logic simpler
 
+  // Get total recipients count (from list or manual) - before exclusions
+  const totalRecipients = useMemo(() => {
+    if (recipientSource === "list" && listContacts) {
+      return listContacts.length;
+    }
+    return recipients.length;
+  }, [recipientSource, listContacts, recipients]);
+
   // Calculate filtered recipients count (after exclusions)
   // For preview purposes, we estimate based on list sizes
   // Actual filtering happens in handleCreate
@@ -275,15 +283,7 @@ export default function CampaignNew() {
     // For preview, we show the total from main list
     // Actual count will be calculated in handleCreate after fetching exclusion lists
     return listContacts.length;
-  }, [recipientSource, listContacts]);
-
-  // Get total recipients count (from list or manual) - before exclusions
-  const totalRecipients = useMemo(() => {
-    if (recipientSource === "list" && listContacts) {
-      return listContacts.length;
-    }
-    return recipients.length;
-  }, [recipientSource, listContacts, recipients]);
+  }, [recipientSource, listContacts, selectedExcludeListIds.length, totalRecipients]);
 
   // Calculate excluded count (estimated for preview)
   const excludedCount = useMemo(() => {
