@@ -103,15 +103,15 @@ export default function Landing() {
           </nav>
           <div className="flex items-center gap-4">
             {user ? (
-              <Link href="/">
+              <Link href="/dashboard">
                 <Button>Acessar Painel</Button>
               </Link>
             ) : (
               <>
-                <Link href="/">
+                <Link href="/dashboard">
                   <Button variant="ghost">Entrar</Button>
                 </Link>
-                <Link href="/">
+                <Link href="/dashboard">
                   <Button>Começar Grátis</Button>
                 </Link>
               </>
@@ -141,7 +141,7 @@ export default function Landing() {
             todos os tamanhos.
           </p>
           <div className="flex items-center justify-center gap-4">
-            <Link href="/">
+            <Link href="/dashboard">
               <Button size="lg" className="gap-2">
                 Começar Gratuitamente
                 <ArrowRight className="h-4 w-4" />
@@ -309,7 +309,7 @@ export default function Landing() {
                         Fale Conosco
                       </Button>
                     ) : (
-                      <Link href={user ? "/billing" : "/"}>
+                      <Link href={user ? "/billing" : "/dashboard"}>
                         <Button
                           className="w-full"
                           variant={plan.slug === "pro" ? "default" : "outline"}
@@ -339,7 +339,7 @@ export default function Landing() {
               Crie sua conta gratuita e comece a automatizar suas mensagens de
               WhatsApp em minutos.
             </p>
-            <Link href="/">
+            <Link href="/dashboard">
               <Button size="lg" variant="secondary" className="gap-2">
                 Criar Conta Grátis
                 <ArrowRight className="h-4 w-4" />

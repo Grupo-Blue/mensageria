@@ -33,12 +33,12 @@ function Router() {
   return (
     <Switch>
       {/* Public pages */}
-      <Route path={"/landing"} component={Landing} />
+      <Route path={"/"} component={Landing} />
       <Route path={"/terms"} component={Terms} />
       <Route path={"/privacy"} component={Privacy} />
 
-      {/* App pages */}
-      <Route path={"/"} component={Home} />
+      {/* App pages (authenticated) */}
+      <Route path={"/dashboard"} component={Home} />
       <Route path={"/whatsapp"} component={WhatsApp} />
       <Route path={"/whatsapp-business"} component={WhatsAppBusiness} />
       <Route path={"/telegram"} component={Telegram} />
