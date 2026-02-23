@@ -102,16 +102,16 @@ jobs:
       - name: Atualizar backend no Portainer (dev)
         if: success()
         run: |
-          curl -X POST "https://portainer.openxsolutions.com.br/api/webhooks/48f1e3bd-8a00-4011-ba15-dbdb19971bda?tag=${GITHUB_SHA}"
+          curl -X POST "https://portainer.openxsolutions.com.br/api/webhooks/5b293324-1fad-46e6-86a1-847fc81d844b?tag=${GITHUB_SHA}"
 
       - name: Atualizar frontend no Portainer (dev)
         if: success()
         run: |
-          curl -X POST "https://portainer.openxsolutions.com.br/api/webhooks/0c6d9929-5209-42c1-b607-82d1866a0a8f?tag=${GITHUB_SHA}"
+          curl -X POST "https://portainer.openxsolutions.com.br/api/webhooks/58df77c9-fea6-42cd-8436-e570ef23db73?tag=${GITHUB_SHA}"
 
       - name: Executar migration no Portainer (dev)
         if: success()
         run: |
-          curl -X POST "https://portainer.openxsolutions.com.br/api/webhooks/a06b34c2-eee2-4d45-8f5a-3f081497cb74?tag=${GITHUB_SHA}"
+          curl -X POST "https://portainer.openxsolutions.com.br/api/webhooks/bb04e993-429e-4e50-8345-6a1d7b33c145?tag=${GITHUB_SHA}"
 
 
