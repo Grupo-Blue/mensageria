@@ -37,26 +37,41 @@ export function renderTemplateBody(
 }
 
 /**
- * Sends campaign dispatched payload to the chat webhook URL (fire-and-forget).
- * Only sends if CHAT_WEBHOOK_URL is set. Does not throw; logs errors.
+ * Sends campaign dispatched payload to all configured chat webhook targets (fire-and-forget).
+ * Uses CHAT_WEBHOOK_TARGETS (JSON array) ou CHAT_WEBHOOK_URL/CHAT_WEBHOOK_SECRET (legado).
+ * Chama todos os targets em paralelo. Não lança erros; registra falhas em log.
  */
 export function notifyCampaignDispatched(payload: CampaignDispatchedPayload): void {
-  const url = ENV.chatWebhookUrl?.trim();
-  if (!url) return;
+  const targets = ENV.chatWebhookTargets;
+  if (targets.length === 0) return;
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (ENV.chatWebhookSecret?.trim()) {
-    headers["Authorization"] = `Bearer ${ENV.chatWebhookSecret.trim()}`;
-  }
+  const promises = targets.map((target) => {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (target.secret) {
+      headers["Authorization"] = `Bearer ${target.secret}`;
+    }
+    return axios
+      .post(target.url, payload, { headers, timeout: 10000 })
+      .then(() => {
+        console.log(
+          "[DispatchWebhook] Notified chat system:",
+          target.url,
+          payload.campaignId,
+          payload.contacts.length,
+          "contacts"
+        );
+      })
+      .catch((err) => {
+        console.error(
+          "[DispatchWebhook] Failed to notify chat system:",
+          target.url,
+          err.message,
+          err.response?.status
+        );
+      });
+  });
 
-  axios
-    .post(url, payload, { headers, timeout: 10000 })
-    .then(() => {
-      console.log("[DispatchWebhook] Notified chat system:", payload.campaignId, payload.contacts.length, "contacts");
-    })
-    .catch((err) => {
-      console.error("[DispatchWebhook] Failed to notify chat system:", err.message, err.response?.status);
-    });
+  void Promise.allSettled(promises);
 }

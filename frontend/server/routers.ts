@@ -1531,7 +1531,7 @@ export const appRouter = router({
         });
 
         const sentContacts = allRecipients.filter((r) => r.status === "sent" || r.status === "delivered" || r.status === "read");
-        if (ENV.chatWebhookUrl?.trim() && sentContacts.length > 0) {
+        if (ENV.chatWebhookTargets.length > 0 && sentContacts.length > 0) {
           const campaignUpdated = await db.getCampaignById(input.campaignId);
           const dispatchedAt = campaignUpdated?.startedAt ?? new Date();
           const message = renderTemplateBody(templateBodyText, templateVariables);
