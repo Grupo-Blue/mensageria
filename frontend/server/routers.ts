@@ -6,6 +6,8 @@ import { z } from "zod";
 import * as db from "./db";
 import axios from "axios";
 import { MetaWhatsAppApi, mapVariablesToOrderedArray } from "./whatsappBusiness/metaApi";
+import { notifyCampaignDispatched, renderTemplateBody } from "./whatsappBusiness/dispatchWebhook";
+import { ENV } from "./_core/env";
 import { billingRouter } from "./routers/billing";
 import { adminRouter } from "./routers/admin";
 
@@ -42,9 +44,27 @@ export const appRouter = router({
   admin: adminRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
-    logout: publicProcedure.mutation(({ ctx }) => {
+    logout: publicProcedure.mutation(async ({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
+      
+      // Se OIDC estiver configurado, fazer logout também no provedor
+      if (process.env.OIDC_CLIENT_ID) {
+        try {
+          const { UserManager } = await import('oidc-client-ts');
+          const userManager = new UserManager({
+            authority: process.env.OIDC_AUTHORITY || 'http://localhost:9000/application/o/mensageria/',
+            client_id: process.env.OIDC_CLIENT_ID || '',
+            redirect_uri: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/api/auth/callback`,
+            response_type: 'code',
+            scope: 'openid profile email',
+          });
+          // Logout será feito via redirecionamento no frontend
+        } catch (error) {
+          console.error('[Auth] Erro ao fazer logout OIDC:', error);
+        }
+      }
+      
       return {
         success: true,
       } as const;
@@ -1509,6 +1529,22 @@ export const appRouter = router({
           status: pendingCount === 0 ? "completed" : "running",
           completedAt: pendingCount === 0 ? new Date() : undefined,
         });
+
+        const sentContacts = allRecipients.filter((r) => r.status === "sent" || r.status === "delivered" || r.status === "read");
+        if (ENV.chatWebhookUrl?.trim() && sentContacts.length > 0) {
+          const campaignUpdated = await db.getCampaignById(input.campaignId);
+          const dispatchedAt = campaignUpdated?.startedAt ?? new Date();
+          const message = renderTemplateBody(templateBodyText, templateVariables);
+          notifyCampaignDispatched({
+            event: "campaign.dispatched",
+            dispatchedAt: dispatchedAt.toISOString(),
+            campaignId: input.campaignId,
+            campaignName: campaign.name,
+            company: account.name,
+            message,
+            contacts: sentContacts.map((r) => ({ name: r.name ?? null, phone: r.phoneNumber })),
+          });
+        }
 
         return { success: true, sent: sentCount, failed: failedCount };
       }),

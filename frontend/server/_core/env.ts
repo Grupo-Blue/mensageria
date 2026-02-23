@@ -11,4 +11,11 @@ export const ENV = {
   googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
   backendApiUrl: process.env.BACKEND_API_URL ?? "http://localhost:3000",
+  // OIDC Configuration (Authentik - whitelabel)
+  oidcAuthority: process.env.OIDC_AUTHORITY ?? "",
+  oidcClientId: process.env.OIDC_CLIENT_ID ?? "",
+  frontendUrl: process.env.FRONTEND_URL ?? "http://localhost:3000",
+  // Webhook de disparo para sistema de chat
+  chatWebhookUrl: process.env.CHAT_WEBHOOK_URL ?? "",
+  chatWebhookSecret: process.env.CHAT_WEBHOOK_SECRET ?? "",
 };
