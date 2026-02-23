@@ -1,5 +1,7 @@
 import * as db from "../db";
-import { MetaWhatsAppApi, mapVariablesToOrderedArray, BodyParam } from "../whatsappBusiness/metaApi";
+import { MetaWhatsAppApi, mapVariablesToOrderedArray, BodyParam } from "./metaApi";
+import { notifyCampaignDispatched, renderTemplateBody } from "./dispatchWebhook";
+import { ENV } from "../_core/env";
 
 // Special marker for variables that should use recipient name
 const RECIPIENT_NAME_MARKER = "__RECIPIENT_NAME__";
@@ -538,6 +540,24 @@ export class CampaignScheduler {
         status: pendingCount === 0 ? "completed" : "running",
         completedAt: pendingCount === 0 ? new Date() : undefined,
       });
+
+      const sentContacts = allRecipients.filter(
+        (r: any) => r.status === "sent" || r.status === "delivered" || r.status === "read"
+      );
+      if (ENV.chatWebhookUrl?.trim() && sentContacts.length > 0) {
+        const campaignUpdated = await db.getCampaignById(campaign.id);
+        const dispatchedAt = campaignUpdated?.startedAt ?? new Date();
+        const message = renderTemplateBody(templateBodyText, templateVariables);
+        notifyCampaignDispatched({
+          event: "campaign.dispatched",
+          dispatchedAt: dispatchedAt.toISOString(),
+          campaignId: campaign.id,
+          campaignName: campaignUpdated?.name ?? String(campaign.id),
+          company: account.name,
+          message,
+          contacts: sentContacts.map((r: any) => ({ name: r.name ?? null, phone: r.phoneNumber })),
+        });
+      }
 
       console.log(`[CampaignScheduler] Campaign ${campaign.id} completed: ${sentCount} sent, ${failedCount} failed`);
     } catch (error) {
