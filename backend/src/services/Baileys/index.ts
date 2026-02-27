@@ -109,9 +109,9 @@ const forwardToWebhook = async (connectionName: string, from: string, messageId:
       'X-Connection-Name': connectionName,
     };
 
-    // Add authorization with webhook secret
+    // Autenticação: x-webhook-secret (evita que gateways que interpretam Bearer como JWT rejeitem a requisição)
     if (webhookSecret) {
-      headers['Authorization'] = `Bearer ${webhookSecret}`;
+      headers['x-webhook-secret'] = webhookSecret;
       headers['X-Webhook-Signature'] = generateWebhookSignature(payloadString, webhookSecret);
     }
 

@@ -173,7 +173,7 @@ export default function WebhookConfig() {
                 </Button>
               </div>
               <p className="text-sm text-muted-foreground">
-                Será enviado no header Authorization: Bearer {"{secret}"}
+                Será enviado no header x-webhook-secret
               </p>
             </div>
 
@@ -252,7 +252,7 @@ export default function WebhookConfig() {
             <pre className="bg-muted p-4 rounded-lg overflow-x-auto text-sm">
 {`POST ${webhookUrl || "https://seu-servidor.com/webhook/inbound"}
 Content-Type: application/json
-Authorization: Bearer ${webhookSecret || "<seu-secret>"}
+x-webhook-secret: ${webhookSecret || "<seu-secret>"}
 
 {
   "from": "+5561998317422",

@@ -436,7 +436,7 @@ export const appRouter = router({
           const response = await axios.post(input.webhookUrl, testPayload, {
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${input.webhookSecret}`
+              'x-webhook-secret': input.webhookSecret,
             },
             timeout: 10000,
             validateStatus: () => true, // Aceita qualquer status para não lançar exceção

@@ -149,7 +149,7 @@ export default function ConnectionSettings() {
         url: connection.webhookUrl || "NÃO CONFIGURADO",
         secret: connection.webhookSecret ? "••••••••" : "NÃO CONFIGURADO",
         headers_received: {
-          "Authorization": "Bearer {webhook_secret}",
+          "x-webhook-secret": "{webhook_secret}",
           "X-Webhook-Signature": "HMAC SHA256 do payload",
           "X-Connection-Name": connection.identification
         }
@@ -507,7 +507,7 @@ print_r(json_decode($response, true));`
                   </Button>
                 </div>
                 <p className="text-xs text-gray-500">
-                  O secret será enviado no header Authorization e usado para gerar a assinatura HMAC
+                  O secret será enviado no header x-webhook-secret e usado para gerar a assinatura HMAC
                 </p>
               </div>
             </div>
@@ -743,7 +743,7 @@ print_r(json_decode($response, true));`
             <div>
               <h4 className="font-medium mb-2">Headers do Webhook</h4>
               <ul className="text-sm text-gray-600 space-y-1 list-disc list-inside">
-                <li><code className="bg-gray-100 px-1">Authorization</code> - Bearer {"{webhook_secret}"}</li>
+                <li><code className="bg-gray-100 px-1">x-webhook-secret</code> - Valor do secret configurado</li>
                 <li><code className="bg-gray-100 px-1">X-Webhook-Signature</code> - HMAC SHA256 do payload</li>
                 <li><code className="bg-gray-100 px-1">X-Connection-Name</code> - Nome da conexão</li>
               </ul>
