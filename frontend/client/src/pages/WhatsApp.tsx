@@ -23,6 +23,7 @@ export default function WhatsApp() {
   const [connectionStatus, setConnectionStatus] = useState<"idle" | "generating" | "waiting" | "connected">("idle");
   const [progress, setProgress] = useState(0);
   const [qrCodeTimeout, setQrCodeTimeout] = useState(false);
+  const [hasQrCodeRendered, setHasQrCodeRendered] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const qrTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -65,6 +66,7 @@ export default function WhatsApp() {
     setConnectionStatus("generating");
     setProgress(33);
     setQrCodeTimeout(false);
+    setHasQrCodeRendered(false);
     
     // Limpa timeout anterior se existir
     if (qrTimeoutRef.current) {
@@ -189,6 +191,7 @@ export default function WhatsApp() {
           console.log("[WhatsApp] ✅ QR Code renderizado com sucesso!");
           setConnectionStatus("waiting");
           setProgress(66);
+          setHasQrCodeRendered(true);
           toast.info("QR Code gerado! Escaneie com seu WhatsApp");
         } catch (error: any) {
           console.error("[WhatsApp] ❌ Erro ao renderizar QR Code:", error);
@@ -208,6 +211,7 @@ export default function WhatsApp() {
             });
             setConnectionStatus("waiting");
             setProgress(66);
+            setHasQrCodeRendered(true);
             toast.info("QR Code gerado! Escaneie com seu WhatsApp");
           }
         }, 100);
@@ -237,6 +241,7 @@ export default function WhatsApp() {
           setIdentification("");
           setConnectionStatus("idle");
           setProgress(0);
+          setHasQrCodeRendered(false);
           socket.disconnect();
         }, 2000);
       }
@@ -331,6 +336,7 @@ export default function WhatsApp() {
     setConnectionStatus("idle");
     setProgress(0);
     setQrCodeTimeout(false);
+    setHasQrCodeRendered(false);
   };
 
   const deleteMutation = trpc.whatsapp.delete.useMutation({
@@ -466,7 +472,7 @@ export default function WhatsApp() {
                           ref={canvasRef}
                           className="border-2 border-primary/20 rounded-lg bg-white"
                         />
-                        {!canvasRef.current?.toDataURL() && (
+                        {!hasQrCodeRendered && (
                           <div className="absolute inset-0 flex items-center justify-center bg-muted/50 rounded-lg">
                             <Loader2 className="h-8 w-8 animate-spin text-primary" />
                           </div>
