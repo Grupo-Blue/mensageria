@@ -31,20 +31,38 @@ const generateWebhookSignature = (payload: string, secret: string): string => {
 };
 
 /**
- * Forward received message to webhook
- * Priority:
- * 1. Connection-specific webhook (from tokenCache)
- * 2. Legacy settings webhook (fallback)
+ * Converte JID do Baileys (ex.: 5561998317422@s.whatsapp.net) para E.164 (+5561998317422)
  */
-const forwardToWebhook = async (connectionName: string, from: string, messageId: string, text: string) => {
+const jidToE164 = (jid: string): string => {
+  const raw = jid.replace(/@s\.whatsapp\.net$/, '');
+  return raw.startsWith('+') ? raw : `+${raw}`;
+};
+
+/**
+ * Registra o resultado do webhook no banco via API interna do frontend.
+ * Fire-and-forget: não bloqueia o fluxo principal.
+ */
+const logWebhookResult = (connectionName: string, fromNumber: string, messageId: string, text: string, status: 'success' | 'error', response?: string, errorMessage?: string) => {
+  const frontendUrl = process.env.FRONTEND_API_URL || 'http://localhost:3000';
+  const internalToken = process.env.INTERNAL_SYNC_TOKEN || process.env.X_AUTH_API;
+  if (!internalToken) return;
+
+  fetch(`${frontendUrl}/api/internal/webhook-log`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Internal-Token': internalToken },
+    body: JSON.stringify({ connectionName, fromNumber, messageId, text, status, response, errorMessage }),
+    signal: AbortSignal.timeout(5000),
+  }).catch(err => console.warn('[Webhook Log] Falha ao gravar log:', err.message));
+};
+
+const forwardToWebhook = async (connectionName: string, fromJid: string, messageId: string, text: string) => {
+  const from = jidToE164(fromJid);
   try {
-    // Try to get connection-specific webhook config first (sync with frontend)
     let webhookUrl: string | null = null;
     let webhookSecret: string | null = null;
 
     let webhookConfig = tokenCache.getWebhookConfig(connectionName);
     if (!webhookConfig?.url) {
-      // Cache pode estar vazio ou desatualizado (ex.: webhook configurado após o backend subir)
       console.log('[Webhook] Webhook não encontrado no cache para conexão:', connectionName, '- forçando sync com o frontend');
       await tokenCache.forceRefresh();
       webhookConfig = tokenCache.getWebhookConfig(connectionName);
@@ -54,7 +72,6 @@ const forwardToWebhook = async (connectionName: string, from: string, messageId:
       webhookSecret = webhookConfig.secret;
       console.log('[Webhook] Usando webhook específico da conexão:', connectionName);
     } else {
-      // Fallback to legacy settings (arquivo tmp/settings.json no backend)
       const settings = await settingsStore.getSettings();
       webhookUrl = settings.webhook_url;
       console.log('[Webhook] Usando webhook global (legacy)');
@@ -62,54 +79,27 @@ const forwardToWebhook = async (connectionName: string, from: string, messageId:
 
     if (!webhookUrl) {
       console.log('[Webhook] URL não configurada para conexão:', connectionName);
-      console.log('[Webhook] Dica: O backend obtém o webhook do frontend. Verifique INTERNAL_SYNC_TOKEN e FRONTEND_API_URL no backend e se a URL/secret estão salvos na conexão no painel.');
+      console.log('[Webhook] Dica: Verifique INTERNAL_SYNC_TOKEN e FRONTEND_API_URL no backend e se a URL/secret estão salvos na conexão no painel.');
       return;
     }
 
-    console.log('[Webhook] Enviando para:', {
-      webhookUrl,
-      connectionName,
-      from,
-      messageId,
-      textLength: text.length,
-      timestamp: new Date().toISOString(),
-    });
-
-    /**
-     * IMPORTANTE: Ao responder a esta mensagem via API, use o campo 'from' como destinatário (to/phone).
-     * O campo 'from' contém o número do remetente que enviou a mensagem.
-     * 
-     * Exemplo de resposta correta:
-     * POST /whatsapp?token={connection_name}
-     * Body: { phone: payload.from, message: "sua resposta" }
-     * 
-     * NUNCA use um número em cache ou o último destinatário - sempre use payload.from
-     */
     const payload = {
       connection_name: connectionName,
-      from, // IMPORTANTE: Use este campo como destinatário ao responder (campo 'phone' na API)
+      from,
       message_id: messageId,
       timestamp: new Date().toISOString(),
       text
     };
 
     const payloadString = JSON.stringify(payload);
-    
-    console.log('[Webhook] Payload completo:', {
-      connection_name: payload.connection_name,
-      from: payload.from,
-      message_id: payload.message_id,
-      timestamp: payload.timestamp,
-      textPreview: text.substring(0, 100),
-    });
 
-    // Build headers
+    console.log('[Webhook] Enviando para:', { webhookUrl, connectionName, from, messageId, textLength: text.length });
+
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'X-Connection-Name': connectionName,
     };
 
-    // Autenticação: x-webhook-secret (evita que gateways que interpretam Bearer como JWT rejeitem a requisição)
     if (webhookSecret) {
       headers['x-webhook-secret'] = webhookSecret;
       headers['X-Webhook-Signature'] = generateWebhookSignature(payloadString, webhookSecret);
@@ -124,12 +114,15 @@ const forwardToWebhook = async (connectionName: string, from: string, messageId:
 
     if (response.ok) {
       console.log('[Webhook] Mensagem encaminhada com sucesso:', from);
+      logWebhookResult(connectionName, from, messageId, text, 'success');
     } else {
       const errorText = await response.text();
       console.log('[Webhook] Erro HTTP', response.status, errorText);
+      logWebhookResult(connectionName, from, messageId, text, 'error', undefined, `HTTP ${response.status}: ${errorText.substring(0, 500)}`);
     }
   } catch (error: any) {
     console.error('[Webhook] Erro ao encaminhar:', error.message);
+    logWebhookResult(connectionName, from, messageId, text, 'error', undefined, error.message);
   }
 };
 
@@ -570,8 +563,13 @@ export const addConnection = async (id: string): Promise<void> => {
       for (const msg of m.messages) {
         const remoteJid = msg.key?.remoteJid;
         
-        // NOVO: Processar mensagens individuais (não-grupo) para webhook
+        // Processar mensagens individuais (não-grupo) RECEBIDAS para webhook
         if (remoteJid && remoteJid.endsWith('@s.whatsapp.net')) {
+          // Ignorar mensagens enviadas por nós (fromMe = true)
+          if (msg.key?.fromMe) {
+            continue;
+          }
+
           const from = remoteJid;
           const messageId = msg.key?.id || 'unknown';
           const messageText =
@@ -581,19 +579,30 @@ export const addConnection = async (id: string): Promise<void> => {
             msg.message?.videoMessage?.caption ||
             '';
           
-          // Ignorar mensagens vazias ou de mídia sem texto
           if (messageText && messageText.trim()) {
-            console.log('[Webhook] Mensagem individual recebida:', {
+            console.log('[Webhook] Mensagem individual RECEBIDA:', {
               from,
               messageId,
               messageTextLength: messageText.length,
               connectionId: id,
+              fromMe: msg.key?.fromMe,
               timestamp: new Date().toISOString(),
             });
             await forwardToWebhook(id, from, messageId, messageText);
+          } else {
+            console.log('[Webhook] Mensagem individual sem texto (mídia), ignorando:', {
+              from,
+              messageId,
+              connectionId: id,
+              hasConversation: !!msg.message?.conversation,
+              hasExtendedText: !!msg.message?.extendedTextMessage,
+              hasImage: !!msg.message?.imageMessage,
+              hasVideo: !!msg.message?.videoMessage,
+              messageKeys: msg.message ? Object.keys(msg.message) : [],
+            });
           }
           
-          continue; // Pular para próxima mensagem
+          continue;
         }
         
 if (!remoteJid || !remoteJid.endsWith('@g.us')) {
