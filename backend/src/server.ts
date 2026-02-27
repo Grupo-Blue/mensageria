@@ -12,8 +12,9 @@ import connect from './services/Baileys/index.js';
 import tokenCache from './services/tokenCache.js';
 
 const port = process.env.PORT || process.env.LOCAL_PORT || 3333;
-const server = app.listen(port, () => {
-  console.log(`🚀 Server started on port ${port}!`);
+const host = process.env.HOST || '0.0.0.0';
+const server = app.listen(Number(port), host, () => {
+  console.log(`🚀 Server started on ${host}:${port}!`);
 });
 socket.init(server);
 

@@ -24,6 +24,10 @@ COPY . .
 # Isso garante que patches e overrides sejam aplicados corretamente
 RUN pnpm install --no-frozen-lockfile
 
+# Build args para URLs acessíveis pelo browser (Vite embute em build-time)
+ARG VITE_BACKEND_API_URL=http://localhost:5600
+ENV VITE_BACKEND_API_URL=$VITE_BACKEND_API_URL
+
 # Criar .env vazio se não existir (para evitar erro no COPY posterior)
 RUN if [ ! -f .env ]; then touch .env; fi
 

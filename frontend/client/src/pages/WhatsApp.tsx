@@ -60,7 +60,7 @@ export default function WhatsApp() {
     },
   });
 
-  const connectToSocket = (forceNew: boolean = false) => {
+  const connectToSocket = async (forceNew: boolean = false) => {
     console.log("[WhatsApp] connectToSocket chamado - identification:", identification);
     setConnectionStatus("generating");
     setProgress(33);
@@ -78,8 +78,17 @@ export default function WhatsApp() {
       socketRef.current.disconnect();
     }
     
-    // Conecta ao Socket.IO - usa variável de ambiente ou localhost em desenvolvimento
-    const backendUrl = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3333";
+    // Busca URL do backend em runtime (compatível com Docker, dev e prod)
+    let backendUrl = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:3333";
+    try {
+      const res = await fetch("/api/config");
+      if (res.ok) {
+        const cfg = await res.json();
+        if (cfg?.backendUrl) backendUrl = cfg.backendUrl;
+      }
+    } catch (e) {
+      console.warn("[WhatsApp] Falha ao obter /api/config, usando fallback:", backendUrl);
+    }
     console.log("[WhatsApp] Connecting to Socket.IO at:", backendUrl);
     console.log("[WhatsApp] Socket.IO path:", "/socket.io");
     

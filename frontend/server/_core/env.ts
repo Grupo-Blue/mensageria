@@ -11,6 +11,8 @@ export const ENV = {
   googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
   backendApiUrl: process.env.BACKEND_API_URL ?? "http://localhost:3000",
+  /** URL do backend acessível pelo navegador (Socket.IO). Se não definida, usa backendApiUrl. */
+  clientBackendUrl: process.env.CLIENT_BACKEND_URL ?? process.env.VITE_BACKEND_API_URL ?? process.env.BACKEND_API_URL ?? "http://localhost:3333",
   // OIDC Configuration (Authentik - whitelabel)
   oidcAuthority: process.env.OIDC_AUTHORITY ?? "",
   oidcClientId: process.env.OIDC_CLIENT_ID ?? "",

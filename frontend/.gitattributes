@@ -1,0 +1,2 @@
+# Garantir LF em scripts shell para compatibilidade com Linux/Docker
+*.sh text eol=lf

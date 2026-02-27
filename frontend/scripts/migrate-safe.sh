@@ -12,7 +12,7 @@ node scripts/fix-migration.js
 
 echo ""
 echo "📦 Gerando novas migrations..."
-drizzle-kit generate
+pnpm exec drizzle-kit generate
 
 echo ""
 echo "🔧 Corrigindo migrations recém-geradas..."
@@ -20,8 +20,7 @@ node scripts/fix-migration.js
 
 echo ""
 echo "🚀 Aplicando migrations..."
-drizzle-kit migrate
+pnpm exec drizzle-kit migrate
 
 echo ""
 echo "✅ Migrations aplicadas com sucesso!"
-

@@ -42,6 +42,8 @@ services:
       # BACKEND API
       # ============================================
       BACKEND_API_URL: https://dev-api-mensageria.grupoblue.com.br
+      # URL que o navegador usa para Socket.IO (igual ao backend em dev - URLs públicas)
+      CLIENT_BACKEND_URL: https://dev-api-mensageria.grupoblue.com.br
       BACKEND_API_TOKEN: cd739c87f3f7a8a6a69407b639a6d7c6db3090e0d6bbe4cbd4176950a1d9ab27
       INTERNAL_SYNC_TOKEN: cd739c87f3f7a8a6a69407b639a6d7c6db3090e0d6bbe4cbd4176950a1d9ab27
     networks:

@@ -5,7 +5,6 @@
     "title": "API de Mensageria",
     "description": "API para envio de mensagens via Whatsapp"
   },
-  "host": "http://localhost:3333",
   "basePath": "/",
   "tags": [
     {
@@ -362,16 +361,19 @@
         ],
         "responses": {
           "200": {
+            "description": "Mensagem enviada com sucesso",
             "schema": {
               "$ref": "#/definitions/SendedTelegramMessage"
-            },
-            "description": "Mensagem enviada com sucesso"
+            }
           },
           "400": {
+            "description": "Este número não está cadastrado no Telegram",
             "schema": {
               "$ref": "#/definitions/IsNotTelegramNumber"
-            },
-            "description": "Este número não está cadastrado no Telegram"
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
           }
         },
         "security": [
@@ -457,6 +459,11 @@
         "description": "Endpoint para envio de mensagem via whatsapp.",
         "parameters": [
           {
+            "name": "token",
+            "in": "query",
+            "type": "string"
+          },
+          {
             "name": "data",
             "in": "body",
             "description": "Número de telefone do destinatário, com DDD e mensagem que deseja enviar",
@@ -468,16 +475,19 @@
         ],
         "responses": {
           "200": {
+            "description": "Mensagem enviada com sucesso",
             "schema": {
               "$ref": "#/definitions/SendedWhatsappMessage"
-            },
-            "description": "Mensagem enviada com sucesso"
+            }
           },
           "400": {
+            "description": "Este número não está cadastrado no Whatsapp",
             "schema": {
               "$ref": "#/definitions/IsNotWhatsappNumber"
-            },
-            "description": "Este número não está cadastrado no Whatsapp"
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
           }
         },
         "security": [

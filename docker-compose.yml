@@ -6,14 +6,19 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        # URL que o browser usa para Socket.IO e API - porta 5600 mapeada do backend
+        VITE_BACKEND_API_URL: http://localhost:5600
     restart: unless-stopped
     ports:
       - "3000:3000"
     env_file:
       - frontend/.env
     environment:
-      # Conexão com o backend Docker (Baileys)
-      BACKEND_API_URL: http://backend:3333
+      # Conexão com o backend Docker (Baileys) - servidor usa backend:3333
+      BACKEND_API_URL: http://mensageria-backend:3333
+      # URL que o navegador usa para Socket.IO - deve ser acessível do host (porta 5600)
+      CLIENT_BACKEND_URL: http://localhost:5600
       BACKEND_API_TOKEN: cd739c87f3f7a8a6a69407b639a6d7c6db3090e0d6bbe4cbd4176950a1d9ab27
       INTERNAL_SYNC_TOKEN: cd739c87f3f7a8a6a69407b639a6d7c6db3090e0d6bbe4cbd4176950a1d9ab27
       FRONTEND_URL: http://localhost:3000

@@ -119,6 +119,11 @@ async function startServer() {
   // WhatsApp routes
   app.use('/api/whatsapp', whatsappRoutes);
 
+  // Endpoint público para o cliente obter a URL do backend (Socket.IO) em runtime
+  app.get('/api/config', (_req, res) => {
+    res.json({ backendUrl: ENV.clientBackendUrl });
+  });
+
   // Internal API routes (backend-to-frontend communication)
   app.use('/api/internal', internalRoutes);
   console.log('[Server] Internal API routes registradas em /api/internal');
