@@ -33,7 +33,7 @@ export async function getChatWebhookConfig(): Promise<ChatWebhookConfig> {
   const secretRow = rows.find((r) => r.key === CHAT_WEBHOOK_SECRET_KEY);
 
   return {
-    url: (urlRow?.value?.trim() || ENV.chatWebhookUrl ?? "").trim(),
-    secret: (secretRow?.value?.trim() || ENV.chatWebhookSecret ?? "").trim(),
+    url: ((urlRow?.value?.trim() || ENV.chatWebhookUrl) ?? "").trim(),
+    secret: ((secretRow?.value?.trim() || ENV.chatWebhookSecret) ?? "").trim(),
   };
 }
