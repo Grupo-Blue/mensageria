@@ -38,17 +38,23 @@ const generateWebhookSignature = (payload: string, secret: string): string => {
  */
 const forwardToWebhook = async (connectionName: string, from: string, messageId: string, text: string) => {
   try {
-    // Try to get connection-specific webhook config first
+    // Try to get connection-specific webhook config first (sync with frontend)
     let webhookUrl: string | null = null;
     let webhookSecret: string | null = null;
 
-    const webhookConfig = tokenCache.getWebhookConfig(connectionName);
+    let webhookConfig = tokenCache.getWebhookConfig(connectionName);
+    if (!webhookConfig?.url) {
+      // Cache pode estar vazio ou desatualizado (ex.: webhook configurado após o backend subir)
+      console.log('[Webhook] Webhook não encontrado no cache para conexão:', connectionName, '- forçando sync com o frontend');
+      await tokenCache.forceRefresh();
+      webhookConfig = tokenCache.getWebhookConfig(connectionName);
+    }
     if (webhookConfig?.url) {
       webhookUrl = webhookConfig.url;
       webhookSecret = webhookConfig.secret;
       console.log('[Webhook] Usando webhook específico da conexão:', connectionName);
     } else {
-      // Fallback to legacy settings
+      // Fallback to legacy settings (arquivo tmp/settings.json no backend)
       const settings = await settingsStore.getSettings();
       webhookUrl = settings.webhook_url;
       console.log('[Webhook] Usando webhook global (legacy)');
@@ -56,20 +62,46 @@ const forwardToWebhook = async (connectionName: string, from: string, messageId:
 
     if (!webhookUrl) {
       console.log('[Webhook] URL não configurada para conexão:', connectionName);
+      console.log('[Webhook] Dica: O backend obtém o webhook do frontend. Verifique INTERNAL_SYNC_TOKEN e FRONTEND_API_URL no backend e se a URL/secret estão salvos na conexão no painel.');
       return;
     }
 
-    console.log('[Webhook] Enviando para:', webhookUrl);
+    console.log('[Webhook] Enviando para:', {
+      webhookUrl,
+      connectionName,
+      from,
+      messageId,
+      textLength: text.length,
+      timestamp: new Date().toISOString(),
+    });
 
+    /**
+     * IMPORTANTE: Ao responder a esta mensagem via API, use o campo 'from' como destinatário (to/phone).
+     * O campo 'from' contém o número do remetente que enviou a mensagem.
+     * 
+     * Exemplo de resposta correta:
+     * POST /whatsapp?token={connection_name}
+     * Body: { phone: payload.from, message: "sua resposta" }
+     * 
+     * NUNCA use um número em cache ou o último destinatário - sempre use payload.from
+     */
     const payload = {
       connection_name: connectionName,
-      from,
+      from, // IMPORTANTE: Use este campo como destinatário ao responder (campo 'phone' na API)
       message_id: messageId,
       timestamp: new Date().toISOString(),
       text
     };
 
     const payloadString = JSON.stringify(payload);
+    
+    console.log('[Webhook] Payload completo:', {
+      connection_name: payload.connection_name,
+      from: payload.from,
+      message_id: payload.message_id,
+      timestamp: payload.timestamp,
+      textPreview: text.substring(0, 100),
+    });
 
     // Build headers
     const headers: Record<string, string> = {
@@ -551,7 +583,13 @@ export const addConnection = async (id: string): Promise<void> => {
           
           // Ignorar mensagens vazias ou de mídia sem texto
           if (messageText && messageText.trim()) {
-            console.log('[Webhook] Mensagem individual recebida de:', from);
+            console.log('[Webhook] Mensagem individual recebida:', {
+              from,
+              messageId,
+              messageTextLength: messageText.length,
+              connectionId: id,
+              timestamp: new Date().toISOString(),
+            });
             await forwardToWebhook(id, from, messageId, messageText);
           }
           
@@ -707,7 +745,21 @@ export const sendMessage = async ({
   message,
   identification,
 }: SendMessageParamsInterface): Promise<void> => {
-  console.log('[sendMessage] Iniciando envio:', { toPhone, identification });
+  // Validação rigorosa do destinatário
+  if (!toPhone || typeof toPhone !== 'string' || toPhone.trim() === '') {
+    console.error('[sendMessage] Erro: toPhone inválido:', toPhone);
+    throw new Error('Destinatário (toPhone) é obrigatório e deve ser uma string não vazia');
+  }
+  
+  const trimmedPhone = toPhone.trim();
+  
+  console.log('[sendMessage] Iniciando envio:', { 
+    toPhone: trimmedPhone,
+    toPhoneOriginal: toPhone,
+    toPhoneLength: trimmedPhone.length,
+    identification,
+    timestamp: new Date().toISOString(),
+  });
   
   const connectionId = identification || process.env.IDENTIFICATION || 'mensageria';
   const connection = getConnection(connectionId)
@@ -719,7 +771,13 @@ export const sendMessage = async ({
   
   console.log('[sendMessage] Conexão encontrada:', connectionId);
   
-  let phoneNumber = toPhone.replace(/[^0-9]+/g, '');
+  // Usar o telefone já validado e trimado
+  let phoneNumber = trimmedPhone.replace(/[^0-9]+/g, '');
+  
+  if (!phoneNumber || phoneNumber.length === 0) {
+    console.error('[sendMessage] Erro: phoneNumber vazio após limpeza:', { toPhone, trimmedPhone });
+    throw new Error('Número de telefone inválido após formatação');
+  }
   if (phoneNumber.length === 11) {
     phoneNumber = `55${phoneNumber.slice(0, 2)}${phoneNumber.slice(3, 11)}`;
   } else if (phoneNumber.length === 13) {
@@ -761,21 +819,43 @@ export const sendMessage = async ({
 
   // Enviar mensagem com timeout
   try {
-    console.log('[sendMessage] Enviando mensagem para:', phoneNumber);
+    console.log('[sendMessage] Enviando mensagem para:', {
+      phoneNumber,
+      phoneNumberLength: phoneNumber.length,
+      messageLength: message.length,
+      connectionId,
+      timestamp: new Date().toISOString(),
+    });
+    
     const sendTimeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => reject(new Error('Timeout ao enviar mensagem')), 15000);
     });
+    
+    // Validar novamente antes de enviar
+    if (!phoneNumber || phoneNumber.length === 0) {
+      throw new Error('Número de telefone inválido: está vazio');
+    }
     
     const sended = await Promise.race([
       connection.sendMessage(phoneNumber, { text: message }),
       sendTimeoutPromise
     ]);
     
-    console.log('[sendMessage] Mensagem enviada com sucesso:', sended);
+    console.log('[sendMessage] Mensagem enviada com sucesso:', {
+      phoneNumber,
+      messageId: sended?.key?.id,
+      timestamp: new Date().toISOString(),
+    });
     return sended;
     
   } catch (error: any) {
-    console.error('[sendMessage] Erro ao enviar:', error.message);
+    console.error('[sendMessage] Erro ao enviar:', {
+      error: error.message,
+      phoneNumber,
+      connectionId,
+      stack: error.stack,
+      timestamp: new Date().toISOString(),
+    });
     throw error;
   }
 };
