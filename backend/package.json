@@ -1,6 +1,7 @@
 {
   "name": "mensageria",
   "version": "1.0.0",
+  "type": "module",
   "main": "server.js",
   "license": "MIT",
   "scripts": {
@@ -14,7 +15,7 @@
   "dependencies": {
     "@adiwajshing/keyed-db": "^0.2.4",
     "@hapi/boom": "^10.0.0",
-    "@whiskeysockets/baileys": "^6.7.21",
+    "@whiskeysockets/baileys": "^7.0.0-rc.9",
     "axios": "^1.6.4",
     "bcryptjs": "^2.4.3",
     "bullmq": "^3.11.0",

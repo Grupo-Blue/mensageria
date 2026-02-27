@@ -4,8 +4,8 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import AppError from '../errors/AppError';
-import tokenCache from '../services/tokenCache';
+import AppError from '../errors/AppError.js';
+import tokenCache from '../services/tokenCache.js';
 
 export interface AuthenticatedRequest extends Request {
   tenant?: {

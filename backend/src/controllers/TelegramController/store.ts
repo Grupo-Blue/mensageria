@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { sendMessage } from '../../services/Telegram';
+import { sendMessage } from '../../services/Telegram/index.js';
 
 const store = async (req: Request, res: Response): Promise<Response> => {
   try {

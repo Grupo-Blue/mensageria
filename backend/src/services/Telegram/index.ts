@@ -1,2 +1,2 @@
-export * from './telegramEvents'
-export * from './sendMessage'
+export * from './telegramEvents.js'
+export * from './sendMessage.js'

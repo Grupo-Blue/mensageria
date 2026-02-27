@@ -6,10 +6,10 @@ if (process.env.NODE_ENV !== 'production') {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 }
 
-import app from './app';
-import socket from './libs/socket';
-import connect from './services/Baileys';
-import tokenCache from './services/tokenCache';
+import app from './app.js';
+import socket from './libs/socket.js';
+import connect from './services/Baileys/index.js';
+import tokenCache from './services/tokenCache.js';
 
 const port = process.env.PORT || process.env.LOCAL_PORT || 3333;
 const server = app.listen(port, () => {
