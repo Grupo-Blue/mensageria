@@ -1,6 +1,7 @@
 import axios from "axios";
 import { ENV } from "../_core/env";
 import { extractTemplateVariablesInOrder } from "./metaApi";
+import type { ChatWebhookConfig } from "./chatWebhookConfig";
 
 export interface DispatchWebhookContact {
   name: string | null;
@@ -38,17 +39,24 @@ export function renderTemplateBody(
 
 /**
  * Sends campaign dispatched payload to the chat webhook URL (fire-and-forget).
- * Only sends if CHAT_WEBHOOK_URL is set. Does not throw; logs errors.
+ * Uses config when provided (e.g. from DB); otherwise falls back to ENV. Does not throw; logs errors.
  */
-export function notifyCampaignDispatched(payload: CampaignDispatchedPayload): void {
-  const url = ENV.chatWebhookUrl?.trim();
-  if (!url) return;
+export function notifyCampaignDispatched(
+  payload: CampaignDispatchedPayload,
+  config?: ChatWebhookConfig | null
+): void {
+  const url = (config?.url ?? ENV.chatWebhookUrl)?.trim();
+  if (!url) {
+    console.log("[DispatchWebhook] URL do webhook de disparo não configurada – não enviado. Campanha:", payload.campaignId);
+    return;
+  }
 
+  const secret = (config?.secret ?? ENV.chatWebhookSecret)?.trim();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
-  if (ENV.chatWebhookSecret?.trim()) {
-    headers["Authorization"] = `Bearer ${ENV.chatWebhookSecret.trim()}`;
+  if (secret) {
+    headers["Authorization"] = `Bearer ${secret}`;
   }
 
   axios

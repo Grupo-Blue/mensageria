@@ -17,6 +17,7 @@ import {
   ExternalLink,
   AlertTriangle,
   CheckCircle,
+  Webhook,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import toast from "react-hot-toast";
@@ -112,6 +113,10 @@ export default function AdminSettings() {
             <TabsTrigger value="security">
               <Shield className="h-4 w-4 mr-2" />
               Segurança
+            </TabsTrigger>
+            <TabsTrigger value="chat-webhook">
+              <Webhook className="h-4 w-4 mr-2" />
+              Webhook de disparo
             </TabsTrigger>
           </TabsList>
 
@@ -436,6 +441,73 @@ export default function AdminSettings() {
                   <p className="text-sm text-muted-foreground">
                     Tempo de inatividade antes de expirar a sessão (padrão: 24
                     horas)
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Webhook de disparo (sistema de chat) */}
+          <TabsContent value="chat-webhook">
+            <Card>
+              <CardHeader>
+                <CardTitle>Webhook de disparo para sistema de chat</CardTitle>
+                <CardDescription>
+                  Quando uma campanha de disparo (WhatsApp Business) for concluída, o mensageria envia um POST para esta URL com a lista de contatos que receberam a mensagem. O sistema de chat pode usar para criar/atualizar leads.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="chat_webhook_url">URL do webhook</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="chat_webhook_url"
+                      type="url"
+                      value={settings.chat_webhook_url || ""}
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          chat_webhook_url: e.target.value,
+                        })
+                      }
+                      placeholder="https://seu-chat.com/api/webhook/disparo"
+                    />
+                    <Button
+                      onClick={() => handleSave("chat_webhook_url")}
+                      disabled={updateSettingMutation.isPending}
+                    >
+                      <Save className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Deixe em branco para não enviar webhook. Alternativa: variável de ambiente CHAT_WEBHOOK_URL.
+                  </p>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="chat_webhook_secret">Secret (opcional)</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="chat_webhook_secret"
+                      type="password"
+                      autoComplete="off"
+                      value={settings.chat_webhook_secret || ""}
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          chat_webhook_secret: e.target.value,
+                        })
+                      }
+                      placeholder="Token enviado no header Authorization: Bearer"
+                    />
+                    <Button
+                      onClick={() => handleSave("chat_webhook_secret")}
+                      disabled={updateSettingMutation.isPending}
+                    >
+                      <Save className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Se preenchido, o request inclui Authorization: Bearer &lt;secret&gt;. Alternativa: CHAT_WEBHOOK_SECRET.
                   </p>
                 </div>
               </CardContent>

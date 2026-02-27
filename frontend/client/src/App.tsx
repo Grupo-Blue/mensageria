@@ -16,6 +16,8 @@ import ConnectionSettings from "./pages/ConnectionSettings";
 import Campaigns from "./pages/Campaigns";
 import CampaignNew from "./pages/CampaignNew";
 import CampaignDetail from "./pages/CampaignDetail";
+import InviteUsers from "./pages/InviteUsers";
+import AcceptInvite from "./pages/AcceptInvite";
 // Admin pages
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminUsers from "./pages/admin/AdminUsers";
@@ -51,6 +53,8 @@ function Router() {
       <Route path={"/campaigns/:id"} component={CampaignDetail} />
       <Route path={"/campaigns"} component={Campaigns} />
       <Route path={"/billing"} component={Billing} />
+      <Route path={"/convidar-usuarios"} component={InviteUsers} />
+      <Route path={"/aceitar-convite"} component={AcceptInvite} />
 
       {/* Admin pages */}
       <Route path={"/admin"} component={AdminDashboard} />

@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/sidebar";
 import { APP_LOGO, APP_TITLE, getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, MessageSquare, Bot, Send, Settings as SettingsIcon, Code, Building2, Megaphone, Moon, Sun, KeyRound } from "lucide-react";
+import { LayoutDashboard, LogOut, MessageSquare, Bot, Send, Settings as SettingsIcon, Code, Building2, Megaphone, Moon, Sun, KeyRound, UserPlus } from "lucide-react";
 import { CSSProperties, useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -31,6 +31,7 @@ import { motion } from "framer-motion";
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/", color: "text-blue-600", bgColor: "bg-blue-50 dark:bg-blue-950/30", hoverBg: "hover:bg-blue-50/50 dark:hover:bg-blue-950/20" },
   { icon: Megaphone, label: "Campanhas", path: "/campaigns", color: "text-purple-600", bgColor: "bg-purple-50 dark:bg-purple-950/30", hoverBg: "hover:bg-purple-50/50 dark:hover:bg-purple-950/20" },
+  { icon: UserPlus, label: "Convidar usuários", path: "/convidar-usuarios", color: "text-violet-600", bgColor: "bg-violet-50 dark:bg-violet-950/30", hoverBg: "hover:bg-violet-50/50 dark:hover:bg-violet-950/20" },
   { icon: Building2, label: "WhatsApp Business", path: "/whatsapp-business", color: "text-emerald-600", bgColor: "bg-emerald-50 dark:bg-emerald-950/30", hoverBg: "hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20" },
   { icon: MessageSquare, label: "WhatsApp", path: "/whatsapp", color: "text-green-600", bgColor: "bg-green-50 dark:bg-green-950/30", hoverBg: "hover:bg-green-50/50 dark:hover:bg-green-950/20" },
   { icon: Bot, label: "Telegram", path: "/telegram", color: "text-sky-600", bgColor: "bg-sky-50 dark:bg-sky-950/30", hoverBg: "hover:bg-sky-50/50 dark:hover:bg-sky-950/20" },
