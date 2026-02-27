@@ -1,5 +1,5 @@
-import { geminiService } from './geminiService';
-import { messageStore } from './messageStore';
+import { geminiService } from './geminiService.js';
+import { messageStore } from './messageStore.js';
 
 export async function analyzeMessages(groupId: string, question: string, geminiApiKey: string): Promise<string> {
   // Inicializa Gemini se necessário

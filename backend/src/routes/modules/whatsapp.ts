@@ -2,10 +2,10 @@ import { Router } from 'express';
 import path from 'path'
 import {
   store,
-} from '../../controllers/WhatsappController';
-import auth from '../../middlewares/auth';
-import groupStore from '../../services/Baileys/groupStore';
-import { listConnections } from '../../services/Baileys';
+} from '../../controllers/WhatsappController/index.js';
+import auth from '../../middlewares/auth.js';
+import groupStore from '../../services/Baileys/groupStore.js';
+import { listConnections } from '../../services/Baileys/index.js';
 
 
 const router = Router();

@@ -4,7 +4,7 @@
  */
 
 import { Router, Response } from 'express';
-import { multiTenantAuth, requireConnection, AuthenticatedRequest } from '../../middlewares/multiTenantAuth';
+import { multiTenantAuth, requireConnection, AuthenticatedRequest } from '../../middlewares/multiTenantAuth.js';
 import {
   addConnection,
   removeConnection,
@@ -12,8 +12,8 @@ import {
   getConnection,
   listConnections,
   sendMessage,
-} from '../../services/Baileys';
-import tokenCache from '../../services/tokenCache';
+} from '../../services/Baileys/index.js';
+import tokenCache from '../../services/tokenCache.js';
 
 const router = Router();
 

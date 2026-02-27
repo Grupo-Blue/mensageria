@@ -1,22 +1,24 @@
-import makeWASocket, {
+import {
   Browsers,
   DisconnectReason,
   fetchLatestBaileysVersion,
   useMultiFileAuthState,
+  makeWASocket,
+  type WASocket,
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import socket from '../../libs/socket';
-import messageStore from './messageStore';
-import { saveGroupInfo } from './saveGroupInfo';
-import settingsStore from '../settingsStore';
-import tokenCache from '../tokenCache';
+import socket from '../../libs/socket.js';
+import messageStore from './messageStore.js';
+import { saveGroupInfo } from './saveGroupInfo.js';
+import settingsStore from '../settingsStore.js';
+import tokenCache from '../tokenCache.js';
 
 interface ConnectionInterface {
   id: string;
-  connection: any;
+  connection: WASocket;
   connected: boolean;
 }
 
@@ -303,7 +305,7 @@ export const addConnection = async (id: string): Promise<void> => {
       browser: Browsers.ubuntu('Chrome'),
       printQRInTerminal: false, // Deprecated, vamos usar apenas o evento connection.update
       auth: state,
-      getMessage: async (key) => {
+      getMessage: async () => {
         return undefined;
       },
     });
@@ -317,12 +319,15 @@ export const addConnection = async (id: string): Promise<void> => {
   // store?.bind(sock.ev);
   // eslint-disable-next-line @typescript-eslint/no-misused-promises
   sock.ev.on('creds.update', saveCreds);
-  sock.ev.on('presence.update', data => console.log('presence.update', data));
+  sock.ev.on('presence.update', (data: { id: string; presences: Record<string, { lastKnownPresence: string; lastSeen?: number }> }) => console.log('presence.update', data));
   
   // Adicionar handler de erros do socket
-  sock.ev.on('error', (error: any) => {
-    console.error(`[Baileys Error] ❌ Erro no socket para conexão ${id}:`, error);
-    console.error(`[Baileys Error] Stack:`, error.stack);
+  sock.ev.on('connection.update', (update: { isNewLogin?: boolean; qr?: string; connection?: string; lastDisconnect?: { error?: Error } }) => {
+    if (update.lastDisconnect?.error) {
+      const error = update.lastDisconnect.error;
+      console.error(`[Baileys Error] ❌ Erro no socket para conexão ${id}:`, error);
+      console.error(`[Baileys Error] Stack:`, error.stack);
+    }
   });
 
   console.log(`[addConnection] Registrando handler connection.update...`);
@@ -348,7 +353,7 @@ export const addConnection = async (id: string): Promise<void> => {
     }, 15000);
   }
   
-  sock.ev.on('connection.update', async (update) => {
+  sock.ev.on('connection.update', async (update: { connection?: string; lastDisconnect?: { error?: Error }; qr?: string }) => {
     const { connection, lastDisconnect, qr } = update;
     
     console.log(`[Connection Update] 🔔 Evento recebido para conexão ${id}`);
@@ -518,7 +523,7 @@ export const addConnection = async (id: string): Promise<void> => {
       console.log(`[Connection] Conexão ${id} está conectando...`);
     }
   });
-  sock.ev.on('messages.upsert', async m => {
+  sock.ev.on('messages.upsert', async (m: { type: string; messages: any[] }) => {
     console.log(
       'messages.upsert>>>>>>>>',
       new Date().toISOString(),
@@ -557,14 +562,14 @@ if (!remoteJid || !remoteJid.endsWith('@g.us')) {
           continue;
         }
 
-        const groupId = remoteJid;
+        const groupId = remoteJid!;
         const sender = msg.pushName || msg.key?.participant || 'Desconhecido';
 
         let groupName = groupNameCache.get(groupId);
         if (!groupName) {
           try {
             const groupMetadata = await sock.groupMetadata(groupId);
-            groupName = groupMetadata.subject || 'Grupo sem nome';
+            groupName = groupMetadata?.subject || 'Grupo sem nome';
             groupNameCache.set(groupId, groupName);
           } catch (error) {
             console.log(

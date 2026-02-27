@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { addConnection } from '../../services/Baileys';
+import { addConnection } from '../../services/Baileys/index.js';
 
 const createConnection = async (req: Request, res: Response): Promise<Response> => {
   try {

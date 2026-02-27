@@ -113,7 +113,7 @@ jobs:
           else
             IMAGE_TAG="${GITHUB_SHA}"
           fi
-          curl -X POST "https://portainer.openxsolutions.com.br/api/webhooks/5c6c294a-49b9-4d9d-908e-6bd4e7e04cbb?tag=${IMAGE_TAG}"
+          curl -X POST "https://portainer.openxsolutions.com.br/api/webhooks/d03be45f-6553-46c5-9d82-8111c2785a5b?tag=${IMAGE_TAG}"
 
       - name: Atualizar frontend no Portainer (prod)
         if: success()
@@ -124,7 +124,7 @@ jobs:
           else
             IMAGE_TAG="${GITHUB_SHA}"
           fi
-          curl -X POST "https://portainer.openxsolutions.com.br/api/webhooks/ac9c3d4a-b3f6-4ef2-a34a-70922f891db9?tag=${IMAGE_TAG}"
+          curl -X POST "https://portainer.openxsolutions.com.br/api/webhooks/f7f0786e-b468-4ec2-af90-f2f072bf5284?tag=${IMAGE_TAG}"
 
       - name: Atualizar backend no Portainer (prod)
         if: success()
@@ -135,6 +135,6 @@ jobs:
           else
             IMAGE_TAG="${GITHUB_SHA}"
           fi
-          curl -X POST "https://portainer.openxsolutions.com.br/api/webhooks/0e31d795-1999-42f3-99b3-56377b940b28?tag=${IMAGE_TAG}"
+          curl -X POST "https://portainer.openxsolutions.com.br/api/webhooks/329f4b7a-6b5c-4131-94c4-46a8a02413f5?tag=${IMAGE_TAG}"
 
 

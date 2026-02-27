@@ -1,6 +1,6 @@
 import { Request, Response, Router } from 'express';
-import groupStore from '../../services/Baileys/groupStore';
-import settingsStore from '../../services/settingsStore';
+import groupStore from '../../services/Baileys/groupStore.js';
+import settingsStore from '../../services/settingsStore.js';
 
 interface BatchInputItem {
   json?: unknown;

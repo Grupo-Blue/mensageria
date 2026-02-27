@@ -59,12 +59,5 @@ export function notifyCampaignDispatched(
     headers["Authorization"] = `Bearer ${secret}`;
   }
 
-  axios
-    .post(url, payload, { headers, timeout: 10000 })
-    .then(() => {
-      console.log("[DispatchWebhook] Notified chat system:", payload.campaignId, payload.contacts.length, "contacts");
-    })
-    .catch((err) => {
-      console.error("[DispatchWebhook] Failed to notify chat system:", err.message, err.response?.status);
-    });
+  void Promise.allSettled(promises);
 }

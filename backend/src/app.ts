@@ -5,9 +5,9 @@ import 'express-async-errors';
 import swaggerUi from 'swagger-ui-express';
 import swaggerFile from './swagger.json';
 
-import routes from './routes';
-import AppError from './errors/AppError';
-import { telegramEvents } from './services/Telegram';
+import routes from './routes/index.js';
+import AppError from './errors/AppError.js';
+import { telegramEvents } from './services/Telegram/index.js';
 
 
 const app = express();

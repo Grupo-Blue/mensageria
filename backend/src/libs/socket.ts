@@ -1,6 +1,6 @@
 import { Server as HttpServer } from 'http';
 import { Server, Socket } from 'socket.io';
-import { addConnection, logoutConnection } from '../services/Baileys';
+import { addConnection, logoutConnection } from '../services/Baileys/index.js';
 
 let io: Server;
 

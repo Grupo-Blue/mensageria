@@ -1,7 +1,7 @@
 import schedule from 'node-schedule';
-import { messageStore } from './messageStore';
-import { geminiService } from './geminiService';
-import { getConnection } from './Baileys';
+import { messageStore } from './messageStore.js';
+import { geminiService } from './geminiService.js';
+import { getConnection } from './Baileys/index.js';
 
 interface ResumeConfig {
   enabled: boolean;

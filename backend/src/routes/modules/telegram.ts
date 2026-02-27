@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import {
   store,
-} from '../../controllers/TelegramController';
-import auth from '../../middlewares/auth';
+} from '../../controllers/TelegramController/index.js';
+import auth from '../../middlewares/auth.js';
 
 
 const router = Router();

@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { sendMessage } from '../../services/Baileys';
+import { sendMessage } from '../../services/Baileys/index.js';
 
 const store = async (req: Request, res: Response): Promise<Response> => {
   try {

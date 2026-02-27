@@ -1,5 +1,5 @@
 import axios from 'axios';
-import groupStore from './groupStore';
+import groupStore from './groupStore.js';
 
 interface SaveGroupInfoParams {
   sessionId: string;

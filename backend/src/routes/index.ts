@@ -1,8 +1,8 @@
 import { Router, Request, Response } from 'express';
-import whatsapp from './modules/whatsapp';
-import telegram from './modules/telegram';
-import trpc from './modules/trpc';
-import connections from './modules/connections';
+import whatsapp from './modules/whatsapp.js';
+import telegram from './modules/telegram.js';
+import trpc from './modules/trpc.js';
+import connections from './modules/connections.js';
 
 const routes = Router();
 
