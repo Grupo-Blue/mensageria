@@ -210,14 +210,14 @@ export default function Campaigns() {
                             <Eye className="w-4 h-4 mr-2" />
                             Ver Detalhes
                           </DropdownMenuItem>
-                          {(campaign.status === "draft" || campaign.status === "scheduled") && (
+                          {"isOwner" in campaign && campaign.isOwner && (campaign.status === "draft" || campaign.status === "scheduled") && (
                             <DropdownMenuItem onClick={() => navigate(`/campaigns/${campaign.id}/edit`)}>
                               <Edit className="w-4 h-4 mr-2" />
                               Editar
                             </DropdownMenuItem>
                           )}
-                          <DropdownMenuSeparator />
-                          {(campaign.status === "draft" || campaign.status === "scheduled") && (
+                          {"isOwner" in campaign && campaign.isOwner && <DropdownMenuSeparator />}
+                          {"isOwner" in campaign && campaign.isOwner && (campaign.status === "draft" || campaign.status === "scheduled") && (
                             <DropdownMenuItem
                               onClick={() => startMutation.mutate({ campaignId: campaign.id })}
                               disabled={startMutation.isPending || campaign.totalRecipients === 0}
@@ -226,7 +226,7 @@ export default function Campaigns() {
                               Iniciar
                             </DropdownMenuItem>
                           )}
-                          {campaign.status === "running" && (
+                          {"isOwner" in campaign && campaign.isOwner && campaign.status === "running" && (
                             <DropdownMenuItem
                               onClick={() => pauseMutation.mutate({ campaignId: campaign.id })}
                               disabled={pauseMutation.isPending}
@@ -235,7 +235,8 @@ export default function Campaigns() {
                               Pausar
                             </DropdownMenuItem>
                           )}
-                          <DropdownMenuSeparator />
+                          {"isOwner" in campaign && campaign.isOwner && <DropdownMenuSeparator />}
+                          {"isOwner" in campaign && campaign.isOwner && (
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
                               <DropdownMenuItem
@@ -265,6 +266,7 @@ export default function Campaigns() {
                               </AlertDialogFooter>
                             </AlertDialogContent>
                           </AlertDialog>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>

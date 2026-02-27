@@ -3,10 +3,12 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { z } from "zod";
+import crypto from "crypto";
 import * as db from "./db";
 import axios from "axios";
 import { MetaWhatsAppApi, mapVariablesToOrderedArray } from "./whatsappBusiness/metaApi";
 import { notifyCampaignDispatched, renderTemplateBody } from "./whatsappBusiness/dispatchWebhook";
+import { getChatWebhookConfig } from "./whatsappBusiness/chatWebhookConfig";
 import { ENV } from "./_core/env";
 import { billingRouter } from "./routers/billing";
 import { adminRouter } from "./routers/admin";
@@ -1214,19 +1216,21 @@ export const appRouter = router({
   // Marketing Campaigns
   // =====================================================
   campaigns: router({
-    // List all campaigns for the user
+    // List all campaigns for the user (own + from accounts that invited them)
     list: protectedProcedure.query(async ({ ctx }) => {
-      return await db.getCampaigns(ctx.user.id);
+      const list = await db.getCampaignsVisibleToUser(ctx.user.id);
+      return list.map((c) => ({ ...c, isOwner: c.userId === ctx.user.id }));
     }),
 
-    // Get a specific campaign by ID
+    // Get a specific campaign by ID (owner or invited member)
     get: protectedProcedure
       .input(z.object({ id: z.number() }))
       .query(async ({ ctx, input }) => {
         const campaign = await db.getCampaignById(input.id);
-        if (!campaign || campaign.userId !== ctx.user.id) {
-          throw new Error("Campanha não encontrada");
-        }
+        if (!campaign) throw new Error("Campanha não encontrada");
+        const isOwner = campaign.userId === ctx.user.id;
+        const isMember = await db.isMemberOfOwner(campaign.userId, ctx.user.id);
+        if (!isOwner && !isMember) throw new Error("Campanha não encontrada");
         return campaign;
       }),
 
@@ -1531,19 +1535,29 @@ export const appRouter = router({
         });
 
         const sentContacts = allRecipients.filter((r) => r.status === "sent" || r.status === "delivered" || r.status === "read");
-        if (ENV.chatWebhookTargets.length > 0 && sentContacts.length > 0) {
+        const chatWebhookConfig = await getChatWebhookConfig();
+        const chatWebhookUrl = chatWebhookConfig.url;
+        if (!chatWebhookUrl) {
+          console.log("[Campaign Send] Webhook de disparo não configurado (Admin > Webhook de disparo) – não enviado. Campanha:", input.campaignId);
+        } else if (sentContacts.length === 0) {
+          console.log("[Campaign Send] Nenhum contato com status enviado – webhook de disparo não enviado. Campanha:", input.campaignId);
+        }
+        if (chatWebhookUrl && sentContacts.length > 0) {
           const campaignUpdated = await db.getCampaignById(input.campaignId);
           const dispatchedAt = campaignUpdated?.startedAt ?? new Date();
           const message = renderTemplateBody(templateBodyText, templateVariables);
-          notifyCampaignDispatched({
-            event: "campaign.dispatched",
-            dispatchedAt: dispatchedAt.toISOString(),
-            campaignId: input.campaignId,
-            campaignName: campaign.name,
-            company: account.name,
-            message,
-            contacts: sentContacts.map((r) => ({ name: r.name ?? null, phone: r.phoneNumber })),
-          });
+          notifyCampaignDispatched(
+            {
+              event: "campaign.dispatched",
+              dispatchedAt: dispatchedAt.toISOString(),
+              campaignId: input.campaignId,
+              campaignName: campaign.name,
+              company: account.name,
+              message,
+              contacts: sentContacts.map((r) => ({ name: r.name ?? null, phone: r.phoneNumber })),
+            },
+            chatWebhookConfig
+          );
         }
 
         return { success: true, sent: sentCount, failed: failedCount };
@@ -1657,6 +1671,100 @@ export const appRouter = router({
         const { campaignId, ...settings } = input;
         await db.updateCampaign(campaignId, settings);
 
+        return { success: true };
+      }),
+  }),
+
+  // =====================================================
+  // Convites (convidar usuários para ver meus disparos)
+  // =====================================================
+  invite: router({
+    listSent: protectedProcedure.query(async ({ ctx }) => {
+      return await db.getInvitationsByInviterId(ctx.user.id);
+    }),
+
+    create: protectedProcedure
+      .input(z.object({ email: z.string().email() }))
+      .mutation(async ({ ctx, input }) => {
+        const email = input.email.trim().toLowerCase();
+        if (email === (ctx.user.email ?? "").toLowerCase()) {
+          throw new Error("Você não pode convidar a si mesmo");
+        }
+        const token = crypto.randomBytes(32).toString("hex");
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 7);
+
+        const existing = await db.getInvitationsByInviterId(ctx.user.id);
+        const pendingSame = existing.find((i) => i.email === email && i.status === "pending");
+        if (pendingSame) throw new Error("Já existe um convite pendente para este e-mail");
+
+        await db.createInvitation({
+          inviterId: ctx.user.id,
+          email,
+          token,
+          role: "viewer",
+          status: "pending",
+          expiresAt,
+        });
+        const baseUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+        return { success: true, inviteLink: `${baseUrl}/aceitar-convite?token=${token}` };
+      }),
+
+    revoke: protectedProcedure
+      .input(z.object({ invitationId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const list = await db.getInvitationsByInviterId(ctx.user.id);
+        const inv = list.find((i) => i.id === input.invitationId);
+        if (!inv || inv.inviterId !== ctx.user.id) throw new Error("Convite não encontrado");
+        if (inv.status !== "pending") throw new Error("Só é possível revogar convites pendentes");
+        await db.updateInvitation(input.invitationId, { status: "revoked" });
+        return { success: true };
+      }),
+
+    accept: protectedProcedure
+      .input(z.object({ token: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        const inv = await db.getInvitationByToken(input.token.trim());
+        if (!inv) throw new Error("Convite inválido ou expirado");
+        if (inv.status !== "pending") throw new Error("Este convite já foi usado ou revogado");
+        if (new Date() > inv.expiresAt) {
+          await db.updateInvitation(inv.id, { status: "expired" });
+          throw new Error("Convite expirado");
+        }
+        const memberEmail = (ctx.user.email ?? "").trim().toLowerCase();
+        if (memberEmail !== inv.email.toLowerCase()) {
+          throw new Error("Este convite foi enviado para outro e-mail. Faça login com o e-mail convidado.");
+        }
+        if (inv.inviterId === ctx.user.id) throw new Error("Você não pode aceitar seu próprio convite");
+
+        const already = await db.isMemberOfOwner(inv.inviterId, ctx.user.id);
+        if (already) {
+          await db.updateInvitation(inv.id, { status: "accepted" });
+          return { success: true, alreadyMember: true };
+        }
+        await db.addAccountMember(inv.inviterId, ctx.user.id);
+        await db.updateInvitation(inv.id, { status: "accepted" });
+        return { success: true };
+      }),
+
+    getByToken: publicProcedure
+      .input(z.object({ token: z.string() }))
+      .query(async ({ input }) => {
+        const inv = await db.getInvitationByToken(input.token.trim());
+        if (!inv) return null;
+        if (inv.status !== "pending" || new Date() > inv.expiresAt) return null;
+        const owner = await db.getUserById(inv.inviterId);
+        return { email: inv.email, inviterName: owner?.name ?? "Um usuário" };
+      }),
+
+    listMembers: protectedProcedure.query(async ({ ctx }) => {
+      return await db.getAccountMembersWithMemberInfo(ctx.user.id);
+    }),
+
+    removeMember: protectedProcedure
+      .input(z.object({ memberId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.removeAccountMember(ctx.user.id, input.memberId);
         return { success: true };
       }),
   }),

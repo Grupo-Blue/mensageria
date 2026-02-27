@@ -1,4 +1,4 @@
-import { eq, and, desc, lt, or, isNull, sql, gte } from "drizzle-orm";
+import { eq, and, desc, lt, or, isNull, sql, gte, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
 import crypto from "crypto";
@@ -35,7 +35,11 @@ import {
   InsertWebhookLog,
   whatsappBlacklist,
   WhatsappBlacklist,
-  InsertWhatsappBlacklist
+  InsertWhatsappBlacklist,
+  invitations,
+  InsertInvitation,
+  accountMembers,
+  InsertAccountMember,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -222,6 +226,13 @@ export async function getUserByOpenId(openId: string) {
 
   const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
 
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function getUserById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
   return result.length > 0 ? result[0] : undefined;
 }
 
@@ -467,6 +478,91 @@ export async function deleteWhatsappBusinessAccount(id: number) {
 }
 
 // =====================================================
+// Invitations & Account members (convidar usuários)
+// =====================================================
+
+export async function createInvitation(invitation: InsertInvitation): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(invitations).values(invitation);
+  return result[0].insertId;
+}
+
+export async function getInvitationByToken(token: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(invitations).where(eq(invitations.token, token)).limit(1);
+  return rows[0];
+}
+
+export async function getInvitationsByInviterId(inviterId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(invitations).where(eq(invitations.inviterId, inviterId)).orderBy(desc(invitations.createdAt));
+}
+
+export async function updateInvitation(id: number, data: Partial<InsertInvitation>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(invitations).set(data).where(eq(invitations.id, id));
+}
+
+export async function addAccountMember(ownerId: number, memberId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(accountMembers).values({ ownerId, memberId, role: "viewer" });
+}
+
+export async function getAccountMembersByOwnerId(ownerId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(accountMembers).where(eq(accountMembers.ownerId, ownerId));
+}
+
+/** Lista de membros com nome e email do usuário convidado. */
+export async function getAccountMembersWithMemberInfo(ownerId: number): Promise<Array<{ id: number; memberId: number; role: string; createdAt: Date; memberName: string | null; memberEmail: string | null }>> {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select({
+    id: accountMembers.id,
+    memberId: accountMembers.memberId,
+    role: accountMembers.role,
+    createdAt: accountMembers.createdAt,
+    memberName: users.name,
+    memberEmail: users.email,
+  }).from(accountMembers).innerJoin(users, eq(accountMembers.memberId, users.id)).where(eq(accountMembers.ownerId, ownerId));
+  return rows.map((r) => ({
+    id: r.id,
+    memberId: r.memberId,
+    role: r.role,
+    createdAt: r.createdAt,
+    memberName: r.memberName,
+    memberEmail: r.memberEmail,
+  }));
+}
+
+/** Retorna os owner_ids para os quais o usuário é membro (pode ver disparos). */
+export async function getOwnerIdsForMember(memberId: number): Promise<number[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select({ ownerId: accountMembers.ownerId }).from(accountMembers).where(eq(accountMembers.memberId, memberId));
+  return rows.map((r) => r.ownerId);
+}
+
+export async function isMemberOfOwner(ownerId: number, memberId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  const rows = await db.select().from(accountMembers).where(and(eq(accountMembers.ownerId, ownerId), eq(accountMembers.memberId, memberId))).limit(1);
+  return rows.length > 0;
+}
+
+export async function removeAccountMember(ownerId: number, memberId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(accountMembers).where(and(eq(accountMembers.ownerId, ownerId), eq(accountMembers.memberId, memberId)));
+}
+
+// =====================================================
 // Campaigns
 // =====================================================
 
@@ -475,6 +571,16 @@ export async function getCampaigns(userId: number) {
   if (!db) return [];
 
   return await db.select().from(campaigns).where(eq(campaigns.userId, userId)).orderBy(desc(campaigns.createdAt));
+}
+
+/** Campanhas que o usuário pode ver: as suas + as dos donos que o convidaram. */
+export async function getCampaignsVisibleToUser(userId: number): Promise<Campaign[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  const ownerIds = [userId, ...(await getOwnerIdsForMember(userId))];
+  if (ownerIds.length === 0) return [];
+  return await db.select().from(campaigns).where(inArray(campaigns.userId, ownerIds)).orderBy(desc(campaigns.createdAt));
 }
 
 export async function getCampaignById(id: number): Promise<Campaign | undefined> {

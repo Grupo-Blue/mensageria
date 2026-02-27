@@ -1,7 +1,7 @@
 import * as db from "../db";
 import { MetaWhatsAppApi, mapVariablesToOrderedArray, BodyParam } from "./metaApi";
 import { notifyCampaignDispatched, renderTemplateBody } from "./dispatchWebhook";
-import { ENV } from "../_core/env";
+import { getChatWebhookConfig } from "./chatWebhookConfig";
 
 // Special marker for variables that should use recipient name
 const RECIPIENT_NAME_MARKER = "__RECIPIENT_NAME__";
@@ -544,19 +544,29 @@ export class CampaignScheduler {
       const sentContacts = allRecipients.filter(
         (r: any) => r.status === "sent" || r.status === "delivered" || r.status === "read"
       );
-      if (ENV.chatWebhookTargets.length > 0 && sentContacts.length > 0) {
+      const chatWebhookConfig = await getChatWebhookConfig();
+      const chatWebhookUrl = chatWebhookConfig.url;
+      if (!chatWebhookUrl) {
+        console.log("[CampaignScheduler] Webhook de disparo não configurado (Admin > Webhook de disparo) – não enviado. Campanha:", campaign.id);
+      } else if (sentContacts.length === 0) {
+        console.log("[CampaignScheduler] Nenhum contato com status enviado – webhook de disparo não enviado. Campanha:", campaign.id);
+      }
+      if (chatWebhookUrl && sentContacts.length > 0) {
         const campaignUpdated = await db.getCampaignById(campaign.id);
         const dispatchedAt = campaignUpdated?.startedAt ?? new Date();
         const message = renderTemplateBody(templateBodyText, templateVariables);
-        notifyCampaignDispatched({
-          event: "campaign.dispatched",
-          dispatchedAt: dispatchedAt.toISOString(),
-          campaignId: campaign.id,
-          campaignName: campaignUpdated?.name ?? String(campaign.id),
-          company: account.name,
-          message,
-          contacts: sentContacts.map((r: any) => ({ name: r.name ?? null, phone: r.phoneNumber })),
-        });
+        notifyCampaignDispatched(
+          {
+            event: "campaign.dispatched",
+            dispatchedAt: dispatchedAt.toISOString(),
+            campaignId: campaign.id,
+            campaignName: campaignUpdated?.name ?? String(campaign.id),
+            company: account.name,
+            message,
+            contacts: sentContacts.map((r: any) => ({ name: r.name ?? null, phone: r.phoneNumber })),
+          },
+          chatWebhookConfig
+        );
       }
 
       console.log(`[CampaignScheduler] Campaign ${campaign.id} completed: ${sentCount} sent, ${failedCount} failed`);

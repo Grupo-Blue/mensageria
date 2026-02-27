@@ -526,3 +526,38 @@ export const auditLogs = mysqlTable("audit_logs", {
 
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type InsertAuditLog = typeof auditLogs.$inferInsert;
+
+/**
+ * Invitations - convites enviados para outros usuários verem meus disparos
+ */
+export const invitations = mysqlTable("invitations", {
+  id: int("id").autoincrement().primaryKey(),
+  inviterId: int("inviter_id").notNull(),
+  email: varchar("email", { length: 320 }).notNull(),
+  token: varchar("token", { length: 64 }).notNull().unique(),
+  role: mysqlEnum("role", ["viewer"]).default("viewer").notNull(),
+  status: mysqlEnum("status", ["pending", "accepted", "expired", "revoked"]).default("pending").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type Invitation = typeof invitations.$inferSelect;
+export type InsertInvitation = typeof invitations.$inferInsert;
+
+/**
+ * Account members - usuários que aceitaram convite e podem ver disparos do dono
+ */
+export const accountMembers = mysqlTable("account_members", {
+  id: int("id").autoincrement().primaryKey(),
+  ownerId: int("owner_id").notNull(),
+  memberId: int("member_id").notNull(),
+  role: mysqlEnum("role", ["viewer"]).default("viewer").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => {
+  return {
+    uniqueOwnerMember: unique().on(table.ownerId, table.memberId),
+  };
+});
+
+export type AccountMember = typeof accountMembers.$inferSelect;
+export type InsertAccountMember = typeof accountMembers.$inferInsert;
