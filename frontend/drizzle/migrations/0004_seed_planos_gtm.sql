@@ -10,39 +10,39 @@ INSERT INTO `plans` (
   `has_webhooks`, `has_api_access`, `has_ai_features`, `has_priority_support`, `has_custom_branding`,
   `is_active`, `is_enterprise`, `sort_order`
 ) VALUES
--- Free Plan — trial sem cartão, 200 msgs marketing Meta
+-- Free Plan — trial sem cartão, 1 conta Meta, 200 msgs marketing
 (
   'Free', 'free', 'Trial gratuito. Ideal para testar a plataforma e enviar seus primeiros disparos oficiais.',
   0.00, NULL, 'BRL',
-  1, 0, 2,
-  200, 100, 200,
+  1, 1, 2,
+  200, 200, 200,
   FALSE, FALSE, FALSE, FALSE, FALSE,
   TRUE, FALSE, 0
 ),
--- Starter — entrada PME
+-- Starter — entrada PME, 1 conta Meta, 2000 msgs
 (
   'Starter', 'starter', 'Perfeito para pequenos negócios que estão começando com WhatsApp oficial.',
   97.00, 970.00, 'BRL',
-  3, 1, 10,
-  2000, 5000, 2000,
+  2, 1, 10,
+  2000, 2000, 2000,
   TRUE, TRUE, FALSE, FALSE, FALSE,
   TRUE, FALSE, 1
 ),
--- Profissional — multi-conta, relatórios avançados
+-- Profissional — 2 contas Meta, 8000 msgs, campanhas ilimitadas
 (
   'Profissional', 'profissional', 'Para negócios que precisam de múltiplas contas e campanhas ilimitadas.',
   247.00, 2470.00, 'BRL',
-  10, 2, 999999,
-  5000, 25000, 8000,
+  3, 2, 999999,
+  5000, 8000, 8000,
   TRUE, TRUE, TRUE, TRUE, FALSE,
   TRUE, FALSE, 2
 ),
--- Escala — volume alto
+-- Escala — 5 contas Meta, 25000 msgs, volume real
 (
   'Escala', 'escala', 'Para quem dispara de verdade. Volume, velocidade e múltiplas contas.',
   497.00, 4970.00, 'BRL',
-  25, 5, 999999,
-  10000, 100000, 25000,
+  5, 5, 999999,
+  10000, 25000, 25000,
   TRUE, TRUE, TRUE, TRUE, TRUE,
   TRUE, FALSE, 3
 ),
