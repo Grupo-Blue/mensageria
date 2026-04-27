@@ -30,7 +30,7 @@ INSERT INTO `plans` (
 ),
 -- Profissional — 2 contas Meta, 8000 msgs, campanhas ilimitadas
 (
-  'Profissional', 'profissional', 'Para negócios que precisam de múltiplas contas e campanhas ilimitadas.',
+  'Profissional', 'pro', 'Para negócios que precisam de múltiplas contas e campanhas ilimitadas.',
   247.00, 2470.00, 'BRL',
   3, 2, 999999,
   5000, 8000, 8000,
@@ -71,6 +71,8 @@ ON DUPLICATE KEY UPDATE
   `has_ai_features` = VALUES(`has_ai_features`),
   `has_priority_support` = VALUES(`has_priority_support`),
   `has_custom_branding` = VALUES(`has_custom_branding`),
+  `is_active` = VALUES(`is_active`),
   `is_enterprise` = VALUES(`is_enterprise`),
+  `currency` = VALUES(`currency`),
   `sort_order` = VALUES(`sort_order`),
   `updated_at` = CURRENT_TIMESTAMP;
