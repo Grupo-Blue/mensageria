@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, publicProcedure } from "../_core/trpc";
-import { eq, and, desc, gte, lte, sql } from "drizzle-orm";
+import { eq, and, desc, gte, lte, sql, inArray } from "drizzle-orm";
 import {
   plans,
   subscriptions,
@@ -293,18 +293,45 @@ export const billingRouter = router({
         });
       }
 
-      // Get or create Stripe customer
-      let stripeCustomerId: string;
-
-      const [existingSubscription] = await db
+      // Block duplicate checkout: user already has active or trialing subscription
+      const [activeSub] = await db
         .select()
         .from(subscriptions)
+        .where(
+          and(
+            eq(subscriptions.userId, ctx.user.id),
+            inArray(subscriptions.status, ["active", "trialing"])
+          )
+        )
+        .limit(1);
+
+      if (activeSub) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message:
+            "Você já possui uma assinatura ativa. Use o fluxo de upgrade/downgrade.",
+        });
+      }
+
+      // Get or create Stripe customer
+      // NOTE: users.stripeCustomerId column does not exist in the schema.
+      // We look up the customer ID from any prior subscription record.
+      // The customer ID is embedded in the Stripe session metadata and will
+      // be persisted by the webhook (BL-003) into subscriptions.stripeCustomerId.
+      let stripeCustomerId: string | undefined;
+
+      const [existingSubscription] = await db
+        .select({ stripeCustomerId: subscriptions.stripeCustomerId })
+        .from(subscriptions)
         .where(eq(subscriptions.userId, ctx.user.id))
+        .orderBy(desc(subscriptions.createdAt))
         .limit(1);
 
       if (existingSubscription?.stripeCustomerId) {
         stripeCustomerId = existingSubscription.stripeCustomerId;
-      } else {
+      }
+
+      if (!stripeCustomerId) {
         const customer = await stripe.customers.create({
           email: ctx.user.email,
           name: ctx.user.name,
