@@ -181,7 +181,7 @@ async function handleSubscriptionDeleted(stripeSubscription: Stripe.Subscription
 
   await db
     .update(subscriptions)
-    .set({ status: "canceled" as const, canceledAt: new Date() })
+    .set({ status: "canceled" as const, canceledAt: stripeDate(stripeSubscription.canceled_at) ?? new Date() })
     .where(eq(subscriptions.id, subscription.id));
 }
 
