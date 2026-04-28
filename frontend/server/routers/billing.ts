@@ -28,6 +28,13 @@ try {
   console.warn("[Billing] Stripe not available:", e);
 }
 
+export function __setStripeForTest(mockStripe: any) {
+  if (process.env.NODE_ENV !== "test") {
+    throw new Error("__setStripeForTest is only available in test environment");
+  }
+  stripe = mockStripe;
+}
+
 // Helper to get current billing period
 function getCurrentPeriod(): { start: Date; end: Date } {
   const now = new Date();
