@@ -13,6 +13,7 @@ import authRoutes from "../auth/routes";
 import whatsappRoutes from "../whatsapp/routes";
 import whatsappBusinessWebhookRoutes from "../whatsappBusiness/webhookRoutes";
 import internalRoutes from "../internal/routes";
+import stripeWebhookRouter from "../routes/stripeWebhook";
 import { campaignScheduler } from "../whatsappBusiness/campaignScheduler";
 import session from "express-session";
 import cookieParser from "cookie-parser";
@@ -81,6 +82,9 @@ async function startServer() {
     });
   }
   
+  // Stripe webhook must be registered before express.json() to preserve the raw body for signature verification.
+  app.use('/api/stripe', stripeWebhookRouter);
+
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
