@@ -40,6 +40,11 @@ import {
   InsertInvitation,
   accountMembers,
   InsertAccountMember,
+  baileysCampaigns,
+  BaileysCampaign,
+  InsertBaileysCampaign,
+  baileysCampaignRecipients,
+  InsertBaileysCampaignRecipient,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -293,8 +298,16 @@ export async function deleteWhatsappConnection(id: number) {
 export async function getWhatsappConnectionByIdentification(identification: string) {
   const db = await getDb();
   if (!db) return undefined;
-  
+
   const result = await db.select().from(whatsappConnections).where(eq(whatsappConnections.identification, identification)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function getWhatsappConnectionById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const result = await db.select().from(whatsappConnections).where(eq(whatsappConnections.id, id)).limit(1);
   return result.length > 0 ? result[0] : undefined;
 }
 
@@ -727,6 +740,244 @@ export async function getRecipientsRetryStats(campaignId: number) {
 
   const retriable = failedRecipients.filter(r => r.retryCount < campaign.maxRetries).length;
   const maxRetriesReached = failedRecipients.filter(r => r.retryCount >= campaign.maxRetries).length;
+
+  return {
+    totalFailed: failedRecipients.length,
+    retriable,
+    maxRetriesReached,
+  };
+}
+
+// =====================================================
+// Baileys Campaigns (disparo em massa via QR Code)
+// =====================================================
+
+/**
+ * Conta quantas mensagens já foram enviadas hoje somando todos os disparos
+ * Baileys desta conexão. Usado pelo limite diário de aquecimento (warmup).
+ */
+export async function countBaileysSentTodayForConnection(connectionId: number): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+  const rows = await db
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(baileysCampaignRecipients)
+    .innerJoin(baileysCampaigns, eq(baileysCampaigns.id, baileysCampaignRecipients.campaignId))
+    .where(and(
+      eq(baileysCampaigns.connectionId, connectionId),
+      eq(baileysCampaignRecipients.status, "sent"),
+      gte(baileysCampaignRecipients.sentAt, startOfDay),
+    ));
+  return Number(rows[0]?.count ?? 0);
+}
+
+/** Campanhas Baileys que o usuário pode ver: as suas + as dos donos que o convidaram. */
+export async function getBaileysCampaignsVisibleToUser(userId: number): Promise<BaileysCampaign[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  const ownerIds = [userId, ...(await getOwnerIdsForMember(userId))];
+  if (ownerIds.length === 0) return [];
+  return await db.select().from(baileysCampaigns).where(inArray(baileysCampaigns.userId, ownerIds)).orderBy(desc(baileysCampaigns.createdAt));
+}
+
+export async function getBaileysCampaignById(id: number): Promise<BaileysCampaign | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+
+  const result = await db.select().from(baileysCampaigns).where(eq(baileysCampaigns.id, id)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function createBaileysCampaign(campaign: InsertBaileysCampaign): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db.insert(baileysCampaigns).values(campaign);
+  return result[0].insertId;
+}
+
+export async function updateBaileysCampaign(id: number, data: Partial<InsertBaileysCampaign>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.update(baileysCampaigns).set(data).where(eq(baileysCampaigns.id, id));
+}
+
+export async function deleteBaileysCampaign(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Delete recipients first
+  await db.delete(baileysCampaignRecipients).where(eq(baileysCampaignRecipients.campaignId, id));
+  // Then delete campaign
+  await db.delete(baileysCampaigns).where(eq(baileysCampaigns.id, id));
+}
+
+export async function getBaileysCampaignRecipients(campaignId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  return await db.select().from(baileysCampaignRecipients).where(eq(baileysCampaignRecipients.campaignId, campaignId));
+}
+
+export async function getBaileysCampaignRecipientsByStatus(
+  campaignId: number,
+  status: "pending" | "sent" | "failed",
+  limit?: number,
+) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const query = db.select().from(baileysCampaignRecipients)
+    .where(and(eq(baileysCampaignRecipients.campaignId, campaignId), eq(baileysCampaignRecipients.status, status)));
+  if (typeof limit === "number" && limit > 0) {
+    return await query.limit(limit);
+  }
+  return await query;
+}
+
+/**
+ * Retorna o próximo destinatário `pending` de uma campanha (LIMIT 1, ordem de
+ * inserção). Usado pelo scheduler para evitar carregar a lista inteira a cada
+ * iteração do loop de envio.
+ */
+export async function getNextBaileysPendingRecipient(campaignId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db
+    .select()
+    .from(baileysCampaignRecipients)
+    .where(and(
+      eq(baileysCampaignRecipients.campaignId, campaignId),
+      eq(baileysCampaignRecipients.status, "pending"),
+    ))
+    .orderBy(baileysCampaignRecipients.id)
+    .limit(1);
+  return rows.length > 0 ? rows[0] : undefined;
+}
+
+/**
+ * Contagem agregada (SQL COUNT(*) GROUP BY status) dos destinatários da
+ * campanha. Não traz linhas para a memória.
+ */
+export async function countBaileysRecipientStatuses(
+  campaignId: number,
+): Promise<{ pending: number; sent: number; failed: number; total: number }> {
+  const db = await getDb();
+  const out = { pending: 0, sent: 0, failed: 0, total: 0 };
+  if (!db) return out;
+  const rows = await db
+    .select({
+      status: baileysCampaignRecipients.status,
+      count: sql<number>`COUNT(*)`,
+    })
+    .from(baileysCampaignRecipients)
+    .where(eq(baileysCampaignRecipients.campaignId, campaignId))
+    .groupBy(baileysCampaignRecipients.status);
+  for (const r of rows as Array<{ status: string; count: number }>) {
+    const n = Number(r.count);
+    out.total += n;
+    if (r.status === "pending" || r.status === "sent" || r.status === "failed") {
+      out[r.status] = n;
+    }
+  }
+  return out;
+}
+
+/**
+ * Conta apenas as mensagens enviadas HOJE para uma campanha específica
+ * (SQL COUNT). Usado pelo limite diário por campanha.
+ */
+export async function countBaileysSentTodayForCampaign(campaignId: number): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+  const rows = await db
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(baileysCampaignRecipients)
+    .where(and(
+      eq(baileysCampaignRecipients.campaignId, campaignId),
+      eq(baileysCampaignRecipients.status, "sent"),
+      gte(baileysCampaignRecipients.sentAt, startOfDay),
+    ));
+  return Number(rows[0]?.count ?? 0);
+}
+
+export async function addBaileysCampaignRecipients(recipients: InsertBaileysCampaignRecipient[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  if (recipients.length === 0) return;
+
+  await db.insert(baileysCampaignRecipients).values(recipients);
+}
+
+export async function updateBaileysCampaignRecipient(id: number, data: Partial<InsertBaileysCampaignRecipient>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.update(baileysCampaignRecipients).set(data).where(eq(baileysCampaignRecipients.id, id));
+}
+
+export async function deleteBaileysCampaignRecipients(campaignId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.delete(baileysCampaignRecipients).where(eq(baileysCampaignRecipients.campaignId, campaignId));
+}
+
+export async function getBaileysFailedRecipientsForRetry(campaignId: number, maxRetries: number, retryDelayMinutes: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const retryThreshold = new Date(Date.now() - retryDelayMinutes * 60 * 1000);
+
+  // Falhas que ainda não esgotaram o limite de tentativas e já esperaram o suficiente
+  return await db.select().from(baileysCampaignRecipients)
+    .where(and(
+      eq(baileysCampaignRecipients.campaignId, campaignId),
+      eq(baileysCampaignRecipients.status, "failed"),
+      lt(baileysCampaignRecipients.retryCount, maxRetries),
+      or(
+        isNull(baileysCampaignRecipients.lastRetryAt),
+        lt(baileysCampaignRecipients.lastRetryAt, retryThreshold)
+      )
+    ));
+}
+
+export async function incrementBaileysRecipientRetryCount(recipientId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.update(baileysCampaignRecipients)
+    .set({
+      retryCount: sql`${baileysCampaignRecipients.retryCount} + 1`,
+      lastRetryAt: new Date(),
+      status: "pending", // volta para a fila de envio
+      errorMessage: null,
+    })
+    .where(eq(baileysCampaignRecipients.id, recipientId));
+}
+
+export async function getBaileysRecipientsRetryStats(campaignId: number) {
+  const db = await getDb();
+  if (!db) return { totalFailed: 0, retriable: 0, maxRetriesReached: 0 };
+
+  const campaign = await getBaileysCampaignById(campaignId);
+  if (!campaign) return { totalFailed: 0, retriable: 0, maxRetriesReached: 0 };
+
+  const failedRecipients = await db.select().from(baileysCampaignRecipients)
+    .where(and(
+      eq(baileysCampaignRecipients.campaignId, campaignId),
+      eq(baileysCampaignRecipients.status, "failed")
+    ));
+
+  const retriable = failedRecipients.filter((r: { retryCount: number }) => r.retryCount < campaign.maxRetries).length;
+  const maxRetriesReached = failedRecipients.filter((r: { retryCount: number }) => r.retryCount >= campaign.maxRetries).length;
 
   return {
     totalFailed: failedRecipients.length,
@@ -1186,6 +1437,20 @@ export async function generateConnectionApiKey(connectionId: number): Promise<st
     .where(eq(whatsappConnections.id, connectionId));
 
   return apiKey;
+}
+
+/**
+ * Revoga a API key da conexão (define como null). Requisições subsequentes com
+ * a chave antiga passam a ser rejeitadas — útil em caso de vazamento.
+ */
+export async function revokeConnectionApiKey(connectionId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db
+    .update(whatsappConnections)
+    .set({ apiKey: null })
+    .where(eq(whatsappConnections.id, connectionId));
 }
 
 /**

@@ -105,21 +105,55 @@ const forwardToWebhook = async (connectionName: string, fromJid: string, message
       headers['X-Webhook-Signature'] = generateWebhookSignature(payloadString, webhookSecret);
     }
 
-    const response = await fetch(webhookUrl, {
-      method: 'POST',
-      headers,
-      body: payloadString,
-      signal: AbortSignal.timeout(10000)
-    });
+    // Retry com backoff exponencial (delays antes da 2ª e 3ª tentativas).
+    // 4xx não é retentado (erro do cliente); 5xx e falhas de rede sim.
+    const retryDelaysMs = [1000, 3000];
+    const maxAttempts = 1 + retryDelaysMs.length;
+    let lastError: string | null = null;
 
-    if (response.ok) {
-      console.log('[Webhook] Mensagem encaminhada com sucesso:', from);
-      logWebhookResult(connectionName, from, messageId, text, 'success');
-    } else {
-      const errorText = await response.text();
-      console.log('[Webhook] Erro HTTP', response.status, errorText);
-      logWebhookResult(connectionName, from, messageId, text, 'error', undefined, `HTTP ${response.status}: ${errorText.substring(0, 500)}`);
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const response = await fetch(webhookUrl, {
+          method: 'POST',
+          headers,
+          body: payloadString,
+          signal: AbortSignal.timeout(10000),
+        });
+
+        if (response.ok) {
+          const tag = attempt > 1 ? ` (após ${attempt} tentativas)` : '';
+          console.log(`[Webhook] Mensagem encaminhada com sucesso${tag}:`, from);
+          logWebhookResult(connectionName, from, messageId, text, 'success',
+            attempt > 1 ? JSON.stringify({ attempts: attempt }) : undefined);
+          return;
+        }
+
+        const errorText = await response.text();
+        // 4xx: erro do cliente — não retentar
+        if (response.status >= 400 && response.status < 500) {
+          console.log(`[Webhook] Erro HTTP ${response.status} (não-retentável)`, errorText);
+          logWebhookResult(connectionName, from, messageId, text, 'error', undefined,
+            `HTTP ${response.status}: ${errorText.substring(0, 500)} (tentativa ${attempt}/${maxAttempts})`);
+          return;
+        }
+        lastError = `HTTP ${response.status}: ${errorText.substring(0, 200)}`;
+      } catch (error: any) {
+        lastError = error.message || String(error);
+      }
+
+      // Aguarda antes da próxima tentativa, se houver
+      if (attempt < maxAttempts) {
+        const baseDelay = retryDelaysMs[attempt - 1] ?? 5000;
+        const jitter = Math.floor(Math.random() * 250);
+        const delay = baseDelay + jitter;
+        console.warn(`[Webhook] Tentativa ${attempt}/${maxAttempts} falhou (${lastError}). Reenviando em ${delay}ms`);
+        await new Promise((r) => setTimeout(r, delay));
+      }
     }
+
+    console.error(`[Webhook] Falha final após ${maxAttempts} tentativas:`, lastError);
+    logWebhookResult(connectionName, from, messageId, text, 'error', undefined,
+      `${lastError} (esgotadas ${maxAttempts} tentativas)`);
   } catch (error: any) {
     console.error('[Webhook] Erro ao encaminhar:', error.message);
     logWebhookResult(connectionName, from, messageId, text, 'error', undefined, error.message);
@@ -702,6 +736,14 @@ interface SendMessageParamsInterface {
   toPhone: string;
   message: string;
   identification?: string;
+  /** URL pública da mídia (Baileys faz fetch). Opcional. */
+  mediaUrl?: string;
+  /** Tipo da mídia. Quando definido junto com mediaUrl, sobrescreve o envio de texto. */
+  mediaType?: 'image' | 'document' | 'audio';
+  /** Nome do arquivo exibido (usado em document). Default: "arquivo". */
+  mediaFileName?: string;
+  /** Mimetype da mídia (usado em document/audio). Defaults razoáveis aplicados. */
+  mediaMimeType?: string;
 }
 interface TemplateButtonInterface {
   index: number;
@@ -753,6 +795,10 @@ export const sendMessage = async ({
   toPhone,
   message,
   identification,
+  mediaUrl,
+  mediaType,
+  mediaFileName,
+  mediaMimeType,
 }: SendMessageParamsInterface): Promise<void> => {
   // Validação rigorosa do destinatário
   if (!toPhone || typeof toPhone !== 'string' || toPhone.trim() === '') {
@@ -845,8 +891,26 @@ export const sendMessage = async ({
       throw new Error('Número de telefone inválido: está vazio');
     }
     
+    // Monta o conteúdo Baileys conforme houver (ou não) mídia anexada.
+    // Para image/document a `message` vira legenda; audio ignora texto.
+    let content: any;
+    if (mediaUrl && mediaType === 'image') {
+      content = { image: { url: mediaUrl }, caption: message || undefined };
+    } else if (mediaUrl && mediaType === 'document') {
+      content = {
+        document: { url: mediaUrl },
+        mimetype: mediaMimeType || 'application/pdf',
+        fileName: mediaFileName || 'arquivo',
+        caption: message || undefined,
+      };
+    } else if (mediaUrl && mediaType === 'audio') {
+      content = { audio: { url: mediaUrl }, mimetype: mediaMimeType || 'audio/mp4' };
+    } else {
+      content = { text: message };
+    }
+
     const sended = await Promise.race([
-      connection.sendMessage(phoneNumber, { text: message }),
+      connection.sendMessage(phoneNumber, content),
       sendTimeoutPromise
     ]);
     

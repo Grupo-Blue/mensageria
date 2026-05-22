@@ -32,6 +32,9 @@ export const whatsappConnections = mysqlTable("whatsapp_connections", {
   status: mysqlEnum("status", ["connected", "disconnected", "qr_code", "connecting"]).default("disconnected").notNull(),
   qrCode: text("qr_code"),
   phoneNumber: varchar("phone_number", { length: 20 }),
+  // Aquecimento (warmup): teto diário de mensagens para esta conexão somando
+  // todos os disparos. Útil para chips novos. Quando null, sem teto por conexão.
+  warmupDailyLimit: int("warmup_daily_limit"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
   lastConnectedAt: timestamp("last_connected_at"),
@@ -118,6 +121,12 @@ export type InsertWhatsappGroup = typeof whatsappGroups.$inferInsert;
 
 /**
  * Webhook configuration table
+ *
+ * DEPRECATED: o webhook por conexão vive em `whatsappConnections.webhookUrl` /
+ * `whatsappConnections.webhookSecret`. Esta tabela só é mantida porque
+ * `webhookLogs.webhookConfigId` ainda referencia ela (junção em
+ * `createWebhookLog`/`getAllWhatsappConnectionsWithWebhooks`). Não usar para
+ * código novo.
  */
 export const webhookConfig = mysqlTable("webhook_config", {
   id: int("id").autoincrement().primaryKey(),
@@ -310,6 +319,72 @@ export const whatsappBlacklist = mysqlTable("whatsapp_blacklist", {
 
 export type WhatsappBlacklist = typeof whatsappBlacklist.$inferSelect;
 export type InsertWhatsappBlacklist = typeof whatsappBlacklist.$inferInsert;
+
+// ==========================================
+// BAILEYS CAMPAIGNS (disparo em massa via QR Code)
+// ==========================================
+
+/**
+ * Baileys campaigns table - disparo em massa via conexões Baileys (QR Code).
+ * Clone do motor de campanhas Meta, adaptado para envio livre de texto.
+ */
+export const baileysCampaigns = mysqlTable("baileys_campaigns", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("user_id").notNull(),
+  connectionId: int("connection_id").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  // JSON array com 1 a 5 variações de texto da mensagem (anti-ban)
+  messageVariants: text("message_variants").notNull(),
+  status: mysqlEnum("status", ["draft", "scheduled", "running", "paused", "completed", "failed"]).default("draft").notNull(),
+  scheduledAt: timestamp("scheduled_at"),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  totalRecipients: int("total_recipients").default(0).notNull(),
+  sentCount: int("sent_count").default(0).notNull(),
+  failedCount: int("failed_count").default(0).notNull(),
+  maxRetries: int("max_retries").default(3).notNull(),
+  retryDelayMinutes: int("retry_delay_minutes").default(30).notNull(),
+  autoRetryEnabled: boolean("auto_retry_enabled").default(true).notNull(),
+  // Configuração anti-ban: delay aleatório entre envios e limite diário opcional
+  minDelaySeconds: int("min_delay_seconds").default(8).notNull(),
+  maxDelaySeconds: int("max_delay_seconds").default(25).notNull(),
+  dailyLimit: int("daily_limit"),
+  // Mídia opcional do disparo (compartilhada por todos os destinatários).
+  // Para image/document, o texto das variações vira a legenda; para audio,
+  // o texto é ignorado (WhatsApp não permite legenda em áudio).
+  mediaUrl: varchar("media_url", { length: 1000 }),
+  mediaType: mysqlEnum("media_type", ["image", "document", "audio"]),
+  mediaFileName: varchar("media_file_name", { length: 255 }),
+  mediaMimeType: varchar("media_mime_type", { length: 100 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+
+export type BaileysCampaign = typeof baileysCampaigns.$inferSelect;
+export type InsertBaileysCampaign = typeof baileysCampaigns.$inferInsert;
+
+/**
+ * Baileys campaign recipients table
+ */
+export const baileysCampaignRecipients = mysqlTable("baileys_campaign_recipients", {
+  id: int("id").autoincrement().primaryKey(),
+  campaignId: int("campaign_id").notNull(),
+  phoneNumber: varchar("phone_number", { length: 20 }).notNull(),
+  name: varchar("name", { length: 255 }),
+  variables: text("variables"),
+  status: mysqlEnum("status", ["pending", "sent", "failed"]).default("pending").notNull(),
+  sentVariantIndex: int("sent_variant_index"),
+  whatsappMessageId: varchar("whatsapp_message_id", { length: 255 }),
+  errorMessage: text("error_message"),
+  retryCount: int("retry_count").default(0).notNull(),
+  lastRetryAt: timestamp("last_retry_at"),
+  sentAt: timestamp("sent_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type BaileysCampaignRecipient = typeof baileysCampaignRecipients.$inferSelect;
+export type InsertBaileysCampaignRecipient = typeof baileysCampaignRecipients.$inferInsert;
 
 // ==========================================
 // BILLING & SUBSCRIPTION TABLES

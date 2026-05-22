@@ -16,6 +16,9 @@ import ConnectionSettings from "./pages/ConnectionSettings";
 import Campaigns from "./pages/Campaigns";
 import CampaignNew from "./pages/CampaignNew";
 import CampaignDetail from "./pages/CampaignDetail";
+import BaileysCampaigns from "./pages/BaileysCampaigns";
+import BaileysCampaignNew from "./pages/BaileysCampaignNew";
+import BaileysCampaignDetail from "./pages/BaileysCampaignDetail";
 import InviteUsers from "./pages/InviteUsers";
 import AcceptInvite from "./pages/AcceptInvite";
 // Admin pages
@@ -52,6 +55,9 @@ function Router() {
       <Route path={"/campaigns/new"} component={CampaignNew} />
       <Route path={"/campaigns/:id"} component={CampaignDetail} />
       <Route path={"/campaigns"} component={Campaigns} />
+      <Route path={"/disparos/new"} component={BaileysCampaignNew} />
+      <Route path={"/disparos/:id"} component={BaileysCampaignDetail} />
+      <Route path={"/disparos"} component={BaileysCampaigns} />
       <Route path={"/billing"} component={Billing} />
       <Route path={"/convidar-usuarios"} component={InviteUsers} />
       <Route path={"/aceitar-convite"} component={AcceptInvite} />

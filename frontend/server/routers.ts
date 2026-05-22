@@ -12,6 +12,7 @@ import { getChatWebhookConfig } from "./whatsappBusiness/chatWebhookConfig";
 import { ENV } from "./_core/env";
 import { billingRouter } from "./routers/billing";
 import { adminRouter } from "./routers/admin";
+import type { BaileysCampaignRecipient, InsertBaileysCampaign } from "../drizzle/schema";
 
 // Special marker for variables that should use recipient name
 const RECIPIENT_NAME_MARKER = "__RECIPIENT_NAME__";
@@ -161,7 +162,7 @@ export const appRouter = router({
       .input(z.object({ connectionId: z.number() }))
       .mutation(async ({ ctx, input }) => {
         console.log('[whatsapp.generateApiKey] Recebido:', { connectionId: input.connectionId, userId: ctx.user.id });
-        
+
         // Verify user owns this connection
         const connections = await db.getWhatsappConnections(ctx.user.id);
         const connection = connections.find(c => c.id === input.connectionId);
@@ -173,8 +174,35 @@ export const appRouter = router({
         console.log('[whatsapp.generateApiKey] Gerando API key para conexão:', connection.identification);
         const apiKey = await db.generateConnectionApiKey(input.connectionId);
         console.log('[whatsapp.generateApiKey] API key gerada com sucesso:', apiKey.substring(0, 10) + '...');
-        
+
         return { success: true, apiKey };
+      }),
+    revokeApiKey: protectedProcedure
+      .input(z.object({ connectionId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        // Verifica posse da conexão
+        const connection = await db.getWhatsappConnectionById(input.connectionId);
+        if (!connection || connection.userId !== ctx.user.id) {
+          throw new Error("Conexão não encontrada");
+        }
+        await db.revokeConnectionApiKey(input.connectionId);
+        return { success: true };
+      }),
+    updateWarmup: protectedProcedure
+      .input(z.object({
+        connectionId: z.number(),
+        // null/undefined = sem teto de aquecimento; número = teto diário por conexão
+        warmupDailyLimit: z.number().int().min(1).max(100000).nullable(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const connection = await db.getWhatsappConnectionById(input.connectionId);
+        if (!connection || connection.userId !== ctx.user.id) {
+          throw new Error("Conexão não encontrada");
+        }
+        await db.updateWhatsappConnection(input.connectionId, {
+          warmupDailyLimit: input.warmupDailyLimit,
+        });
+        return { success: true };
       }),
     updateWebhook: protectedProcedure
       .input(z.object({
@@ -1671,6 +1699,336 @@ export const appRouter = router({
         const { campaignId, ...settings } = input;
         await db.updateCampaign(campaignId, settings);
 
+        return { success: true };
+      }),
+  }),
+
+  // =====================================================
+  // Campanhas Baileys (disparo em massa via QR Code)
+  // O envio é feito pelo baileysCampaignScheduler em background.
+  // =====================================================
+  baileysCampaigns: router({
+    // Lista campanhas visíveis ao usuário (próprias + de quem o convidou)
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const list = await db.getBaileysCampaignsVisibleToUser(ctx.user.id);
+      return list.map((c) => ({ ...c, isOwner: c.userId === ctx.user.id }));
+    }),
+
+    // Detalhe de uma campanha (dono ou membro convidado)
+    get: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const campaign = await db.getBaileysCampaignById(input.id);
+        if (!campaign) throw new Error("Campanha não encontrada");
+        const isOwner = campaign.userId === ctx.user.id;
+        const isMember = await db.isMemberOfOwner(campaign.userId, ctx.user.id);
+        if (!isOwner && !isMember) throw new Error("Campanha não encontrada");
+        return { ...campaign, isOwner };
+      }),
+
+    // Cria uma campanha Baileys
+    create: protectedProcedure
+      .input(z.object({
+        connectionId: z.number(),
+        name: z.string().min(1),
+        description: z.string().optional(),
+        // 1 a 5 variações de texto da mensagem (anti-ban)
+        messageVariants: z.array(z.string().min(1)).min(1).max(5),
+        scheduledAt: z.string().optional(), // ISO date string
+        autoRetryEnabled: z.boolean().optional().default(true),
+        maxRetries: z.number().min(0).max(10).optional().default(3),
+        retryDelayMinutes: z.number().min(1).max(1440).optional().default(30),
+        minDelaySeconds: z.number().min(1).max(3600).optional().default(8),
+        maxDelaySeconds: z.number().min(1).max(3600).optional().default(25),
+        dailyLimit: z.number().min(1).max(100000).optional(),
+        // Mídia opcional (compartilhada por todos os destinatários)
+        mediaUrl: z.string().url().optional(),
+        mediaType: z.enum(["image", "document", "audio"]).optional(),
+        mediaFileName: z.string().max(255).optional(),
+        mediaMimeType: z.string().max(100).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        // Verifica se a conexão Baileys pertence ao usuário
+        const connection = await db.getWhatsappConnectionById(input.connectionId);
+        if (!connection || connection.userId !== ctx.user.id) {
+          throw new Error("Conexão WhatsApp não encontrada");
+        }
+
+        if (input.maxDelaySeconds < input.minDelaySeconds) {
+          throw new Error("O delay máximo deve ser maior ou igual ao mínimo");
+        }
+        if (input.mediaUrl && !input.mediaType) {
+          throw new Error("Defina mediaType (image, document ou audio) quando enviar mediaUrl");
+        }
+
+        const id = await db.createBaileysCampaign({
+          userId: ctx.user.id,
+          connectionId: input.connectionId,
+          name: input.name,
+          description: input.description,
+          messageVariants: JSON.stringify(input.messageVariants),
+          status: input.scheduledAt ? "scheduled" : "draft",
+          scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : undefined,
+          autoRetryEnabled: input.autoRetryEnabled,
+          maxRetries: input.maxRetries,
+          retryDelayMinutes: input.retryDelayMinutes,
+          minDelaySeconds: input.minDelaySeconds,
+          maxDelaySeconds: input.maxDelaySeconds,
+          dailyLimit: input.dailyLimit,
+          mediaUrl: input.mediaUrl,
+          mediaType: input.mediaType,
+          mediaFileName: input.mediaFileName,
+          mediaMimeType: input.mediaMimeType,
+        });
+
+        return { success: true, id };
+      }),
+
+    // Atualiza uma campanha (só rascunho ou agendada)
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().min(1).optional(),
+        description: z.string().optional(),
+        messageVariants: z.array(z.string().min(1)).min(1).max(5).optional(),
+        scheduledAt: z.string().optional(),
+        minDelaySeconds: z.number().min(1).max(3600).optional(),
+        maxDelaySeconds: z.number().min(1).max(3600).optional(),
+        dailyLimit: z.number().min(1).max(100000).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const campaign = await db.getBaileysCampaignById(input.id);
+        if (!campaign || campaign.userId !== ctx.user.id) {
+          throw new Error("Campanha não encontrada");
+        }
+        if (campaign.status !== "draft" && campaign.status !== "scheduled") {
+          throw new Error("Só é possível editar campanhas em rascunho ou agendadas");
+        }
+
+        const minDelay = input.minDelaySeconds ?? campaign.minDelaySeconds;
+        const maxDelay = input.maxDelaySeconds ?? campaign.maxDelaySeconds;
+        if (maxDelay < minDelay) {
+          throw new Error("O delay máximo deve ser maior ou igual ao mínimo");
+        }
+
+        const updateData: Partial<InsertBaileysCampaign> = {};
+        if (input.name !== undefined) updateData.name = input.name;
+        if (input.description !== undefined) updateData.description = input.description;
+        if (input.minDelaySeconds !== undefined) updateData.minDelaySeconds = input.minDelaySeconds;
+        if (input.maxDelaySeconds !== undefined) updateData.maxDelaySeconds = input.maxDelaySeconds;
+        if (input.dailyLimit !== undefined) updateData.dailyLimit = input.dailyLimit;
+        if (input.messageVariants) updateData.messageVariants = JSON.stringify(input.messageVariants);
+        if (input.scheduledAt) {
+          updateData.scheduledAt = new Date(input.scheduledAt);
+          updateData.status = "scheduled";
+        }
+
+        await db.updateBaileysCampaign(input.id, updateData);
+        return { success: true };
+      }),
+
+    // Exclui uma campanha (não permitido se estiver em execução)
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const campaign = await db.getBaileysCampaignById(input.id);
+        if (!campaign || campaign.userId !== ctx.user.id) {
+          throw new Error("Campanha não encontrada");
+        }
+        if (campaign.status === "running") {
+          throw new Error("Não é possível excluir uma campanha em execução");
+        }
+        await db.deleteBaileysCampaign(input.id);
+        return { success: true };
+      }),
+
+    // Adiciona destinatários a uma campanha
+    addRecipients: protectedProcedure
+      .input(z.object({
+        campaignId: z.number(),
+        recipients: z.array(z.object({
+          phoneNumber: z.string().min(1),
+          name: z.string().optional(),
+          variables: z.string().optional(), // JSON string com campos {{campo}}
+        })),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const campaign = await db.getBaileysCampaignById(input.campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) {
+          throw new Error("Campanha não encontrada");
+        }
+        if (campaign.status !== "draft" && campaign.status !== "scheduled") {
+          throw new Error("Só é possível adicionar destinatários em campanhas em rascunho ou agendadas");
+        }
+
+        const recipientsToAdd = input.recipients.map((r) => ({
+          campaignId: input.campaignId,
+          phoneNumber: r.phoneNumber,
+          name: r.name,
+          variables: r.variables,
+          status: "pending" as const,
+        }));
+        await db.addBaileysCampaignRecipients(recipientsToAdd);
+
+        const all = await db.getBaileysCampaignRecipients(input.campaignId);
+        await db.updateBaileysCampaign(input.campaignId, { totalRecipients: all.length });
+
+        return { success: true, added: input.recipients.length };
+      }),
+
+    // Lista destinatários de uma campanha (dono ou membro convidado)
+    getRecipients: protectedProcedure
+      .input(z.object({ campaignId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const campaign = await db.getBaileysCampaignById(input.campaignId);
+        if (!campaign) throw new Error("Campanha não encontrada");
+        const isOwner = campaign.userId === ctx.user.id;
+        const isMember = await db.isMemberOfOwner(campaign.userId, ctx.user.id);
+        if (!isOwner && !isMember) throw new Error("Campanha não encontrada");
+        return await db.getBaileysCampaignRecipients(input.campaignId);
+      }),
+
+    // Remove todos os destinatários de uma campanha
+    clearRecipients: protectedProcedure
+      .input(z.object({ campaignId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const campaign = await db.getBaileysCampaignById(input.campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) {
+          throw new Error("Campanha não encontrada");
+        }
+        if (campaign.status !== "draft" && campaign.status !== "scheduled") {
+          throw new Error("Só é possível limpar destinatários em campanhas em rascunho ou agendadas");
+        }
+        await db.deleteBaileysCampaignRecipients(input.campaignId);
+        await db.updateBaileysCampaign(input.campaignId, { totalRecipients: 0 });
+        return { success: true };
+      }),
+
+    // Inicia a campanha — apenas marca o status; o envio é feito pelo scheduler
+    start: protectedProcedure
+      .input(z.object({ campaignId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const campaign = await db.getBaileysCampaignById(input.campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) {
+          throw new Error("Campanha não encontrada");
+        }
+        if (campaign.status !== "draft" && campaign.status !== "scheduled") {
+          throw new Error("Só é possível iniciar campanhas em rascunho ou agendadas");
+        }
+        // Conta via SQL agregado (não carrega a lista inteira de destinatários)
+        const counts = await db.countBaileysRecipientStatuses(input.campaignId);
+        if (counts.pending === 0) {
+          throw new Error("Nenhum destinatário pendente na campanha");
+        }
+        const connection = await db.getWhatsappConnectionById(campaign.connectionId);
+        if (!connection) throw new Error("Conexão WhatsApp não encontrada");
+
+        await db.updateBaileysCampaign(input.campaignId, {
+          status: "running",
+          startedAt: campaign.startedAt ?? new Date(),
+          completedAt: null,
+        });
+        return { success: true, pending: counts.pending };
+      }),
+
+    // Pausa uma campanha em execução
+    pause: protectedProcedure
+      .input(z.object({ campaignId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const campaign = await db.getBaileysCampaignById(input.campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) {
+          throw new Error("Campanha não encontrada");
+        }
+        if (campaign.status !== "running") {
+          throw new Error("Só é possível pausar campanhas em execução");
+        }
+        await db.updateBaileysCampaign(input.campaignId, { status: "paused" });
+        return { success: true };
+      }),
+
+    // Retoma uma campanha pausada
+    resume: protectedProcedure
+      .input(z.object({ campaignId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const campaign = await db.getBaileysCampaignById(input.campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) {
+          throw new Error("Campanha não encontrada");
+        }
+        if (campaign.status !== "paused") {
+          throw new Error("Só é possível retomar campanhas pausadas");
+        }
+        // Verifica existência de pendente sem carregar a lista (LIMIT 1)
+        const next = await db.getNextBaileysPendingRecipient(input.campaignId);
+        if (!next) {
+          throw new Error("Nenhum destinatário pendente para retomar");
+        }
+        await db.updateBaileysCampaign(input.campaignId, { status: "running" });
+        return { success: true };
+      }),
+
+    // Estatísticas de envio (dono ou membro convidado)
+    getStats: protectedProcedure
+      .input(z.object({ campaignId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const campaign = await db.getBaileysCampaignById(input.campaignId);
+        if (!campaign) throw new Error("Campanha não encontrada");
+        const isOwner = campaign.userId === ctx.user.id;
+        const isMember = await db.isMemberOfOwner(campaign.userId, ctx.user.id);
+        if (!isOwner && !isMember) throw new Error("Campanha não encontrada");
+
+        const recipients = (await db.getBaileysCampaignRecipients(input.campaignId)) as BaileysCampaignRecipient[];
+        return {
+          total: recipients.length,
+          pending: recipients.filter((r) => r.status === "pending").length,
+          sent: recipients.filter((r) => r.status === "sent").length,
+          failed: recipients.filter((r) => r.status === "failed").length,
+        };
+      }),
+
+    // Estatísticas de reenvio
+    getRetryStats: protectedProcedure
+      .input(z.object({ campaignId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const campaign = await db.getBaileysCampaignById(input.campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) {
+          throw new Error("Campanha não encontrada");
+        }
+        const retryStats = await db.getBaileysRecipientsRetryStats(input.campaignId);
+        return {
+          ...retryStats,
+          maxRetries: campaign.maxRetries,
+          retryDelayMinutes: campaign.retryDelayMinutes,
+          autoRetryEnabled: campaign.autoRetryEnabled,
+        };
+      }),
+
+    // Reenvio manual das falhas elegíveis
+    retryFailed: protectedProcedure
+      .input(z.object({ campaignId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const campaign = await db.getBaileysCampaignById(input.campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) {
+          throw new Error("Campanha não encontrada");
+        }
+        const { baileysCampaignScheduler } = await import("./baileysCampaign/baileysCampaignScheduler");
+        return await baileysCampaignScheduler.manualRetry(input.campaignId);
+      }),
+
+    // Atualiza as configurações de reenvio
+    updateRetrySettings: protectedProcedure
+      .input(z.object({
+        campaignId: z.number(),
+        maxRetries: z.number().min(0).max(10).optional(),
+        retryDelayMinutes: z.number().min(1).max(1440).optional(),
+        autoRetryEnabled: z.boolean().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const campaign = await db.getBaileysCampaignById(input.campaignId);
+        if (!campaign || campaign.userId !== ctx.user.id) {
+          throw new Error("Campanha não encontrada");
+        }
+        const { campaignId, ...settings } = input;
+        await db.updateBaileysCampaign(campaignId, settings);
         return { success: true };
       }),
   }),
