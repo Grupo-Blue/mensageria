@@ -346,6 +346,92 @@ print(response.json())`;
 }`}</code>
               </pre>
             </div>
+
+            <div>
+              <p className="font-medium mb-2">Limite de requisições (429)</p>
+              <p className="text-sm text-muted-foreground mb-2">
+                Toda resposta inclui os headers <code>X-RateLimit-Limit</code>,{" "}
+                <code>X-RateLimit-Remaining</code> e <code>X-RateLimit-Reset</code>. Em 429
+                ainda é enviado <code>Retry-After</code> (em segundos).
+              </p>
+              <pre className="bg-muted p-4 rounded text-sm overflow-x-auto">
+                <code>{`{
+  "error": "Limite de requisições excedido. Tente novamente em alguns instantes.",
+  "retryAfterSeconds": 30
+}`}</code>
+              </pre>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Envio em massa (v1) */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Envio em massa — v1</CardTitle>
+            <CardDescription>
+              Cria um disparo completo com até 5 variações de texto, agendamento, retry
+              automático e intervalo aleatório anti-ban. O envio acontece em background.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center gap-2">
+              <code className="flex-1 bg-muted px-4 py-2 rounded text-sm">
+                POST {`/v1/connections/{identification}/messages/bulk`}
+              </code>
+            </div>
+            <div>
+              <p className="font-medium mb-1">Autenticação</p>
+              <code className="block bg-muted px-4 py-2 rounded text-sm">
+                X-API-Key: {`{api_key_da_conexão}`}
+              </code>
+            </div>
+            <div>
+              <p className="font-medium mb-2">Corpo (JSON)</p>
+              <pre className="bg-muted p-4 rounded text-sm overflow-x-auto">
+                <code>{`{
+  "messageVariants": [
+    "Oi {{nome}}, tudo bem? Temos uma novidade.",
+    "Olá {{nome}}, passando pra avisar de uma novidade."
+  ],
+  "recipients": [
+    { "phoneNumber": "5511999999999", "name": "Maria" },
+    { "phoneNumber": "5511888888888", "name": "João", "variables": { "empresa": "Acme" } }
+  ],
+  "minDelaySeconds": 8,
+  "maxDelaySeconds": 25,
+  "dailyLimit": 200,
+  "scheduledAt": "2026-06-01T14:00:00.000Z"
+}`}</code>
+              </pre>
+              <p className="text-sm text-muted-foreground mt-2">
+                <strong>messageVariants</strong>: 1 a 5 versões; uma é sorteada por contato (anti-ban).
+                Use <code>{`{{nome}}`}</code> e <code>{`{{campo}}`}</code> para personalizar.
+              </p>
+            </div>
+            <div>
+              <p className="font-medium mb-2">Resposta — 202 Accepted</p>
+              <pre className="bg-muted p-4 rounded text-sm overflow-x-auto">
+                <code>{`{
+  "success": true,
+  "campaignId": 123,
+  "recipientsQueued": 2,
+  "status": "running",
+  "scheduledAt": null
+}`}</code>
+              </pre>
+            </div>
+            <div>
+              <p className="font-medium mb-2">Exemplo cURL</p>
+              <pre className="bg-muted p-4 rounded text-sm overflow-x-auto">
+                <code>{`curl -X POST https://seu-dominio.com/v1/connections/meu-whatsapp/messages/bulk \\
+  -H "Content-Type: application/json" \\
+  -H "X-API-Key: $API_KEY" \\
+  -d '{
+    "messageVariants": ["Oi {{nome}}, ..."],
+    "recipients": [{"phoneNumber":"5511999999999","name":"Maria"}]
+  }'`}</code>
+              </pre>
+            </div>
           </CardContent>
         </Card>
       </div>

@@ -15,6 +15,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { trpc } from "@/lib/trpc";
 import {
   Key,
@@ -30,6 +41,8 @@ import {
   AlertTriangle,
   FileJson,
   Download,
+  Trash2,
+  TrendingUp,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -42,6 +55,7 @@ interface ConnectionConfig {
   webhookSecret: string | null;
   status: string;
   phoneNumber?: string | null;
+  warmupDailyLimit?: number | null;
 }
 
 export default function ConnectionSettings() {
@@ -53,6 +67,8 @@ export default function ConnectionSettings() {
   const [isWebhookDialogOpen, setIsWebhookDialogOpen] = useState(false);
   const [isConfigDialogOpen, setIsConfigDialogOpen] = useState(false);
   const [configConnection, setConfigConnection] = useState<ConnectionConfig | null>(null);
+  // Rascunho do teto de warmup por conexão (chave = connectionId)
+  const [warmupDraft, setWarmupDraft] = useState<Record<number, string>>({});
 
   const utils = trpc.useUtils();
   const { data: connections, isLoading } = trpc.whatsapp.list.useQuery();
@@ -69,6 +85,46 @@ export default function ConnectionSettings() {
       toast.error(error.message);
     },
   });
+
+  const revokeApiKeyMutation = trpc.whatsapp.revokeApiKey.useMutation({
+    onSuccess: () => {
+      toast.success("API Key revogada");
+      utils.whatsapp.list.invalidate();
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const updateWarmupMutation = trpc.whatsapp.updateWarmup.useMutation({
+    onSuccess: (_data, variables) => {
+      toast.success(
+        variables.warmupDailyLimit == null
+          ? "Aquecimento desativado"
+          : `Teto diário definido em ${variables.warmupDailyLimit} mensagens`,
+      );
+      setWarmupDraft((prev) => {
+        const next = { ...prev };
+        delete next[variables.connectionId];
+        return next;
+      });
+      utils.whatsapp.list.invalidate();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const handleSaveWarmup = (connectionId: number, raw: string | null) => {
+    if (raw === null) {
+      updateWarmupMutation.mutate({ connectionId, warmupDailyLimit: null });
+      return;
+    }
+    const parsed = parseInt(raw, 10);
+    if (!Number.isFinite(parsed) || parsed < 1) {
+      toast.error("Informe um número inteiro maior que zero");
+      return;
+    }
+    updateWarmupMutation.mutate({ connectionId, warmupDailyLimit: parsed });
+  };
 
   const updateWebhookMutation = trpc.whatsapp.updateWebhook.useMutation({
     onSuccess: () => {
@@ -358,6 +414,41 @@ print_r(json_decode($response, true));`
                           )}
                           <span className="ml-1">Regenerar</span>
                         </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-red-600 border-red-200 hover:bg-red-50"
+                              disabled={revokeApiKeyMutation.isPending}
+                            >
+                              {revokeApiKeyMutation.isPending ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="w-4 h-4" />
+                              )}
+                              <span className="ml-1">Revogar</span>
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Revogar esta API Key?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                A chave atual deixa imediatamente de funcionar. Sistemas que estiverem
+                                usando-a passarão a receber 401. Você pode gerar uma nova depois.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => revokeApiKeyMutation.mutate({ connectionId: connection.id })}
+                                className="bg-red-600 hover:bg-red-700"
+                              >
+                                Revogar
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </div>
                     ) : (
                       <div className="flex items-center gap-2">
@@ -425,6 +516,71 @@ print_r(json_decode($response, true));`
                           Configurar
                         </Button>
                       </div>
+                    )}
+                  </div>
+
+                  {/* Aquecimento (warmup) — teto diário de mensagens por conexão */}
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4 text-amber-600" />
+                      <Label className="font-medium">Aquecimento (warmup)</Label>
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      Define um teto diário de mensagens somando todos os disparos desta conexão.
+                      Útil para aquecer chips novos: comece baixo (ex: 50/dia) e aumente
+                      gradualmente. Deixe em branco para enviar sem teto por conexão.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min={1}
+                        placeholder="ex: 200"
+                        value={
+                          warmupDraft[connection.id] ??
+                          (connection.warmupDailyLimit != null
+                            ? String(connection.warmupDailyLimit)
+                            : "")
+                        }
+                        onChange={(e) =>
+                          setWarmupDraft((prev) => ({ ...prev, [connection.id]: e.target.value }))
+                        }
+                        className="flex-1 max-w-[200px]"
+                      />
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() =>
+                          handleSaveWarmup(
+                            connection.id,
+                            warmupDraft[connection.id] ??
+                              (connection.warmupDailyLimit != null
+                                ? String(connection.warmupDailyLimit)
+                                : ""),
+                          )
+                        }
+                        disabled={updateWarmupMutation.isPending}
+                      >
+                        {updateWarmupMutation.isPending ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          "Salvar"
+                        )}
+                      </Button>
+                      {connection.warmupDailyLimit != null && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleSaveWarmup(connection.id, null)}
+                          disabled={updateWarmupMutation.isPending}
+                        >
+                          Desativar
+                        </Button>
+                      )}
+                    </div>
+                    {connection.warmupDailyLimit != null && (
+                      <p className="text-xs text-green-700">
+                        ✓ Teto ativo: {connection.warmupDailyLimit} mensagens/dia
+                      </p>
                     )}
                   </div>
 
