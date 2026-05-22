@@ -32,11 +32,27 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * IMPORTANTE — escala horizontal:
+ *
+ * Este scheduler é um singleton em memória. O conjunto `processing` que
+ * impede processamento duplicado vale APENAS dentro do mesmo processo node.
+ * Se a aplicação for escalada para múltiplas instâncias (cluster PM2,
+ * vários containers, etc.), cada instância rodará o seu próprio scheduler
+ * e os mesmos destinatários serão enviados em duplicidade.
+ *
+ * O design "scheduler em processo" foi escolhido conscientemente para evitar
+ * dependência de Redis no MVP (alternativa avaliada e descartada no plano).
+ * Para escalar horizontalmente, é necessário um mecanismo de claim atômico —
+ * recomendado: adicionar `worker_id` + `claimed_at` em `baileys_campaigns` e
+ * usar `UPDATE ... WHERE status='running' AND (worker_id IS NULL OR claimed_at < NOW()-INTERVAL X)`
+ * para reivindicar exclusivamente, renovando periodicamente.
+ */
 export class BaileysCampaignScheduler {
   private static instance: BaileysCampaignScheduler | null = null;
   private isRunning = false;
   private readonly checkIntervalMs = 5000;
-  /** Campanhas com loop de envio ativo neste processo (evita processamento duplicado). */
+  /** Campanhas com loop de envio ativo NESTE processo (não funciona multi-instância — ver doc acima). */
   private readonly processing = new Set<number>();
   /** Campanhas que já tiveram o limite diário registrado em log (evita spam). */
   private readonly dailyLimitNotified = new Set<number>();
@@ -176,8 +192,10 @@ export class BaileysCampaignScheduler {
           break;
         }
 
-        const pending = await db.getBaileysCampaignRecipientsByStatus(campaignId, "pending");
-        if (pending.length === 0) {
+        // Pega só o próximo destinatário pendente (LIMIT 1) — evita carregar a lista
+        // inteira a cada iteração.
+        const nextRecipient = await db.getNextBaileysPendingRecipient(campaignId);
+        if (!nextRecipient) {
           await db.updateBaileysCampaign(campaignId, { status: "completed", completedAt: new Date() });
           this.dailyLimitNotified.delete(campaignId);
           await this.fireDispatchWebhook(campaign, connection.identification, connection.phoneNumber);
@@ -187,7 +205,7 @@ export class BaileysCampaignScheduler {
 
         // Limite diário por campanha (anti-ban / aquecimento): atingiu a cota — retoma depois.
         if (campaign.dailyLimit && campaign.dailyLimit > 0) {
-          const sentToday = await this.countSentToday(campaignId);
+          const sentToday = await db.countBaileysSentTodayForCampaign(campaignId);
           if (sentToday >= campaign.dailyLimit) {
             if (!this.dailyLimitNotified.has(campaignId)) {
               console.log(
@@ -228,7 +246,7 @@ export class BaileysCampaignScheduler {
           break;
         }
 
-        const recipient = pending[0] as BaileysCampaignRecipient;
+        const recipient = nextRecipient as BaileysCampaignRecipient;
         const variants = parseMessageVariants(campaign.messageVariants);
         try {
           if (variants.length === 0) {
@@ -254,6 +272,19 @@ export class BaileysCampaignScheduler {
             errorMessage: null,
           });
         } catch (error) {
+          // HTTP 429 do backend (rate limit) — NÃO marca o destinatário como falho:
+          // aguarda o Retry-After (ou padrão razoável) e tenta o MESMO destinatário
+          // na próxima iteração. Isso evita perder envios por excesso de velocidade.
+          const errResp = (error as { response?: { status?: number; headers?: Record<string, string> } }).response;
+          if (errResp?.status === 429) {
+            const ra = errResp.headers?.["retry-after"];
+            const retrySec = ra ? Math.max(1, parseInt(ra, 10) || 60) : 60;
+            console.warn(
+              `[BaileysCampaignScheduler] Backend respondeu 429 ao enviar para ${recipient.phoneNumber}; aguardando ${retrySec}s antes de retomar a campanha ${campaignId}`,
+            );
+            await sleep(retrySec * 1000);
+            continue; // não atualiza recipient, não roda refresh, não roda delay — re-tenta
+          }
           const message = error instanceof Error ? error.message : String(error);
           await db.updateBaileysCampaignRecipient(recipient.id, {
             status: "failed",
@@ -277,22 +308,12 @@ export class BaileysCampaignScheduler {
     }
   }
 
-  /** Conta quantas mensagens da campanha já foram enviadas hoje (para o limite diário). */
-  private async countSentToday(campaignId: number): Promise<number> {
-    const recipients = (await db.getBaileysCampaignRecipients(campaignId)) as BaileysCampaignRecipient[];
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    return recipients.filter(
-      (r) => r.status === "sent" && r.sentAt != null && new Date(r.sentAt) >= startOfDay,
-    ).length;
-  }
-
-  /** Recalcula `sentCount`/`failedCount` da campanha a partir dos destinatários. */
+  /** Recalcula `sentCount`/`failedCount` da campanha — usa SQL COUNT(*) GROUP BY, sem trazer linhas para a memória. */
   private async refreshCounters(campaignId: number) {
-    const recipients = (await db.getBaileysCampaignRecipients(campaignId)) as BaileysCampaignRecipient[];
+    const counts = await db.countBaileysRecipientStatuses(campaignId);
     await db.updateBaileysCampaign(campaignId, {
-      sentCount: recipients.filter((r) => r.status === "sent").length,
-      failedCount: recipients.filter((r) => r.status === "failed").length,
+      sentCount: counts.sent,
+      failedCount: counts.failed,
     });
   }
 

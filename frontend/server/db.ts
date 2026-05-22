@@ -823,12 +823,88 @@ export async function getBaileysCampaignRecipients(campaignId: number) {
   return await db.select().from(baileysCampaignRecipients).where(eq(baileysCampaignRecipients.campaignId, campaignId));
 }
 
-export async function getBaileysCampaignRecipientsByStatus(campaignId: number, status: "pending" | "sent" | "failed") {
+export async function getBaileysCampaignRecipientsByStatus(
+  campaignId: number,
+  status: "pending" | "sent" | "failed",
+  limit?: number,
+) {
   const db = await getDb();
   if (!db) return [];
 
-  return await db.select().from(baileysCampaignRecipients)
+  const query = db.select().from(baileysCampaignRecipients)
     .where(and(eq(baileysCampaignRecipients.campaignId, campaignId), eq(baileysCampaignRecipients.status, status)));
+  if (typeof limit === "number" && limit > 0) {
+    return await query.limit(limit);
+  }
+  return await query;
+}
+
+/**
+ * Retorna o próximo destinatário `pending` de uma campanha (LIMIT 1, ordem de
+ * inserção). Usado pelo scheduler para evitar carregar a lista inteira a cada
+ * iteração do loop de envio.
+ */
+export async function getNextBaileysPendingRecipient(campaignId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db
+    .select()
+    .from(baileysCampaignRecipients)
+    .where(and(
+      eq(baileysCampaignRecipients.campaignId, campaignId),
+      eq(baileysCampaignRecipients.status, "pending"),
+    ))
+    .orderBy(baileysCampaignRecipients.id)
+    .limit(1);
+  return rows.length > 0 ? rows[0] : undefined;
+}
+
+/**
+ * Contagem agregada (SQL COUNT(*) GROUP BY status) dos destinatários da
+ * campanha. Não traz linhas para a memória.
+ */
+export async function countBaileysRecipientStatuses(
+  campaignId: number,
+): Promise<{ pending: number; sent: number; failed: number; total: number }> {
+  const db = await getDb();
+  const out = { pending: 0, sent: 0, failed: 0, total: 0 };
+  if (!db) return out;
+  const rows = await db
+    .select({
+      status: baileysCampaignRecipients.status,
+      count: sql<number>`COUNT(*)`,
+    })
+    .from(baileysCampaignRecipients)
+    .where(eq(baileysCampaignRecipients.campaignId, campaignId))
+    .groupBy(baileysCampaignRecipients.status);
+  for (const r of rows as Array<{ status: string; count: number }>) {
+    const n = Number(r.count);
+    out.total += n;
+    if (r.status === "pending" || r.status === "sent" || r.status === "failed") {
+      out[r.status] = n;
+    }
+  }
+  return out;
+}
+
+/**
+ * Conta apenas as mensagens enviadas HOJE para uma campanha específica
+ * (SQL COUNT). Usado pelo limite diário por campanha.
+ */
+export async function countBaileysSentTodayForCampaign(campaignId: number): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+  const rows = await db
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(baileysCampaignRecipients)
+    .where(and(
+      eq(baileysCampaignRecipients.campaignId, campaignId),
+      eq(baileysCampaignRecipients.status, "sent"),
+      gte(baileysCampaignRecipients.sentAt, startOfDay),
+    ));
+  return Number(rows[0]?.count ?? 0);
 }
 
 export async function addBaileysCampaignRecipients(recipients: InsertBaileysCampaignRecipient[]) {

@@ -1915,8 +1915,9 @@ export const appRouter = router({
         if (campaign.status !== "draft" && campaign.status !== "scheduled") {
           throw new Error("Só é possível iniciar campanhas em rascunho ou agendadas");
         }
-        const pending = await db.getBaileysCampaignRecipientsByStatus(input.campaignId, "pending");
-        if (pending.length === 0) {
+        // Conta via SQL agregado (não carrega a lista inteira de destinatários)
+        const counts = await db.countBaileysRecipientStatuses(input.campaignId);
+        if (counts.pending === 0) {
           throw new Error("Nenhum destinatário pendente na campanha");
         }
         const connection = await db.getWhatsappConnectionById(campaign.connectionId);
@@ -1927,7 +1928,7 @@ export const appRouter = router({
           startedAt: campaign.startedAt ?? new Date(),
           completedAt: null,
         });
-        return { success: true, pending: pending.length };
+        return { success: true, pending: counts.pending };
       }),
 
     // Pausa uma campanha em execução
@@ -1956,8 +1957,9 @@ export const appRouter = router({
         if (campaign.status !== "paused") {
           throw new Error("Só é possível retomar campanhas pausadas");
         }
-        const pending = await db.getBaileysCampaignRecipientsByStatus(input.campaignId, "pending");
-        if (pending.length === 0) {
+        // Verifica existência de pendente sem carregar a lista (LIMIT 1)
+        const next = await db.getNextBaileysPendingRecipient(input.campaignId);
+        if (!next) {
           throw new Error("Nenhum destinatário pendente para retomar");
         }
         await db.updateBaileysCampaign(input.campaignId, { status: "running" });
