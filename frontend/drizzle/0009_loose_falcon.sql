@@ -1,0 +1,40 @@
+CREATE TABLE IF NOT EXISTS `baileys_campaign_recipients` (
+	`id` int AUTO_INCREMENT NOT NULL,
+	`campaign_id` int NOT NULL,
+	`phone_number` varchar(20) NOT NULL,
+	`name` varchar(255),
+	`variables` text,
+	`status` enum('pending','sent','failed') NOT NULL DEFAULT 'pending',
+	`sent_variant_index` int,
+	`whatsapp_message_id` varchar(255),
+	`error_message` text,
+	`retry_count` int NOT NULL DEFAULT 0,
+	`last_retry_at` timestamp,
+	`sent_at` timestamp,
+	`created_at` timestamp NOT NULL DEFAULT (now()),
+	CONSTRAINT `baileys_campaign_recipients_id` PRIMARY KEY(`id`)
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS `baileys_campaigns` (
+	`id` int AUTO_INCREMENT NOT NULL,
+	`user_id` int NOT NULL,
+	`connection_id` int NOT NULL,
+	`name` varchar(255) NOT NULL,
+	`description` text,
+	`message_variants` text NOT NULL,
+	`status` enum('draft','scheduled','running','paused','completed','failed') NOT NULL DEFAULT 'draft',
+	`scheduled_at` timestamp,
+	`started_at` timestamp,
+	`completed_at` timestamp,
+	`total_recipients` int NOT NULL DEFAULT 0,
+	`sent_count` int NOT NULL DEFAULT 0,
+	`failed_count` int NOT NULL DEFAULT 0,
+	`max_retries` int NOT NULL DEFAULT 3,
+	`retry_delay_minutes` int NOT NULL DEFAULT 30,
+	`auto_retry_enabled` boolean NOT NULL DEFAULT true,
+	`min_delay_seconds` int NOT NULL DEFAULT 8,
+	`max_delay_seconds` int NOT NULL DEFAULT 25,
+	`daily_limit` int,
+	`created_at` timestamp NOT NULL DEFAULT (now()),
+	CONSTRAINT `baileys_campaigns_id` PRIMARY KEY(`id`)
+);

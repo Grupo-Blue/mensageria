@@ -4,11 +4,20 @@ import {
   store,
 } from '../../controllers/WhatsappController/index.js';
 import auth from '../../middlewares/auth.js';
+import { rateLimit, apiKeyOrIpKey } from '../../middlewares/rateLimit.js';
 import groupStore from '../../services/Baileys/groupStore.js';
 import { listConnections } from '../../services/Baileys/index.js';
 
 
 const router = Router();
+
+// Rate limit do envio legacy: 120 mensagens/minuto por chave/IP.
+const sendRateLimit = rateLimit({
+  name: 'whatsapp-send-legacy',
+  windowMs: 60_000,
+  max: 120,
+  keyFn: apiKeyOrIpKey,
+});
 
 router.get('/qrcode', (req, res) => {
   /* #swagger.path = '/whatsapp/qrcode'
@@ -28,7 +37,7 @@ router.get('/qrcode', (req, res) => {
   }
   res.sendFile(path.join(process.cwd(), process.env.NODE_ENV === 'production' ? 'build' : 'src', '/views', '/qrcode.html'));
 });
-router.post('/', auth, (req, res, next) => {
+router.post('/', sendRateLimit, auth, (req, res, next) => {
   /*
   #swagger.path = '/whatsapp'
   #swagger.tags = ['Whatsapp']

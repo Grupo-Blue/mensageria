@@ -13,8 +13,10 @@ import authRoutes from "../auth/routes";
 import whatsappRoutes from "../whatsapp/routes";
 import whatsappBusinessWebhookRoutes from "../whatsappBusiness/webhookRoutes";
 import internalRoutes from "../internal/routes";
+import v1Routes from "../v1/routes";
 import stripeWebhookRouter from "../routes/stripeWebhook";
 import { campaignScheduler } from "../whatsappBusiness/campaignScheduler";
+import { baileysCampaignScheduler } from "../baileysCampaign/baileysCampaignScheduler";
 import session from "express-session";
 import cookieParser from "cookie-parser";
 import { ENV } from "./env";
@@ -132,6 +134,10 @@ async function startServer() {
   app.use('/api/internal', internalRoutes);
   console.log('[Server] Internal API routes registradas em /api/internal');
 
+  // API REST v1 para sistemas externos (envio em massa via API key)
+  app.use('/v1', v1Routes);
+  console.log('[Server] API v1 registrada em /v1');
+
   // WhatsApp Business API webhook routes (for receiving message status updates from Meta)
   app.use('/api/whatsapp-business', whatsappBusinessWebhookRoutes);
   console.log('[Server] WhatsApp Business webhook registrado em /api/whatsapp-business/webhook');
@@ -214,6 +220,8 @@ async function startServer() {
 
     // Start the campaign scheduler
     campaignScheduler.start();
+    // Start the Baileys campaign scheduler (disparo em massa via QR Code)
+    baileysCampaignScheduler.start();
   });
 }
 

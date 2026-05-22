@@ -5,6 +5,7 @@
 
 import { Router, Response } from 'express';
 import { multiTenantAuth, requireConnection, AuthenticatedRequest } from '../../middlewares/multiTenantAuth.js';
+import { rateLimit, apiKeyOrIpKey } from '../../middlewares/rateLimit.js';
 import {
   addConnection,
   removeConnection,
@@ -16,6 +17,15 @@ import {
 import tokenCache from '../../services/tokenCache.js';
 
 const router = Router();
+
+// Rate limit do envio direto: 120 mensagens/minuto por chave (~2/seg, abaixo do
+// risco de banimento sustentado). Para volume maior, usar o disparo em massa.
+const sendRateLimit = rateLimit({
+  name: 'connections-send',
+  windowMs: 60_000,
+  max: 120,
+  keyFn: apiKeyOrIpKey,
+});
 
 /**
  * GET /connections
@@ -143,13 +153,20 @@ router.post('/:connectionId/logout', multiTenantAuth, async (req: AuthenticatedR
  * POST /connections/:connectionId/send
  * Send a message through a specific connection
  */
-router.post('/:connectionId/send', multiTenantAuth, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/:connectionId/send', sendRateLimit, multiTenantAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { connectionId } = req.params;
-    const { phone, message } = req.body;
+    const { phone, message, mediaUrl, mediaType, mediaFileName, mediaMimeType } = req.body;
 
-    if (!phone || !message) {
-      return res.status(400).json({ error: 'Campos phone e message são obrigatórios' });
+    if (!phone) {
+      return res.status(400).json({ error: 'Campo phone é obrigatório' });
+    }
+    // Texto OU mídia precisa estar presente
+    if (!message && !mediaUrl) {
+      return res.status(400).json({ error: 'Envie message ou mediaUrl (com mediaType)' });
+    }
+    if (mediaUrl && !['image', 'document', 'audio'].includes(mediaType)) {
+      return res.status(400).json({ error: 'mediaType deve ser image, document ou audio' });
     }
 
     // Verify authorization for this connection
@@ -171,8 +188,12 @@ router.post('/:connectionId/send', multiTenantAuth, async (req: AuthenticatedReq
 
     const result = await sendMessage({
       toPhone: phone,
-      message,
+      message: message || '',
       identification: connectionId,
+      mediaUrl,
+      mediaType,
+      mediaFileName,
+      mediaMimeType,
     });
 
     return res.json({
