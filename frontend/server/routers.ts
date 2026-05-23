@@ -1710,8 +1710,30 @@ export const appRouter = router({
   baileysCampaigns: router({
     // Lista campanhas visíveis ao usuário (próprias + de quem o convidou)
     list: protectedProcedure.query(async ({ ctx }) => {
-      const list = await db.getBaileysCampaignsVisibleToUser(ctx.user.id);
-      return list.map((c) => ({ ...c, isOwner: c.userId === ctx.user.id }));
+      try {
+        const list = await db.getBaileysCampaignsVisibleToUser(ctx.user.id);
+        return list.map((c) => ({ ...c, isOwner: c.userId === ctx.user.id }));
+      } catch (error) {
+        // Modo defensivo: se as tabelas/colunas baileys ainda NÃO foram criadas
+        // neste banco (deploy sem rodar a migration), devolve [] para a UI não
+        // quebrar e loga instrução clara. Trata APENAS os erros específicos de
+        // schema ausente; qualquer outra falha é re-lançada normalmente.
+        const err = error as { code?: string; errno?: number; sqlMessage?: string };
+        const schemaMissing =
+          err.code === "ER_NO_SUCH_TABLE" ||
+          err.errno === 1146 ||
+          err.code === "ER_BAD_FIELD_ERROR" ||
+          err.errno === 1054;
+        if (schemaMissing) {
+          console.error(
+            "[baileysCampaigns.list] Schema baileys ausente neste banco — devolvendo lista vazia. " +
+              "Rode em produção: cd frontend && node scripts/apply-baileys-migrations.mjs",
+            { code: err.code, errno: err.errno, sqlMessage: err.sqlMessage },
+          );
+          return [];
+        }
+        throw error;
+      }
     }),
 
     // Detalhe de uma campanha (dono ou membro convidado)

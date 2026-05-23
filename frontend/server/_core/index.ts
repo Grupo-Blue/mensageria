@@ -17,6 +17,7 @@ import v1Routes from "../v1/routes";
 import stripeWebhookRouter from "../routes/stripeWebhook";
 import { campaignScheduler } from "../whatsappBusiness/campaignScheduler";
 import { baileysCampaignScheduler } from "../baileysCampaign/baileysCampaignScheduler";
+import { ensureBaileysSchema } from "./ensureBaileysSchema";
 import session from "express-session";
 import cookieParser from "cookie-parser";
 import { ENV } from "./env";
@@ -209,6 +210,10 @@ async function startServer() {
   if (port !== preferredPort) {
     console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
   }
+
+  // Self-heal de schema baileys ANTES de aceitar requisições. Em produção,
+  // garante que as migrations 0009/0010 estão aplicadas mesmo sem db:push.
+  await ensureBaileysSchema();
 
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
