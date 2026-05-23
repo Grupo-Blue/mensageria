@@ -160,18 +160,24 @@ export async function sendBaileysMessage(
 export interface ConnectionHealth {
   connected: boolean;
   phoneNumber?: string;
+  /** Detalhe do erro quando `connected` é falso por falha (rede, auth, etc.) e não por status. */
+  error?: string;
 }
 
 /**
  * Consulta a saúde de uma conexão Baileys no backend.
- * Nunca lança: qualquer falha (backend fora do ar, token ausente, conexão
- * inexistente) é tratada como `connected: false` — o motor então pausa a campanha.
+ *
+ * IMPORTANTE: esta função NÃO é mais usada pelo scheduler como pre-flight
+ * (causava pausa silenciosa quando o pre-flight falhava por motivo de rede
+ * em vez de conexão genuinamente caída). O scheduler agora deixa a tentativa
+ * de envio ser o teste. Esta função fica como utilitário para diagnóstico
+ * (por ex., um endpoint de status no futuro).
  */
 export async function checkConnectionHealth(identification: string): Promise<ConnectionHealth> {
   const apiToken = process.env.BACKEND_API_TOKEN;
   if (!apiToken) {
-    console.error("[BaileysDispatcher] BACKEND_API_TOKEN não configurado — conexão tratada como indisponível");
-    return { connected: false };
+    console.error("[BaileysDispatcher] BACKEND_API_TOKEN não configurado");
+    return { connected: false, error: "BACKEND_API_TOKEN não configurado" };
   }
   try {
     const response = await axios.get(
@@ -183,7 +189,21 @@ export async function checkConnectionHealth(identification: string): Promise<Con
       connected: data.connected === true,
       phoneNumber: data.phoneNumber != null ? String(data.phoneNumber) : undefined,
     };
-  } catch {
-    return { connected: false };
+  } catch (error) {
+    // Não engolir mais o erro silenciosamente — logar com contexto para
+    // facilitar diagnóstico (URL, status HTTP, mensagem).
+    const err = error as {
+      message?: string;
+      code?: string;
+      response?: { status?: number; data?: unknown };
+    };
+    const detail =
+      err.response?.status != null
+        ? `HTTP ${err.response.status}`
+        : err.code ?? err.message ?? "desconhecido";
+    console.error(
+      `[BaileysDispatcher] checkConnectionHealth falhou para "${identification}" via ${BACKEND_API_URL}: ${detail}`,
+    );
+    return { connected: false, error: detail };
   }
 }
