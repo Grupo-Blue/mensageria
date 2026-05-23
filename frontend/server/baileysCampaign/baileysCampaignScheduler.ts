@@ -294,7 +294,7 @@ export class BaileysCampaignScheduler {
           const isConnectionDown =
             (status === 404 || status === 400) &&
             typeof backendMsg === "string" &&
-            (backendMsg.includes("não está ativa") || backendMsg.includes("não encontrada"));
+            (backendMsg.toLowerCase().includes("não está ativa") || backendMsg.toLowerCase().includes("não encontrada"));
           if (isConnectionDown && backendMsg) {
             await db.updateBaileysCampaignRecipient(recipient.id, {
               status: "failed",
