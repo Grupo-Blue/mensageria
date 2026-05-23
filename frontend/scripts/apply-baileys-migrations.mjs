@@ -36,9 +36,13 @@ const __dirname = path.dirname(__filename);
 const DRIZZLE_DIR = path.resolve(__dirname, "..", "drizzle");
 const JOURNAL_PATH = path.join(DRIZZLE_DIR, "meta", "_journal.json");
 
-// Colunas adicionadas pela migration 0010 — checadas e adicionadas individualmente
-// (MySQL 8 não suporta ALTER TABLE ADD COLUMN IF NOT EXISTS).
-const COLUMNS_FROM_0010 = [
+// Colunas que precisam existir — checadas e adicionadas individualmente
+// (MySQL 8 não suporta ALTER TABLE ADD COLUMN IF NOT EXISTS). Inclui:
+//  - updated_at em baileys_campaigns (faltou no trim do 0009)
+//  - colunas de mídia da 0010_curved_next_avengers
+//  - warmup_daily_limit em whatsapp_connections (também da 0010)
+const COLUMNS_TO_ENSURE = [
+  { table: "baileys_campaigns", column: "updated_at", type: "timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP" },
   { table: "baileys_campaigns", column: "media_url", type: "varchar(1000)" },
   { table: "baileys_campaigns", column: "media_type", type: "enum('image','document','audio')" },
   { table: "baileys_campaigns", column: "media_file_name", type: "varchar(255)" },
@@ -161,10 +165,10 @@ async function main() {
     const n9 = await applyMigrationFile(c, "0009_loose_falcon.sql");
     console.log(`  ${n9} statement(s) executado(s) (CREATE TABLE IF NOT EXISTS — idempotente)`);
 
-    // 2. Aplica 0010_curved_next_avengers — verifica cada coluna antes
-    console.log("\n[0010_curved_next_avengers] verificando colunas novas...");
+    // 2. Garante colunas que precisam existir (updated_at + 0010)
+    console.log("\n[colunas baileys] verificando...");
     let added = 0;
-    for (const { table, column, type } of COLUMNS_FROM_0010) {
+    for (const { table, column, type } of COLUMNS_TO_ENSURE) {
       const exists = await columnExists(c, cfg.database, table, column);
       if (exists) {
         console.log(`  ✓ ${table}.${column}: já existe`);

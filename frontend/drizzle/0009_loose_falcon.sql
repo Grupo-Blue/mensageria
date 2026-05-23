@@ -36,5 +36,6 @@ CREATE TABLE IF NOT EXISTS `baileys_campaigns` (
 	`max_delay_seconds` int NOT NULL DEFAULT 25,
 	`daily_limit` int,
 	`created_at` timestamp NOT NULL DEFAULT (now()),
+	`updated_at` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
 	CONSTRAINT `baileys_campaigns_id` PRIMARY KEY(`id`)
 );
