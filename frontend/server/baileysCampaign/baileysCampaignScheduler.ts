@@ -22,7 +22,6 @@ import {
   renderMessage,
   randomDelayMs,
   sendBaileysMessage,
-  checkConnectionHealth,
 } from "./dispatcher";
 import { notifyBaileysCampaignDispatched } from "./dispatchWebhook";
 
@@ -236,15 +235,12 @@ export class BaileysCampaignScheduler {
           }
         }
 
-        // Saúde da conexão: se o WhatsApp caiu, pausa a campanha (retomável depois).
-        const health = await checkConnectionHealth(connection.identification);
-        if (!health.connected) {
-          await db.updateBaileysCampaign(campaignId, { status: "paused" });
-          console.warn(
-            `[BaileysCampaignScheduler] Campanha ${campaignId} pausada: conexão ${connection.identification} indisponível`,
-          );
-          break;
-        }
+        // Nota: NÃO fazemos pre-flight health check aqui. Antes era feito um
+        // checkConnectionHealth(); se falhasse por qualquer motivo (timeout,
+        // URL errada, 401, ...), a campanha era pausada silenciosamente.
+        // Trocamos por "deixar o send ser o teste": se o backend disser que a
+        // conexão caiu (400/404 com mensagem específica), pausamos no catch
+        // abaixo, com o motivo real visível no errorMessage do destinatário.
 
         const recipient = nextRecipient as BaileysCampaignRecipient;
         const variants = parseMessageVariants(campaign.messageVariants);
@@ -272,10 +268,13 @@ export class BaileysCampaignScheduler {
             errorMessage: null,
           });
         } catch (error) {
+          const errResp = (error as {
+            response?: { status?: number; headers?: Record<string, string>; data?: { error?: string } };
+          }).response;
+
           // HTTP 429 do backend (rate limit) — NÃO marca o destinatário como falho:
           // aguarda o Retry-After (ou padrão razoável) e tenta o MESMO destinatário
           // na próxima iteração. Isso evita perder envios por excesso de velocidade.
-          const errResp = (error as { response?: { status?: number; headers?: Record<string, string> } }).response;
           if (errResp?.status === 429) {
             const ra = errResp.headers?.["retry-after"];
             const retrySec = ra ? Math.max(1, parseInt(ra, 10) || 60) : 60;
@@ -285,6 +284,30 @@ export class BaileysCampaignScheduler {
             await sleep(retrySec * 1000);
             continue; // não atualiza recipient, não roda refresh, não roda delay — re-tenta
           }
+
+          // Conexão WhatsApp caída no backend (404 'não encontrada' ou 400
+          // 'não está ativa'): marca este destinatário como falho e PAUSA a
+          // campanha com o motivo real visível na UI. O usuário reconecta o
+          // WhatsApp e clica em Retomar.
+          const status = errResp?.status;
+          const backendMsg = errResp?.data?.error;
+          const isConnectionDown =
+            (status === 404 || status === 400) &&
+            typeof backendMsg === "string" &&
+            (backendMsg.includes("não está ativa") || backendMsg.includes("não encontrada"));
+          if (isConnectionDown && backendMsg) {
+            await db.updateBaileysCampaignRecipient(recipient.id, {
+              status: "failed",
+              errorMessage: backendMsg.slice(0, 1000),
+            });
+            await this.refreshCounters(campaignId);
+            await db.updateBaileysCampaign(campaignId, { status: "paused" });
+            console.warn(
+              `[BaileysCampaignScheduler] Campanha ${campaignId} pausada: backend reportou "${backendMsg}". Reconecte o WhatsApp e clique em Retomar.`,
+            );
+            break;
+          }
+
           const message = error instanceof Error ? error.message : String(error);
           await db.updateBaileysCampaignRecipient(recipient.id, {
             status: "failed",
