@@ -172,6 +172,35 @@ export function isBaileysSendTimeoutError(message?: string): boolean {
   return msg.includes("timed out waiting for message") || msg.includes("timeout");
 }
 
+/** Alguns backends Baileys retornam este erro quando recebem formato inesperado do telefone. */
+export function isNotRegisteredPhoneError(status?: number, message?: string): boolean {
+  if (status !== 400 || !message) return false;
+  const msg = message.toLowerCase();
+  return (
+    msg.includes("não está cadastrado no whatsapp") ||
+    msg.includes("nao esta cadastrado no whatsapp") ||
+    msg.includes("not registered on whatsapp")
+  );
+}
+
+/**
+ * Gera variações de telefone para compatibilidade com backends legados.
+ * Ordem de tentativa: E.164 (55...), nacional (11 dígitos), com '+', e sem 9º dígito.
+ */
+export function buildPhoneCandidates(normalizedPhone: string): string[] {
+  const candidates = new Set<string>();
+  candidates.add(normalizedPhone);
+  if (normalizedPhone.startsWith("55") && normalizedPhone.length >= 12) {
+    candidates.add(normalizedPhone.slice(2));
+  }
+  candidates.add(`+${normalizedPhone}`);
+  if (normalizedPhone.length === 13) {
+    // Compatibilidade com bases antigas sem o nono dígito.
+    candidates.add(`${normalizedPhone.slice(0, 4)}${normalizedPhone.slice(5)}`);
+  }
+  return Array.from(candidates);
+}
+
 export function isBackendConnectionMissingError(status?: number, message?: string): boolean {
   if (!message) return false;
   const msg = message.toLowerCase();
@@ -299,10 +328,28 @@ export async function sendBaileysMessage(
     throw new Error(`Telefone inválido para WhatsApp: ${phone}`);
   }
 
+  const phoneCandidates = buildPhoneCandidates(normalizedPhone);
+
   try {
-    return await postBaileysSend(identification, normalizedPhone, text, options);
+    return await postBaileysSend(identification, phoneCandidates[0], text, options);
   } catch (error) {
     const detail = extractAxiosErrorDetail(error);
+
+    if (isNotRegisteredPhoneError(detail.status, detail.message) && phoneCandidates.length > 1) {
+      for (const candidate of phoneCandidates.slice(1)) {
+        try {
+          console.warn(
+            `[BaileysDispatcher] Backend rejeitou "${phoneCandidates[0]}"; tentando fallback "${candidate}" para "${identification}"...`,
+          );
+          return await postBaileysSend(identification, candidate, text, options);
+        } catch (candidateError) {
+          const candidateDetail = extractAxiosErrorDetail(candidateError);
+          if (!isNotRegisteredPhoneError(candidateDetail.status, candidateDetail.message)) {
+            throw candidateError;
+          }
+        }
+      }
+    }
 
     if (isBackendConnectionMissingError(detail.status, detail.message)) {
       console.warn(
@@ -311,7 +358,7 @@ export async function sendBaileysMessage(
       const health = await ensureBackendConnection(identification);
       if (health.connected) {
         try {
-          return await postBaileysSend(identification, normalizedPhone, text, options);
+          return await postBaileysSend(identification, phoneCandidates[0], text, options);
         } catch (retryError) {
           const retryDetail = extractAxiosErrorDetail(retryError);
           console.error(

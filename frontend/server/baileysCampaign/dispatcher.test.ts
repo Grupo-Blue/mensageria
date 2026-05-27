@@ -7,6 +7,8 @@ import {
   extractAxiosErrorDetail,
   isBackendConnectionMissingError,
   isBaileysSendTimeoutError,
+  isNotRegisteredPhoneError,
+  buildPhoneCandidates,
   MAX_MESSAGE_VARIANTS,
 } from "./dispatcher";
 
@@ -146,6 +148,26 @@ describe("isBaileysSendTimeoutError", () => {
     expect(isBaileysSendTimeoutError("timed out waiting for message")).toBe(true);
     expect(isBaileysSendTimeoutError("Erro HTTP 504: timeout")).toBe(true);
     expect(isBaileysSendTimeoutError("Conexão não encontrada")).toBe(false);
+  });
+});
+
+describe("isNotRegisteredPhoneError", () => {
+  it("detecta mensagem de número não cadastrado no WhatsApp", () => {
+    expect(isNotRegisteredPhoneError(400, "Este número não está cadastrado no Whatsapp")).toBe(true);
+    expect(isNotRegisteredPhoneError(400, "This number is not registered on WhatsApp")).toBe(true);
+    expect(isNotRegisteredPhoneError(404, "Este número não está cadastrado no Whatsapp")).toBe(false);
+    expect(isNotRegisteredPhoneError(400, "Conexão não encontrada")).toBe(false);
+  });
+});
+
+describe("buildPhoneCandidates", () => {
+  it("gera candidatos em ordem sem duplicar", () => {
+    expect(buildPhoneCandidates("5511957642910")).toEqual([
+      "5511957642910",
+      "11957642910",
+      "+5511957642910",
+      "551157642910",
+    ]);
   });
 });
 
