@@ -2,8 +2,11 @@
 
 Estes arquivos `.sql` **não fazem parte** do histórico de migrations rastreado pelo
 Drizzle (`drizzle/meta/_journal.json`). São de esquemas de numeração antigos, criados
-antes da padronização do fluxo atual, e ficavam soltos em `drizzle/` e na antiga
-pasta `drizzle/migrations/`, causando confusão (ex.: dois arquivos `0009_*`).
+antes da padronização do fluxo atual, e ficavam soltos em `drizzle/`.
+
+A pasta `drizzle/migrations/` mantém apenas cópias de fallback (ex.: `0008_seed_planos_gtm.sql`)
+usadas pelo `scripts/run-migrations.mjs` se o arquivo raiz estiver ausente no container.
+Os arquivos oficiais ficam em `drizzle/NNNN_*.sql` conforme `meta/_journal.json`.
 
 As tabelas/colunas que eles criavam **já estão presentes** no banco e cobertas pelas
 migrations oficiais `0000`–`0009` em `drizzle/`. Foram mantidos aqui apenas como

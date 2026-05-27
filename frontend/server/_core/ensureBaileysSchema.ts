@@ -146,11 +146,11 @@ export async function ensureBaileysSchema(): Promise<void> {
     }
 
     if (added.length > 0) {
-      console.log(
+      console.warn(
         `[ensureBaileysSchema] self-heal aplicado: ${added.length} coluna(s) adicionada(s) — ${added.join(", ")}`,
       );
     } else {
-      console.log("[ensureBaileysSchema] schema baileys já está em ordem");
+      console.log("[ensureBaileysSchema] schema baileys OK (tabelas e colunas verificadas)");
     }
   } catch (error) {
     // Não impedir o boot — o servidor sobe e o try/catch em baileysCampaigns.list

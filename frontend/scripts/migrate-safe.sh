@@ -1,26 +1,11 @@
 #!/bin/sh
-
-# Script seguro para aplicar migrations do Drizzle
-# Corrige migrations que tentam criar tabelas que já existem
-
+# Entrypoint do serviço Docker de migration (mensageria-migration-dev/prod).
+# Não roda drizzle-kit generate — apenas aplica o journal de forma idempotente.
 set -e
 
-echo "🔍 Verificando e corrigindo migrations..."
-
-# Executar script de correção
-node scripts/fix-migration.js
-
-echo ""
-echo "📦 Gerando novas migrations..."
-pnpm exec drizzle-kit generate
-
-echo ""
-echo "🔧 Corrigindo migrations recém-geradas..."
-node scripts/fix-migration.js
+echo "🔍 Verificando arquivos do journal..."
+node scripts/verify-migration-files.mjs
 
 echo ""
 echo "🚀 Aplicando migrations..."
-pnpm exec drizzle-kit migrate
-
-echo ""
-echo "✅ Migrations aplicadas com sucesso!"
+node scripts/run-migrations.mjs

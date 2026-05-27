@@ -22,6 +22,7 @@ import {
   renderMessage,
   randomDelayMs,
   sendBaileysMessage,
+  extractAxiosErrorDetail,
 } from "./dispatcher";
 import { notifyBaileysCampaignDispatched } from "./dispatchWebhook";
 
@@ -89,13 +90,23 @@ export class BaileysCampaignScheduler {
     console.log("[BaileysCampaignScheduler] Parado");
   }
 
+  /**
+   * Cada etapa roda em try/catch isolado: falha em `activateScheduledCampaigns`
+   * (ex.: coluna `updated_at` ausente) não pode impedir `resumeRunningCampaigns`
+   * de processar campanhas já em `running`.
+   */
   private async runScheduledTasks() {
-    try {
-      await this.activateScheduledCampaigns();
-      await this.processAutoRetries();
-      await this.resumeRunningCampaigns();
-    } catch (error) {
-      console.error("[BaileysCampaignScheduler] Erro no ciclo de tarefas:", error);
+    const steps: Array<{ name: string; run: () => Promise<void> }> = [
+      { name: "activateScheduledCampaigns", run: () => this.activateScheduledCampaigns() },
+      { name: "processAutoRetries", run: () => this.processAutoRetries() },
+      { name: "resumeRunningCampaigns", run: () => this.resumeRunningCampaigns() },
+    ];
+    for (const step of steps) {
+      try {
+        await step.run();
+      } catch (error) {
+        console.error(`[BaileysCampaignScheduler] Erro em ${step.name}:`, error);
+      }
     }
   }
 
@@ -268,15 +279,16 @@ export class BaileysCampaignScheduler {
             errorMessage: null,
           });
         } catch (error) {
+          const { status, message: errMsg, responseData } = extractAxiosErrorDetail(error);
           const errResp = (error as {
-            response?: { status?: number; headers?: Record<string, string>; data?: { error?: string } };
+            response?: { status?: number; headers?: Record<string, string> };
           }).response;
 
           // HTTP 429 do backend (rate limit) — NÃO marca o destinatário como falho:
           // aguarda o Retry-After (ou padrão razoável) e tenta o MESMO destinatário
           // na próxima iteração. Isso evita perder envios por excesso de velocidade.
-          if (errResp?.status === 429) {
-            const ra = errResp.headers?.["retry-after"];
+          if (status === 429) {
+            const ra = errResp?.headers?.["retry-after"];
             const retrySec = ra ? Math.max(1, parseInt(ra, 10) || 60) : 60;
             console.warn(
               `[BaileysCampaignScheduler] Backend respondeu 429 ao enviar para ${recipient.phoneNumber}; aguardando ${retrySec}s antes de retomar a campanha ${campaignId}`,
@@ -289,13 +301,12 @@ export class BaileysCampaignScheduler {
           // 'não está ativa'): marca este destinatário como falho e PAUSA a
           // campanha com o motivo real visível na UI. O usuário reconecta o
           // WhatsApp e clica em Retomar.
-          const status = errResp?.status;
-          const backendMsg = errResp?.data?.error;
+          const backendMsg = errMsg;
           const isConnectionDown =
             (status === 404 || status === 400) &&
-            typeof backendMsg === "string" &&
-            (backendMsg.toLowerCase().includes("não está ativa") || backendMsg.toLowerCase().includes("não encontrada"));
-          if (isConnectionDown && backendMsg) {
+            (backendMsg.toLowerCase().includes("não está ativa") ||
+              backendMsg.toLowerCase().includes("não encontrada"));
+          if (isConnectionDown) {
             await db.updateBaileysCampaignRecipient(recipient.id, {
               status: "failed",
               errorMessage: backendMsg.slice(0, 1000),
@@ -308,14 +319,14 @@ export class BaileysCampaignScheduler {
             break;
           }
 
-          const message = error instanceof Error ? error.message : String(error);
           await db.updateBaileysCampaignRecipient(recipient.id, {
             status: "failed",
-            errorMessage: message.slice(0, 1000),
+            errorMessage: errMsg.slice(0, 1000),
           });
           console.error(
-            `[BaileysCampaignScheduler] Falha ao enviar para ${recipient.phoneNumber}:`,
-            message,
+            `[BaileysCampaignScheduler] Falha campanha=${campaignId} conexão="${connection.identification}" destino=${recipient.phoneNumber} HTTP=${status ?? "n/a"}:`,
+            errMsg,
+            responseData != null ? { response: responseData } : "",
           );
         }
 

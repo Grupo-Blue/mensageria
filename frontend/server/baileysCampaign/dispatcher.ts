@@ -112,6 +112,49 @@ export interface SendResult {
   messageId?: string;
 }
 
+export interface AxiosErrorDetail {
+  status?: number;
+  /** Mensagem legível para UI/logs (corpo do backend ou fallback HTTP). */
+  message: string;
+  responseData?: unknown;
+}
+
+/**
+ * Extrai status e mensagem úteis de erros do Axios.
+ * O Axios só expõe "Request failed with status code 400" em `error.message`,
+ * enquanto o motivo real costuma estar em `response.data.error` ou `.message`.
+ */
+export function extractAxiosErrorDetail(error: unknown): AxiosErrorDetail {
+  const err = error as {
+    message?: string;
+    response?: { status?: number; data?: unknown };
+  };
+  const status = err.response?.status;
+  const data = err.response?.data;
+
+  let backendMessage: string | undefined;
+  if (typeof data === "string" && data.trim()) {
+    backendMessage = data.trim();
+  } else if (data && typeof data === "object" && !Array.isArray(data)) {
+    const record = data as Record<string, unknown>;
+    for (const key of ["error", "message", "msg"] as const) {
+      const value = record[key];
+      if (typeof value === "string" && value.trim()) {
+        backendMessage = value.trim();
+        break;
+      }
+    }
+  }
+
+  const message =
+    backendMessage ??
+    (status != null ? `Erro HTTP ${status} ao enviar mensagem` : undefined) ??
+    err.message ??
+    String(error);
+
+  return { status, message, responseData: data };
+}
+
 /** Mídia opcional para envio (URL pública — Baileys faz fetch). */
 export interface SendOptions {
   mediaUrl?: string | null;
@@ -143,18 +186,28 @@ export async function sendBaileysMessage(
     if (options.mediaMimeType) body.mediaMimeType = options.mediaMimeType;
   }
 
-  const response = await axios.post(
-    `${BACKEND_API_URL}/connections/${encodeURIComponent(identification)}/send`,
-    body,
-    { headers: { "x-auth-api": apiToken }, timeout: 30000 },
-  );
+  try {
+    const response = await axios.post(
+      `${BACKEND_API_URL}/connections/${encodeURIComponent(identification)}/send`,
+      body,
+      { headers: { "x-auth-api": apiToken }, timeout: 30000 },
+    );
 
-  // Resposta: { success, message, data: { key:{id}, ... } }
-  const data = (response.data ?? {}) as Record<string, unknown>;
-  const inner = (data.data ?? data) as Record<string, unknown>;
-  const key = inner.key as Record<string, unknown> | undefined;
-  const messageId = inner.messageId ?? key?.id ?? inner.id;
-  return { messageId: messageId != null ? String(messageId) : undefined };
+    // Resposta: { success, message, data: { key:{id}, ... } }
+    const data = (response.data ?? {}) as Record<string, unknown>;
+    const inner = (data.data ?? data) as Record<string, unknown>;
+    const key = inner.key as Record<string, unknown> | undefined;
+    const messageId = inner.messageId ?? key?.id ?? inner.id;
+    return { messageId: messageId != null ? String(messageId) : undefined };
+  } catch (error) {
+    const detail = extractAxiosErrorDetail(error);
+    console.error(
+      `[BaileysDispatcher] Falha ao enviar identification="${identification}" phone="${phone}" status=${detail.status ?? "n/a"}:`,
+      detail.message,
+      detail.responseData != null ? { response: detail.responseData } : "",
+    );
+    throw error;
+  }
 }
 
 export interface ConnectionHealth {

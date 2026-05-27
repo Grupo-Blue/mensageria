@@ -21,6 +21,9 @@ COPY tsconfig.json ./tsconfig.json
 COPY drizzle.config.ts ./drizzle.config.ts
 COPY drizzle ./drizzle
 COPY scripts/fix-migration.js ./scripts/fix-migration.js
+COPY scripts/verify-migration-files.mjs ./scripts/verify-migration-files.mjs
+COPY scripts/run-migrations.mjs ./scripts/run-migrations.mjs
+COPY scripts/apply-baileys-migrations.mjs ./scripts/apply-baileys-migrations.mjs
 COPY scripts/migrate-safe.sh ./scripts/migrate-safe.sh
 
 # Converter CRLF para LF (Windows) e tornar script executável
@@ -28,5 +31,8 @@ RUN sed -i 's/\r$//' scripts/migrate-safe.sh && \
     chmod +x scripts/migrate-safe.sh && \
     apk add --no-cache bash || true
 
+# Falha o build se algum .sql do journal estiver ausente na imagem
+RUN node scripts/verify-migration-files.mjs
+
 # Executa as migrações usando a DATABASE_URL recebida via ambiente
-CMD ["pnpm", "db:push"]
+CMD ["sh", "scripts/migrate-safe.sh"]

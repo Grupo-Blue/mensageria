@@ -4,6 +4,7 @@ import {
   applyVariables,
   renderMessage,
   randomDelayMs,
+  extractAxiosErrorDetail,
   MAX_MESSAGE_VARIANTS,
 } from "./dispatcher";
 
@@ -90,6 +91,36 @@ describe("renderMessage", () => {
 
   it("MAX_MESSAGE_VARIANTS é 5", () => {
     expect(MAX_MESSAGE_VARIANTS).toBe(5);
+  });
+});
+
+describe("extractAxiosErrorDetail", () => {
+  it("prioriza response.data.error em vez da mensagem genérica do Axios", () => {
+    const detail = extractAxiosErrorDetail({
+      message: "Request failed with status code 400",
+      response: {
+        status: 400,
+        data: { error: "Número inválido ou sem WhatsApp" },
+      },
+    });
+    expect(detail.status).toBe(400);
+    expect(detail.message).toBe("Número inválido ou sem WhatsApp");
+  });
+
+  it("aceita response.data.message quando não há campo error", () => {
+    const detail = extractAxiosErrorDetail({
+      message: "Request failed with status code 400",
+      response: { status: 400, data: { message: "Conexão não está ativa" } },
+    });
+    expect(detail.message).toBe("Conexão não está ativa");
+  });
+
+  it("usa fallback HTTP quando o corpo não traz mensagem", () => {
+    const detail = extractAxiosErrorDetail({
+      message: "Request failed with status code 502",
+      response: { status: 502, data: {} },
+    });
+    expect(detail.message).toBe("Erro HTTP 502 ao enviar mensagem");
   });
 });
 
