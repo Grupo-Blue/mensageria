@@ -1,0 +1,36 @@
+---
+description: Arquitetura do monorepo frontend/backend — separação de pastas e padrões
+alwaysApply: true
+---
+
+# Arquitetura Mensageria
+
+Consulte `docs/ARCHITECTURE.md` para o mapa completo.
+
+## Separação obrigatória
+
+- **frontend/** — React (`client/`), API Express+tRPC (`server/`), schema DB (`drizzle/`), `shared/`
+- **backend/** — Serviço Docker Baileys/Telegram apenas; sem React, sem Drizzle
+
+## Onde colocar código novo
+
+| Tipo | Local |
+|------|--------|
+| Página UI | `frontend/client/src/pages/` |
+| Componente | `frontend/client/src/components/` |
+| Endpoint tRPC | `frontend/server/routers.ts` ou `server/routers/` |
+| Query DB | `frontend/server/db.ts` |
+| Schema/tabela | `frontend/drizzle/schema.ts` |
+| WhatsApp Web (envio) | `backend/` + proxy via `BACKEND_API_URL` |
+
+## Convenções
+
+- tRPC: `protectedProcedure` + Zod para rotas autenticadas
+- Drizzle para queries; evitar SQL raw
+- Rotas HTTP extras: prefixo `/api/`, registrar em `server/_core/index.ts`
+- Sem TODOs; completar a tarefa
+
+## Antes de concluir
+
+1. Código no diretório correto (não misturar frontend/backend)
+2. Se envolve DB → seguir regra `database-migrations` e `docs/DATABASE-MIGRATIONS.md`

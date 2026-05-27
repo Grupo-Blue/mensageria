@@ -1,0 +1,33 @@
+---
+description: Checklist obrigatório de migrations Drizzle antes de concluir tarefas com banco
+alwaysApply: true
+---
+
+# Migrations — checklist obrigatório
+
+Aplica-se a **qualquer** tarefa que crie/altere tabelas, colunas, índices, enums ou FKs.
+
+## Caminhos corretos
+
+- Schema: `frontend/drizzle/schema.ts` (+ `relations.ts`)
+- SQL: `frontend/drizzle/NNNN_*.sql` (journal em `meta/_journal.json`)
+- **Não** usar `frontend/drizzle/_legacy_migrations/` para código novo
+
+## Fluxo
+
+1. Editar `schema.ts` / `relations.ts`
+2. Em `frontend/`: `pnpm db:push:direct` (gera `.sql` + journal)
+3. `pnpm db:verify-migrations`
+4. Atualizar `server/db.ts` e routers tRPC
+
+## Proibido concluir sem
+
+- Arquivo `.sql` no journal
+- Schema Drizzle alinhado ao SQL
+- Funções em `db.ts` para novas tabelas
+
+## Se não puder rodar comandos
+
+Informar ao usuário os comandos exatos; **não** afirmar que migrations foram aplicadas.
+
+Detalhes: `docs/DATABASE-MIGRATIONS.md`
