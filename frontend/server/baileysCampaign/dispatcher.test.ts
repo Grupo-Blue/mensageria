@@ -6,6 +6,7 @@ import {
   randomDelayMs,
   extractAxiosErrorDetail,
   isBackendConnectionMissingError,
+  isBaileysSendTimeoutError,
   MAX_MESSAGE_VARIANTS,
 } from "./dispatcher";
 
@@ -137,6 +138,14 @@ describe("extractAxiosErrorDetail", () => {
       response: { status: 502, data: {} },
     });
     expect(detail.message).toBe("Erro HTTP 502 ao enviar mensagem");
+  });
+});
+
+describe("isBaileysSendTimeoutError", () => {
+  it("detecta timeout do Baileys na mensagem de erro", () => {
+    expect(isBaileysSendTimeoutError("timed out waiting for message")).toBe(true);
+    expect(isBaileysSendTimeoutError("Erro HTTP 504: timeout")).toBe(true);
+    expect(isBaileysSendTimeoutError("Conexão não encontrada")).toBe(false);
   });
 });
 

@@ -8,6 +8,7 @@
  *  - o envio unitário via o backend Baileys (mesmo caminho de `whatsapp.sendMessage`).
  */
 import axios from "axios";
+import { normalizePhoneNumber } from "@shared/phoneUtils";
 
 // Mesmo backend usado por whatsapp.sendMessage em server/routers.ts.
 const BACKEND_API_URL = process.env.BACKEND_API_URL || "http://localhost:5600";
@@ -164,6 +165,13 @@ export interface SendOptions {
 }
 
 /** Erros do backend que indicam sessão Baileys ausente ou inativa (ex.: após restart do container). */
+/** Timeout interno do Baileys ao aguardar ACK do WhatsApp (comum logo após reconectar). */
+export function isBaileysSendTimeoutError(message?: string): boolean {
+  if (!message) return false;
+  const msg = message.toLowerCase();
+  return msg.includes("timed out waiting for message") || msg.includes("timeout");
+}
+
 export function isBackendConnectionMissingError(status?: number, message?: string): boolean {
   if (!message) return false;
   const msg = message.toLowerCase();
@@ -201,7 +209,14 @@ export async function syncBackendTokenCache(): Promise<void> {
  * Sincroniza tokens e tenta reativar a sessão WhatsApp no backend.
  * Usado antes de disparos e após erro "Conexão não encontrada".
  */
-export async function ensureBackendConnection(identification: string): Promise<ConnectionHealth> {
+export interface EnsureConnectionResult extends ConnectionHealth {
+  /** Sessão foi (re)aberta nesta chamada — aguardar sync antes do primeiro envio. */
+  reconnected?: boolean;
+}
+
+export async function ensureBackendConnection(
+  identification: string,
+): Promise<EnsureConnectionResult> {
   const apiToken = getBackendApiToken();
 
   try {
@@ -226,6 +241,9 @@ export async function ensureBackendConnection(identification: string): Promise<C
     );
     await new Promise((resolve) => setTimeout(resolve, 2500));
     health = await checkConnectionHealth(identification);
+    if (health.connected) {
+      return { ...health, reconnected: true };
+    }
   } catch (connectError) {
     const detail = extractAxiosErrorDetail(connectError);
     console.warn(
@@ -256,7 +274,7 @@ async function postBaileysSend(
   const response = await axios.post(
     `${BACKEND_API_URL}/connections/${encodeURIComponent(identification)}/send`,
     body,
-    { headers: { "x-auth-api": apiToken }, timeout: 30000 },
+    { headers: { "x-auth-api": apiToken }, timeout: 90000 },
   );
 
   const data = (response.data ?? {}) as Record<string, unknown>;
@@ -276,8 +294,13 @@ export async function sendBaileysMessage(
   text: string,
   options: SendOptions = {},
 ): Promise<SendResult> {
+  const normalizedPhone = normalizePhoneNumber(phone);
+  if (!normalizedPhone) {
+    throw new Error(`Telefone inválido para WhatsApp: ${phone}`);
+  }
+
   try {
-    return await postBaileysSend(identification, phone, text, options);
+    return await postBaileysSend(identification, normalizedPhone, text, options);
   } catch (error) {
     const detail = extractAxiosErrorDetail(error);
 
@@ -288,7 +311,7 @@ export async function sendBaileysMessage(
       const health = await ensureBackendConnection(identification);
       if (health.connected) {
         try {
-          return await postBaileysSend(identification, phone, text, options);
+          return await postBaileysSend(identification, normalizedPhone, text, options);
         } catch (retryError) {
           const retryDetail = extractAxiosErrorDetail(retryError);
           console.error(

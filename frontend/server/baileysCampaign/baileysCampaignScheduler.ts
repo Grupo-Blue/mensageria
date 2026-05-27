@@ -25,6 +25,7 @@ import {
   extractAxiosErrorDetail,
   ensureBackendConnection,
   isBackendConnectionMissingError,
+  isBaileysSendTimeoutError,
 } from "./dispatcher";
 import { notifyBaileysCampaignDispatched } from "./dispatchWebhook";
 
@@ -207,7 +208,15 @@ export class BaileysCampaignScheduler {
 
         if (!backendPrimed) {
           backendPrimed = true;
-          await ensureBackendConnection(connection.identification);
+          const priming = await ensureBackendConnection(connection.identification);
+          if (priming.reconnected) {
+            console.log(
+              `[BaileysCampaignScheduler] Conexão "${connection.identification}" reconectada — aguardando 35s para sync do WhatsApp antes do primeiro envio`,
+            );
+            await new Promise((resolve) => setTimeout(resolve, 35000));
+          } else if (priming.connected) {
+            await new Promise((resolve) => setTimeout(resolve, 5000));
+          }
         }
 
         // Pega só o próximo destinatário pendente (LIMIT 1) — evita carregar a lista
@@ -335,9 +344,13 @@ export class BaileysCampaignScheduler {
             break;
           }
 
+          const userFacingError = isBaileysSendTimeoutError(errMsg)
+            ? "WhatsApp não confirmou o envio a tempo. Aguarde a conexão ficar estável (sync concluído) e retome a campanha."
+            : errMsg;
+
           await db.updateBaileysCampaignRecipient(recipient.id, {
             status: "failed",
-            errorMessage: errMsg.slice(0, 1000),
+            errorMessage: userFacingError.slice(0, 1000),
           });
           console.error(
             `[BaileysCampaignScheduler] Falha campanha=${campaignId} conexão="${connection.identification}" destino=${recipient.phoneNumber} HTTP=${status ?? "n/a"}:`,

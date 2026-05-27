@@ -1,4 +1,5 @@
 import { COOKIE_NAME } from "@shared/const";
+import { normalizePhoneNumber } from "@shared/phoneUtils";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
@@ -1884,19 +1885,48 @@ export const appRouter = router({
           throw new Error("Só é possível adicionar destinatários em campanhas em rascunho ou agendadas");
         }
 
-        const recipientsToAdd = input.recipients.map((r) => ({
-          campaignId: input.campaignId,
-          phoneNumber: r.phoneNumber,
-          name: r.name,
-          variables: r.variables,
-          status: "pending" as const,
-        }));
+        const recipientsToAdd: Array<{
+          campaignId: number;
+          phoneNumber: string;
+          name?: string;
+          variables?: string;
+          status: "pending";
+        }> = [];
+        const invalidPhones: string[] = [];
+
+        for (const r of input.recipients) {
+          const normalized = normalizePhoneNumber(r.phoneNumber);
+          if (!normalized) {
+            invalidPhones.push(r.phoneNumber);
+            continue;
+          }
+          recipientsToAdd.push({
+            campaignId: input.campaignId,
+            phoneNumber: normalized,
+            name: r.name,
+            variables: r.variables,
+            status: "pending",
+          });
+        }
+
+        if (recipientsToAdd.length === 0) {
+          throw new Error(
+            invalidPhones.length > 0
+              ? `Nenhum telefone válido para WhatsApp. Exemplos inválidos: ${invalidPhones.slice(0, 3).join(", ")}`
+              : "Nenhum destinatário informado",
+          );
+        }
+
         await db.addBaileysCampaignRecipients(recipientsToAdd);
 
         const all = await db.getBaileysCampaignRecipients(input.campaignId);
         await db.updateBaileysCampaign(input.campaignId, { totalRecipients: all.length });
 
-        return { success: true, added: input.recipients.length };
+        return {
+          success: true,
+          added: recipientsToAdd.length,
+          ignored: invalidPhones.length,
+        };
       }),
 
     // Lista destinatários de uma campanha (dono ou membro convidado)

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { trpc } from "@/lib/trpc";
+import { normalizePhoneNumber } from "@shared/phoneUtils";
 import {
   Loader2,
   ArrowLeft,
@@ -45,8 +46,8 @@ interface Recipient {
 
 type ConnectionRow = { id: number; identification: string; phoneNumber: string | null; status: string };
 
-function normalizePhone(p: string): string {
-  return (p || "").replace(/\D/g, "");
+function normalizePhone(p: string): string | null {
+  return normalizePhoneNumber(p || "");
 }
 
 /** Faz parse de números colados (um por linha ou separados por vírgula/ponto-e-vírgula). */
@@ -56,7 +57,7 @@ function parsePastedNumbers(text: string): Recipient[] {
   const seen = new Set<string>();
   for (const token of tokens) {
     const phone = normalizePhone(token);
-    if (phone.length >= 10 && !seen.has(phone)) {
+    if (phone && !seen.has(phone)) {
       seen.add(phone);
       recipients.push({ phoneNumber: phone });
     }
@@ -79,7 +80,7 @@ function parseRecipientsCsv(text: string): {
 
   const split = (line: string) => line.split(/[,;\t]/).map((c) => c.trim());
   const firstCols = split(lines[0]);
-  const hasHeader = normalizePhone(firstCols[0] ?? "").length < 8;
+  const hasHeader = !normalizePhone(firstCols[0] ?? "");
 
   let phoneIdx = 0;
   let nameIdx = 1;
@@ -103,7 +104,7 @@ function parseRecipientsCsv(text: string): {
   for (const line of dataLines) {
     const cols = split(line);
     const phone = normalizePhone(cols[phoneIdx] ?? "");
-    if (phone.length < 10) {
+    if (!phone) {
       ignored++;
       continue;
     }
