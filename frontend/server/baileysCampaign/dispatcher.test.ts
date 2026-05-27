@@ -5,6 +5,7 @@ import {
   renderMessage,
   randomDelayMs,
   extractAxiosErrorDetail,
+  isBackendConnectionMissingError,
   MAX_MESSAGE_VARIANTS,
 } from "./dispatcher";
 
@@ -91,6 +92,21 @@ describe("renderMessage", () => {
 
   it("MAX_MESSAGE_VARIANTS é 5", () => {
     expect(MAX_MESSAGE_VARIANTS).toBe(5);
+  });
+});
+
+describe("isBackendConnectionMissingError", () => {
+  it("detecta 404 com Conexão não encontrada", () => {
+    expect(isBackendConnectionMissingError(404, "Conexão não encontrada")).toBe(true);
+  });
+
+  it("detecta 400 com conexão inativa", () => {
+    expect(isBackendConnectionMissingError(400, "Conexão não está ativa")).toBe(true);
+  });
+
+  it("ignora outros erros HTTP", () => {
+    expect(isBackendConnectionMissingError(400, "Número inválido")).toBe(false);
+    expect(isBackendConnectionMissingError(500, "Conexão não encontrada")).toBe(false);
   });
 });
 

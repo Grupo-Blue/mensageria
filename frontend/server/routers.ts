@@ -8,6 +8,7 @@ import * as db from "./db";
 import axios from "axios";
 import { MetaWhatsAppApi, mapVariablesToOrderedArray } from "./whatsappBusiness/metaApi";
 import { notifyCampaignDispatched, renderTemplateBody } from "./whatsappBusiness/dispatchWebhook";
+import { ensureBackendConnection } from "./baileysCampaign/dispatcher";
 import { getChatWebhookConfig } from "./whatsappBusiness/chatWebhookConfig";
 import { ENV } from "./_core/env";
 import { billingRouter } from "./routers/billing";
@@ -1945,6 +1946,14 @@ export const appRouter = router({
         const connection = await db.getWhatsappConnectionById(campaign.connectionId);
         if (!connection) throw new Error("Conexão WhatsApp não encontrada");
 
+        const health = await ensureBackendConnection(connection.identification);
+        if (!health.connected) {
+          throw new Error(
+            `WhatsApp "${connection.identification}" não está ativo no servidor de envio. ` +
+              "Abra Conexões, verifique o QR Code e tente novamente.",
+          );
+        }
+
         await db.updateBaileysCampaign(input.campaignId, {
           status: "running",
           startedAt: campaign.startedAt ?? new Date(),
@@ -1984,6 +1993,17 @@ export const appRouter = router({
         if (!next) {
           throw new Error("Nenhum destinatário pendente para retomar");
         }
+        const connection = await db.getWhatsappConnectionById(campaign.connectionId);
+        if (!connection) throw new Error("Conexão WhatsApp não encontrada");
+
+        const health = await ensureBackendConnection(connection.identification);
+        if (!health.connected) {
+          throw new Error(
+            `WhatsApp "${connection.identification}" não está ativo no servidor de envio. ` +
+              "Reconecte em Conexões antes de retomar o disparo.",
+          );
+        }
+
         await db.updateBaileysCampaign(input.campaignId, { status: "running" });
         return { success: true };
       }),

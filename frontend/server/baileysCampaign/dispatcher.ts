@@ -163,6 +163,109 @@ export interface SendOptions {
   mediaMimeType?: string | null;
 }
 
+/** Erros do backend que indicam sessão Baileys ausente ou inativa (ex.: após restart do container). */
+export function isBackendConnectionMissingError(status?: number, message?: string): boolean {
+  if (!message) return false;
+  const msg = message.toLowerCase();
+  return (
+    (status === 404 || status === 400) &&
+    (msg.includes("não está ativa") ||
+      msg.includes("não encontrada") ||
+      msg.includes("nao encontrada") ||
+      msg.includes("not found"))
+  );
+}
+
+function getBackendApiToken(): string {
+  const apiToken = process.env.BACKEND_API_TOKEN;
+  if (!apiToken) {
+    throw new Error("BACKEND_API_TOKEN não configurado no servidor");
+  }
+  return apiToken;
+}
+
+/**
+ * Recarrega o cache de API keys do backend a partir de GET /api/internal/connections.
+ * Necessário após deploy/restart do serviço Baileys.
+ */
+export async function syncBackendTokenCache(): Promise<void> {
+  const apiToken = getBackendApiToken();
+  await axios.post(
+    `${BACKEND_API_URL}/connections/sync`,
+    {},
+    { headers: { "x-auth-api": apiToken }, timeout: 15000 },
+  );
+}
+
+/**
+ * Sincroniza tokens e tenta reativar a sessão WhatsApp no backend.
+ * Usado antes de disparos e após erro "Conexão não encontrada".
+ */
+export async function ensureBackendConnection(identification: string): Promise<ConnectionHealth> {
+  const apiToken = getBackendApiToken();
+
+  try {
+    await syncBackendTokenCache();
+  } catch (syncError) {
+    const detail = extractAxiosErrorDetail(syncError);
+    console.warn(
+      `[BaileysDispatcher] syncBackendTokenCache falhou para "${identification}":`,
+      detail.message,
+    );
+  }
+
+  let health = await checkConnectionHealth(identification);
+  if (health.connected) return health;
+
+  try {
+    console.log(`[BaileysDispatcher] Reativando sessão "${identification}" no backend...`);
+    await axios.post(
+      `${BACKEND_API_URL}/connections/${encodeURIComponent(identification)}/connect`,
+      {},
+      { headers: { "x-auth-api": apiToken }, timeout: 20000 },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+    health = await checkConnectionHealth(identification);
+  } catch (connectError) {
+    const detail = extractAxiosErrorDetail(connectError);
+    console.warn(
+      `[BaileysDispatcher] connect falhou para "${identification}":`,
+      detail.message,
+    );
+    return { connected: false, error: detail.message };
+  }
+
+  return health;
+}
+
+async function postBaileysSend(
+  identification: string,
+  phone: string,
+  text: string,
+  options: SendOptions,
+): Promise<SendResult> {
+  const apiToken = getBackendApiToken();
+  const body: Record<string, unknown> = { phone, message: text };
+  if (options.mediaUrl) {
+    body.mediaUrl = options.mediaUrl;
+    body.mediaType = options.mediaType ?? "image";
+    if (options.mediaFileName) body.mediaFileName = options.mediaFileName;
+    if (options.mediaMimeType) body.mediaMimeType = options.mediaMimeType;
+  }
+
+  const response = await axios.post(
+    `${BACKEND_API_URL}/connections/${encodeURIComponent(identification)}/send`,
+    body,
+    { headers: { "x-auth-api": apiToken }, timeout: 30000 },
+  );
+
+  const data = (response.data ?? {}) as Record<string, unknown>;
+  const inner = (data.data ?? data) as Record<string, unknown>;
+  const key = inner.key as Record<string, unknown> | undefined;
+  const messageId = inner.messageId ?? key?.id ?? inner.id;
+  return { messageId: messageId != null ? String(messageId) : undefined };
+}
+
 /**
  * Envia uma mensagem (texto e/ou mídia) via o backend Baileys.
  * Usa o endpoint multi-tenant `/connections/:id/send`, que já tem rate limit.
@@ -173,34 +276,30 @@ export async function sendBaileysMessage(
   text: string,
   options: SendOptions = {},
 ): Promise<SendResult> {
-  const apiToken = process.env.BACKEND_API_TOKEN;
-  if (!apiToken) {
-    throw new Error("BACKEND_API_TOKEN não configurado no servidor");
-  }
-
-  const body: Record<string, unknown> = { phone, message: text };
-  if (options.mediaUrl) {
-    body.mediaUrl = options.mediaUrl;
-    body.mediaType = options.mediaType ?? "image";
-    if (options.mediaFileName) body.mediaFileName = options.mediaFileName;
-    if (options.mediaMimeType) body.mediaMimeType = options.mediaMimeType;
-  }
-
   try {
-    const response = await axios.post(
-      `${BACKEND_API_URL}/connections/${encodeURIComponent(identification)}/send`,
-      body,
-      { headers: { "x-auth-api": apiToken }, timeout: 30000 },
-    );
-
-    // Resposta: { success, message, data: { key:{id}, ... } }
-    const data = (response.data ?? {}) as Record<string, unknown>;
-    const inner = (data.data ?? data) as Record<string, unknown>;
-    const key = inner.key as Record<string, unknown> | undefined;
-    const messageId = inner.messageId ?? key?.id ?? inner.id;
-    return { messageId: messageId != null ? String(messageId) : undefined };
+    return await postBaileysSend(identification, phone, text, options);
   } catch (error) {
     const detail = extractAxiosErrorDetail(error);
+
+    if (isBackendConnectionMissingError(detail.status, detail.message)) {
+      console.warn(
+        `[BaileysDispatcher] "${identification}" ausente no backend — tentando sync + reconnect...`,
+      );
+      const health = await ensureBackendConnection(identification);
+      if (health.connected) {
+        try {
+          return await postBaileysSend(identification, phone, text, options);
+        } catch (retryError) {
+          const retryDetail = extractAxiosErrorDetail(retryError);
+          console.error(
+            `[BaileysDispatcher] Reenvio após reconnect falhou identification="${identification}":`,
+            retryDetail.message,
+          );
+          throw retryError;
+        }
+      }
+    }
+
     console.error(
       `[BaileysDispatcher] Falha ao enviar identification="${identification}" phone="${phone}" status=${detail.status ?? "n/a"}:`,
       detail.message,

@@ -23,6 +23,8 @@ import {
   randomDelayMs,
   sendBaileysMessage,
   extractAxiosErrorDetail,
+  ensureBackendConnection,
+  isBackendConnectionMissingError,
 } from "./dispatcher";
 import { notifyBaileysCampaignDispatched } from "./dispatchWebhook";
 
@@ -56,7 +58,6 @@ export class BaileysCampaignScheduler {
   private readonly processing = new Set<number>();
   /** Campanhas que já tiveram o limite diário registrado em log (evita spam). */
   private readonly dailyLimitNotified = new Set<number>();
-
   private constructor() {}
 
   static getInstance(): BaileysCampaignScheduler {
@@ -188,6 +189,8 @@ export class BaileysCampaignScheduler {
   private async processCampaign(campaignId: number) {
     if (this.processing.has(campaignId)) return;
     this.processing.add(campaignId);
+    let backendPrimed = false;
+    let connectionErrorRecoveryDone = false;
     try {
       while (true) {
         const campaign = await db.getBaileysCampaignById(campaignId);
@@ -197,9 +200,14 @@ export class BaileysCampaignScheduler {
         if (!connection) {
           await db.updateBaileysCampaign(campaignId, { status: "failed", completedAt: new Date() });
           console.error(
-            `[BaileysCampaignScheduler] Campanha ${campaignId}: conexão ${campaign.connectionId} não encontrada`,
+            `[BaileysCampaignScheduler] Campanha ${campaignId}: conexão ${campaign.connectionId} não encontrada no banco (registro apagado?)`,
           );
           break;
+        }
+
+        if (!backendPrimed) {
+          backendPrimed = true;
+          await ensureBackendConnection(connection.identification);
         }
 
         // Pega só o próximo destinatário pendente (LIMIT 1) — evita carregar a lista
@@ -302,11 +310,19 @@ export class BaileysCampaignScheduler {
           // campanha com o motivo real visível na UI. O usuário reconecta o
           // WhatsApp e clica em Retomar.
           const backendMsg = errMsg;
-          const isConnectionDown =
-            (status === 404 || status === 400) &&
-            (backendMsg.toLowerCase().includes("não está ativa") ||
-              backendMsg.toLowerCase().includes("não encontrada"));
+          const isConnectionDown = isBackendConnectionMissingError(status, backendMsg);
           if (isConnectionDown) {
+            if (!connectionErrorRecoveryDone) {
+              connectionErrorRecoveryDone = true;
+              console.warn(
+                `[BaileysCampaignScheduler] Campanha ${campaignId}: "${backendMsg}" — tentando sync/reconnect...`,
+              );
+              const health = await ensureBackendConnection(connection.identification);
+              if (health.connected) {
+                continue;
+              }
+            }
+
             await db.updateBaileysCampaignRecipient(recipient.id, {
               status: "failed",
               errorMessage: backendMsg.slice(0, 1000),
@@ -314,7 +330,7 @@ export class BaileysCampaignScheduler {
             await this.refreshCounters(campaignId);
             await db.updateBaileysCampaign(campaignId, { status: "paused" });
             console.warn(
-              `[BaileysCampaignScheduler] Campanha ${campaignId} pausada: backend reportou "${backendMsg}". Reconecte o WhatsApp e clique em Retomar.`,
+              `[BaileysCampaignScheduler] Campanha ${campaignId} pausada: backend reportou "${backendMsg}". Reconecte o WhatsApp em Conexões e clique em Retomar.`,
             );
             break;
           }

@@ -1354,7 +1354,9 @@ export async function getAllWhatsappConnectionsWithWebhooks() {
         .limit(1);
 
       return {
-        id: conn.id,
+        // Backend Baileys usa identification como chave de sessão (não o id numérico).
+        id: conn.identification,
+        dbId: conn.id,
         identification: conn.identification,
         apiKey: conn.apiKey,
         userId: conn.userId,
