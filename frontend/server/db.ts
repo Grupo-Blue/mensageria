@@ -45,6 +45,10 @@ import {
   InsertBaileysCampaign,
   baileysCampaignRecipients,
   InsertBaileysCampaignRecipient,
+  baileysCampaignConnections,
+  webshareProxies,
+  WebshareProxy,
+  InsertWebshareProxy,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -755,6 +759,10 @@ export async function getRecipientsRetryStats(campaignId: number) {
 /**
  * Conta quantas mensagens já foram enviadas hoje somando todos os disparos
  * Baileys desta conexão. Usado pelo limite diário de aquecimento (warmup).
+ *
+ * Usa `sentFromConnectionId` (preenchido pelo scheduler ao despachar) como
+ * fonte primária. Para campanhas legadas (pré multi-conexão) cujos recipients
+ * não têm essa coluna preenchida, faz fallback no `baileysCampaigns.connectionId`.
  */
 export async function countBaileysSentTodayForConnection(connectionId: number): Promise<number> {
   const db = await getDb();
@@ -766,7 +774,13 @@ export async function countBaileysSentTodayForConnection(connectionId: number): 
     .from(baileysCampaignRecipients)
     .innerJoin(baileysCampaigns, eq(baileysCampaigns.id, baileysCampaignRecipients.campaignId))
     .where(and(
-      eq(baileysCampaigns.connectionId, connectionId),
+      or(
+        eq(baileysCampaignRecipients.sentFromConnectionId, connectionId),
+        and(
+          isNull(baileysCampaignRecipients.sentFromConnectionId),
+          eq(baileysCampaigns.connectionId, connectionId),
+        ),
+      ),
       eq(baileysCampaignRecipients.status, "sent"),
       gte(baileysCampaignRecipients.sentAt, startOfDay),
     ));
@@ -812,6 +826,8 @@ export async function deleteBaileysCampaign(id: number) {
 
   // Delete recipients first
   await db.delete(baileysCampaignRecipients).where(eq(baileysCampaignRecipients.campaignId, id));
+  // Drop junction rows (multi-conexão) antes de remover a campanha em si.
+  await db.delete(baileysCampaignConnections).where(eq(baileysCampaignConnections.campaignId, id));
   // Then delete campaign
   await db.delete(baileysCampaigns).where(eq(baileysCampaigns.id, id));
 }
@@ -984,6 +1000,148 @@ export async function getBaileysRecipientsRetryStats(campaignId: number) {
     retriable,
     maxRetriesReached,
   };
+}
+
+// =====================================================
+// Baileys Campaign × Connections (junction N:N)
+// =====================================================
+
+/**
+ * IDs das conexões WhatsApp vinculadas a uma campanha (multi-conexão).
+ * Para campanhas legadas (pré multi-conexão), retorna [campaign.connectionId]
+ * como fallback transparente.
+ */
+export async function getBaileysCampaignConnectionIds(campaignId: number): Promise<number[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({ connectionId: baileysCampaignConnections.connectionId })
+    .from(baileysCampaignConnections)
+    .where(eq(baileysCampaignConnections.campaignId, campaignId));
+  if (rows.length > 0) {
+    return rows.map((r: { connectionId: number }) => r.connectionId);
+  }
+  // Fallback retrocompat: campanhas criadas antes da junction usavam connectionId.
+  const campaign = await getBaileysCampaignById(campaignId);
+  if (campaign?.connectionId) return [campaign.connectionId];
+  return [];
+}
+
+/**
+ * Substitui o conjunto de conexões da campanha (delete + insert). Usado por
+ * `baileysCampaigns.create` e `baileysCampaigns.update` quando o usuário
+ * altera as conexões selecionadas.
+ */
+export async function setBaileysCampaignConnections(campaignId: number, connectionIds: number[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(baileysCampaignConnections).where(eq(baileysCampaignConnections.campaignId, campaignId));
+  if (connectionIds.length === 0) return;
+  const rows = connectionIds.map((connectionId) => ({ campaignId, connectionId }));
+  await db.insert(baileysCampaignConnections).values(rows);
+}
+
+// =====================================================
+// Webshare proxies
+// =====================================================
+
+export async function getWebshareProxyById(id: number): Promise<WebshareProxy | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(webshareProxies).where(eq(webshareProxies.id, id)).limit(1);
+  return rows[0];
+}
+
+/** Proxy atribuído a uma conexão WhatsApp (JOIN via `proxyId`). */
+export async function getWebshareProxyForConnection(connectionId: number): Promise<WebshareProxy | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db
+    .select({ proxy: webshareProxies })
+    .from(whatsappConnections)
+    .innerJoin(webshareProxies, eq(webshareProxies.id, whatsappConnections.proxyId))
+    .where(eq(whatsappConnections.id, connectionId))
+    .limit(1);
+  return rows[0]?.proxy;
+}
+
+/**
+ * Próximo proxy disponível para atribuição. Prefere `preferCountry` (ex.: "BR");
+ * se não houver, retorna qualquer outro `available` como último recurso.
+ */
+export async function pickAvailableWebshareProxy(preferCountry?: string): Promise<WebshareProxy | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  if (preferCountry) {
+    const preferred = await db
+      .select()
+      .from(webshareProxies)
+      .where(and(eq(webshareProxies.status, "available"), eq(webshareProxies.countryCode, preferCountry)))
+      .limit(1);
+    if (preferred.length > 0) return preferred[0];
+  }
+  const any = await db
+    .select()
+    .from(webshareProxies)
+    .where(eq(webshareProxies.status, "available"))
+    .limit(1);
+  return any[0];
+}
+
+export async function updateWebshareProxy(id: number, data: Partial<InsertWebshareProxy>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(webshareProxies).set(data).where(eq(webshareProxies.id, id));
+}
+
+/**
+ * Upsert por `webshareProxyId` (id externo do Webshare). Usado pelo sync que
+ * importa a lista de proxies reservados na conta. Insere novos, atualiza
+ * credenciais/host/porta dos existentes.
+ */
+export async function upsertWebshareProxy(proxy: InsertWebshareProxy): Promise<WebshareProxy | undefined> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const existing = await db
+    .select()
+    .from(webshareProxies)
+    .where(eq(webshareProxies.webshareProxyId, proxy.webshareProxyId))
+    .limit(1);
+  if (existing.length > 0) {
+    await db.update(webshareProxies).set({
+      host: proxy.host,
+      port: proxy.port,
+      username: proxy.username,
+      password: proxy.password,
+      countryCode: proxy.countryCode,
+      lastVerifiedAt: new Date(),
+    }).where(eq(webshareProxies.id, existing[0].id));
+    return await getWebshareProxyById(existing[0].id);
+  }
+  const result = await db.insert(webshareProxies).values({ ...proxy, lastVerifiedAt: new Date() });
+  return await getWebshareProxyById(result[0].insertId);
+}
+
+export async function listWebshareProxies(): Promise<WebshareProxy[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return await db.select().from(webshareProxies).orderBy(webshareProxies.id);
+}
+
+/**
+ * Marca todos os proxies cujos `webshareProxyId` NÃO estão em `keepIds`
+ * como `dead`. Usado pelo sync para refletir remoções no painel Webshare.
+ */
+export async function markMissingWebshareProxiesDead(keepIds: string[]) {
+  const db = await getDb();
+  if (!db) return;
+  if (keepIds.length === 0) {
+    await db.update(webshareProxies).set({ status: "dead" });
+    return;
+  }
+  await db.update(webshareProxies)
+    .set({ status: "dead" })
+    .where(sql`${webshareProxies.webshareProxyId} NOT IN (${sql.join(keepIds.map((id) => sql`${id}`), sql`, `)})`);
 }
 
 // =====================================================

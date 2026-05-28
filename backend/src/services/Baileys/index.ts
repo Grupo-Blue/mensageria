@@ -10,11 +10,41 @@ import { Boom } from '@hapi/boom';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 import socket from '../../libs/socket.js';
 import messageStore from './messageStore.js';
 import { saveGroupInfo } from './saveGroupInfo.js';
 import settingsStore from '../settingsStore.js';
 import tokenCache from '../tokenCache.js';
+
+/**
+ * Configuração de proxy estático (Webshare) por conexão WhatsApp.
+ * Quando presente, o socket Baileys sai pelo IP do proxy — fundamental para
+ * manter IP estável e reduzir risco de ban.
+ */
+export interface BaileysProxyConfig {
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+}
+
+/**
+ * Mapa em memória `connectionId → proxy` para preservar atribuição entre
+ * reconexões automáticas. O frontend manda o proxy no POST /connect e em
+ * todo handshake; aqui memorizamos para que `addConnection` reentrante (do
+ * próprio handler de `connection.close`) reaplique o mesmo proxy.
+ */
+const connectionProxies = new Map<string, BaileysProxyConfig>();
+
+export function setConnectionProxy(id: string, proxy: BaileysProxyConfig | undefined): void {
+  if (proxy) connectionProxies.set(id, proxy);
+  else connectionProxies.delete(id);
+}
+
+export function getConnectionProxy(id: string): BaileysProxyConfig | undefined {
+  return connectionProxies.get(id);
+}
 
 interface ConnectionInterface {
   id: string;
@@ -235,9 +265,17 @@ export const logoutConnection = (id: string): void => {
   }
 };
 
-export const addConnection = async (id: string): Promise<void> => {
+export const addConnection = async (id: string, options?: { proxy?: BaileysProxyConfig }): Promise<void> => {
   console.log(`[addConnection] ========== INICIANDO CONEXÃO PARA: ${id} ==========`);
   const io = socket.getIO();
+
+  // Persistir proxy em memória para sobreviver a reconexões. Se `proxy` foi
+  // passado explicitamente, usa-o; caso contrário, recupera o último conhecido
+  // (caminho do auto-reconnect, onde o caller só passa o id).
+  if (options?.proxy !== undefined) {
+    setConnectionProxy(id, options.proxy);
+  }
+  const activeProxy = getConnectionProxy(id);
   
   // Remove conexão anterior
   removeConnection(id);
@@ -357,10 +395,17 @@ export const addConnection = async (id: string): Promise<void> => {
   }
 
   console.log(`[addConnection] Criando socket Baileys...`);
+  let proxyAgent: HttpsProxyAgent<string> | undefined;
+  if (activeProxy) {
+    const proxyUrl = `http://${encodeURIComponent(activeProxy.username)}:${encodeURIComponent(activeProxy.password)}@${activeProxy.host}:${activeProxy.port}`;
+    proxyAgent = new HttpsProxyAgent(proxyUrl);
+    console.log(`[addConnection] 🌐 Usando proxy estático ${activeProxy.host}:${activeProxy.port} para conexão ${id}`);
+  }
   let sock;
   try {
     sock = makeWASocket({
       ...(waVersion ? { version: waVersion } : {}),
+      ...(proxyAgent ? { agent: proxyAgent, fetchAgent: proxyAgent } : {}),
       browser: Browsers.ubuntu('Chrome'),
       printQRInTerminal: false, // Deprecated, vamos usar apenas o evento connection.update
       auth: state,

@@ -19,6 +19,12 @@ export const ENV = {
   frontendUrl: process.env.FRONTEND_URL ?? "http://localhost:3000",
   // Webhook de disparo para sistema de chat - suporta múltiplos targets
   chatWebhookTargets: parseChatWebhookTargets(),
+  // Webshare (https://dashboard.webshare.io) — quando setada, conexões Baileys
+  // recebem proxy estático na criação para manter IP de saída fixo. Sem chave,
+  // sistema opera sem proxy (modo dev).
+  webshareApiKey: process.env.WEBSHARE_API_KEY ?? "",
+  // País preferencial ao atribuir proxy a uma conexão recém-criada (ISO-3166-1).
+  webshareDefaultCountry: process.env.WEBSHARE_DEFAULT_COUNTRY ?? "BR",
 };
 
 export interface ChatWebhookTarget {

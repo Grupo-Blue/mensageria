@@ -76,23 +76,37 @@ router.get('/:connectionId', multiTenantAuth, async (req: AuthenticatedRequest, 
 
 /**
  * POST /connections/:connectionId/connect
- * Initialize/reconnect a WhatsApp connection
+ * Initialize/reconnect a WhatsApp connection.
+ *
+ * Body opcional: `{ proxy: { host, port, username, password } }` — quando
+ * presente, o socket Baileys sai por esse proxy estático (Webshare). O proxy
+ * é memorizado para sobreviver a reconexões automáticas.
  */
 router.post('/:connectionId/connect', multiTenantAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { connectionId } = req.params;
+    const proxyBody = req.body?.proxy;
 
     // Verify authorization for this connection
     if (req.tenant?.identification && req.tenant.identification !== connectionId) {
       return res.status(403).json({ error: 'Não autorizado para esta conexão' });
     }
 
-    await addConnection(connectionId);
+    let proxy: { host: string; port: number; username: string; password: string } | undefined;
+    if (proxyBody && typeof proxyBody === 'object') {
+      const { host, port, username, password } = proxyBody as { host?: string; port?: number; username?: string; password?: string };
+      if (host && port && username && password) {
+        proxy = { host, port: Number(port), username, password };
+      }
+    }
+
+    await addConnection(connectionId, proxy ? { proxy } : undefined);
 
     return res.json({
       success: true,
       message: 'Conexão iniciada. Aguarde o QR Code via Socket.IO.',
       connectionId,
+      proxyApplied: !!proxy,
     });
   } catch (error: any) {
     return res.status(500).json({ error: error.message });

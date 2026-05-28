@@ -9,9 +9,39 @@
  */
 import axios from "axios";
 import { normalizePhoneNumber } from "@shared/phoneUtils";
+import * as db from "../db";
+import { replaceDeadProxy } from "../webshare/assignment";
 
 // Mesmo backend usado por whatsapp.sendMessage em server/routers.ts.
 const BACKEND_API_URL = process.env.BACKEND_API_URL || "http://localhost:5600";
+
+/**
+ * Payload de proxy enviado ao backend Baileys no handshake `/connect`.
+ * O backend memoriza essa configuração para sobreviver a reconexões.
+ */
+interface BaileysProxyPayload {
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+}
+
+/**
+ * Resolve o proxy estático (Webshare) atribuído a uma conexão. Retorna
+ * `undefined` se a conexão não tem proxy ou se ele está marcado como morto.
+ */
+async function loadProxyForIdentification(identification: string): Promise<BaileysProxyPayload | undefined> {
+  const conn = await db.getWhatsappConnectionByIdentification(identification);
+  if (!conn) return undefined;
+  const proxy = await db.getWebshareProxyForConnection(conn.id);
+  if (!proxy || proxy.status === "dead") return undefined;
+  return {
+    host: proxy.host,
+    port: proxy.port,
+    username: proxy.username,
+    password: proxy.password,
+  };
+}
 
 /** Quantidade máxima de variações de mensagem por campanha. */
 export const MAX_MESSAGE_VARIANTS = 5;
@@ -261,11 +291,16 @@ export async function ensureBackendConnection(
   let health = await checkConnectionHealth(identification);
   if (health.connected) return health;
 
+  const proxy = await loadProxyForIdentification(identification);
+  const connectBody = proxy ? { proxy } : {};
+
   try {
-    console.log(`[BaileysDispatcher] Reativando sessão "${identification}" no backend...`);
+    console.log(
+      `[BaileysDispatcher] Reativando sessão "${identification}" no backend${proxy ? ` via proxy ${proxy.host}:${proxy.port}` : ""}...`,
+    );
     await axios.post(
       `${BACKEND_API_URL}/connections/${encodeURIComponent(identification)}/connect`,
-      {},
+      connectBody,
       { headers: { "x-auth-api": apiToken }, timeout: 20000 },
     );
     await new Promise((resolve) => setTimeout(resolve, 2500));
@@ -279,10 +314,51 @@ export async function ensureBackendConnection(
       `[BaileysDispatcher] connect falhou para "${identification}":`,
       detail.message,
     );
+
+    // Se a falha é compatível com proxy inacessível (ECONNREFUSED / ETIMEDOUT /
+    // tunnel error), tenta UMA vez substituir o proxy por outro do mesmo país.
+    if (proxy && isLikelyProxyFailure(connectError)) {
+      const conn = await db.getWhatsappConnectionByIdentification(identification);
+      if (conn) {
+        const replacement = await replaceDeadProxy(conn.id);
+        if (replacement) {
+          try {
+            await axios.post(
+              `${BACKEND_API_URL}/connections/${encodeURIComponent(identification)}/connect`,
+              { proxy: { host: replacement.host, port: replacement.port, username: replacement.username, password: replacement.password } },
+              { headers: { "x-auth-api": apiToken }, timeout: 20000 },
+            );
+            await new Promise((resolve) => setTimeout(resolve, 2500));
+            health = await checkConnectionHealth(identification);
+            if (health.connected) return { ...health, reconnected: true };
+          } catch (retryErr) {
+            const retryDetail = extractAxiosErrorDetail(retryErr);
+            return { connected: false, error: retryDetail.message };
+          }
+        }
+      }
+    }
+
     return { connected: false, error: detail.message };
   }
 
   return health;
+}
+
+/**
+ * Heurística: o erro veio do proxy (não do WhatsApp/Baileys em si)?
+ * Sinais: códigos de rede TCP, ou 502/503/504 do proxy HTTP CONNECT.
+ */
+function isLikelyProxyFailure(error: unknown): boolean {
+  const err = error as { code?: string; message?: string; response?: { status?: number } };
+  const code = err.code;
+  if (code && ["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "EHOSTUNREACH", "ENOTFOUND"].includes(code)) {
+    return true;
+  }
+  const status = err.response?.status;
+  if (status && [502, 503, 504, 407].includes(status)) return true;
+  const msg = (err.message ?? "").toLowerCase();
+  return msg.includes("tunneling") || msg.includes("proxy");
 }
 
 async function postBaileysSend(
