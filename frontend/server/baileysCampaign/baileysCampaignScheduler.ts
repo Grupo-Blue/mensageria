@@ -303,9 +303,17 @@ export class BaileysCampaignScheduler {
 
         if (!pick) {
           // Nenhuma conexão disponível. Decide o motivo:
-          //   - Todas com backend down → pausa a campanha (usuário precisa reconectar).
-          //   - Todas com warmup saturado → idle, sai do loop, próximo tick reavalia.
-          if (unhealthyConnections.size === connectionIds.length && lastBackendDownMessage) {
+          //   - Mistura/totalidade de unhealthy (com ao menos UMA backend-down)
+          //     → pausa a campanha (usuário precisa reconectar).
+          //   - Só warmup saturado → idle, sai do loop, próximo tick reavalia.
+          // Sem o termo "unhealthy + warmup esgotados == total" a campanha
+          // ficaria em loop infinito de retry no próximo tick (unhealthy reset).
+          const totalUnavailable = unhealthyConnections.size + warmupExhaustedCount;
+          if (
+            totalUnavailable === connectionIds.length &&
+            unhealthyConnections.size > 0 &&
+            lastBackendDownMessage
+          ) {
             await db.updateBaileysCampaignRecipient(nextRecipient.id, {
               status: "failed",
               errorMessage: lastBackendDownMessage.slice(0, 1000),
@@ -313,7 +321,7 @@ export class BaileysCampaignScheduler {
             await this.refreshCounters(campaignId);
             await db.updateBaileysCampaign(campaignId, { status: "paused" });
             console.warn(
-              `[BaileysCampaignScheduler] Campanha ${campaignId} pausada: todas as ${connectionIds.length} conexões reportaram "${lastBackendDownMessage}". Reconecte em Conexões e clique em Retomar.`,
+              `[BaileysCampaignScheduler] Campanha ${campaignId} pausada: todas as ${connectionIds.length} conexões indisponíveis (${unhealthyConnections.size} unhealthy + ${warmupExhaustedCount} warmup). Último erro: "${lastBackendDownMessage}". Reconecte em Conexões e clique em Retomar.`,
             );
             break;
           }

@@ -40,14 +40,21 @@ export async function listAllProxies(): Promise<WebshareProxyDTO[] | null> {
   const results: WebshareProxyDTO[] = [];
   let url: string | null = `${BASE_URL}/proxy/list/?mode=direct&page_size=100`;
   while (url) {
-    const res: Response = await fetch(url, { headers: h });
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      throw new Error(`Webshare listProxies falhou (${res.status}): ${body.slice(0, 200)}`);
+    // Timeout por página para evitar pendurar o scheduler quando a API trava.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    try {
+      const res: Response = await fetch(url, { headers: h, signal: controller.signal });
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        throw new Error(`Webshare listProxies falhou (${res.status}): ${body.slice(0, 200)}`);
+      }
+      const json = await res.json() as { results?: WebshareProxyDTO[]; next?: string | null };
+      if (Array.isArray(json.results)) results.push(...json.results);
+      url = json.next ?? null;
+    } finally {
+      clearTimeout(timeoutId);
     }
-    const json = await res.json() as { results?: WebshareProxyDTO[]; next?: string | null };
-    if (Array.isArray(json.results)) results.push(...json.results);
-    url = json.next ?? null;
   }
   return results;
 }

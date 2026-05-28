@@ -92,7 +92,17 @@ export async function replaceDeadProxy(connectionId: number): Promise<AssignedPr
   await db.updateWebshareProxy(current.id, { status: "dead" });
   await db.updateWhatsappConnection(connectionId, { proxyId: null });
 
-  const replacement = await db.pickAvailableWebshareProxy(current.countryCode);
+  let replacement = await db.pickAvailableWebshareProxy(current.countryCode);
+  if (!replacement) {
+    // Pool local vazio para esse país. Tenta puxar atualizações do painel
+    // Webshare antes de desistir — proxies podem ter sido adicionados/liberados.
+    try {
+      await syncFromWebshare();
+      replacement = await db.pickAvailableWebshareProxy(current.countryCode);
+    } catch (err) {
+      console.error(`[webshare] sync falhou ao tentar substituir proxy para ${connectionId}:`, err);
+    }
+  }
   if (!replacement) {
     console.error(`[webshare] sem proxy substituto no país ${current.countryCode} para conexão ${connectionId}`);
     return null;

@@ -94,9 +94,17 @@ router.post('/:connectionId/connect', multiTenantAuth, async (req: Authenticated
 
     let proxy: { host: string; port: number; username: string; password: string } | undefined;
     if (proxyBody && typeof proxyBody === 'object') {
-      const { host, port, username, password } = proxyBody as { host?: string; port?: number; username?: string; password?: string };
+      const { host, port, username, password } = proxyBody as { host?: string; port?: number | string; username?: string; password?: string };
       if (host && port && username && password) {
-        proxy = { host, port: Number(port), username, password };
+        // Valida que a porta é um inteiro válido (1–65535). Sem isso, NaN ou
+        // valores fora do range chegariam até o HttpsProxyAgent e causariam
+        // falhas de conexão difíceis de diagnosticar.
+        const parsedPort = Number(port);
+        if (Number.isFinite(parsedPort) && parsedPort >= 1 && parsedPort <= 65535) {
+          proxy = { host, port: parsedPort, username, password };
+        } else {
+          console.warn(`[connect] proxy descartado: porta inválida (${port})`);
+        }
       }
     }
 

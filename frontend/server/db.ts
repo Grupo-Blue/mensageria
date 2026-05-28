@@ -1108,14 +1108,21 @@ export async function upsertWebshareProxy(proxy: InsertWebshareProxy): Promise<W
     .where(eq(webshareProxies.webshareProxyId, proxy.webshareProxyId))
     .limit(1);
   if (existing.length > 0) {
-    await db.update(webshareProxies).set({
+    const updateFields: Partial<InsertWebshareProxy> = {
       host: proxy.host,
       port: proxy.port,
       username: proxy.username,
       password: proxy.password,
       countryCode: proxy.countryCode,
       lastVerifiedAt: new Date(),
-    }).where(eq(webshareProxies.id, existing[0].id));
+    };
+    // Sync revive: proxy que tinha sido marcado `dead` localmente (falha de
+    // conexão pontual) e voltou válido no painel Webshare deve voltar ao pool.
+    // Sem isso, o pool drenaria com o tempo.
+    if (existing[0].status === "dead") {
+      updateFields.status = "available";
+    }
+    await db.update(webshareProxies).set(updateFields).where(eq(webshareProxies.id, existing[0].id));
     return await getWebshareProxyById(existing[0].id);
   }
   const result = await db.insert(webshareProxies).values({ ...proxy, lastVerifiedAt: new Date() });
