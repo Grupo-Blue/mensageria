@@ -449,8 +449,19 @@ export default function BaileysCampaignDetail() {
           <CardContent>
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
               <div>
-                <p className="text-sm font-medium text-gray-500">Conexão WhatsApp</p>
-                <p className="mt-1">{getConnectionName(campaign.connectionId)}</p>
+                <p className="text-sm font-medium text-gray-500">
+                  Conexões WhatsApp{campaign.connectionIds && campaign.connectionIds.length > 1 ? ` (${campaign.connectionIds.length})` : ""}
+                </p>
+                <p className="mt-1">
+                  {(campaign.connectionIds && campaign.connectionIds.length > 0
+                    ? campaign.connectionIds
+                    : campaign.connectionId
+                      ? [campaign.connectionId]
+                      : []
+                  )
+                    .map((id: number) => getConnectionName(id))
+                    .join(", ")}
+                </p>
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-500 flex items-center gap-1">

@@ -325,7 +325,7 @@ export default function BaileysCampaigns() {
 
                     {/* Rodapé */}
                     <div className="flex justify-between items-center mt-4 pt-4 border-t text-sm text-gray-500">
-                      <span>Conexão: {getConnectionName(campaign.connectionId)}</span>
+                      <span>Conexão: {campaign.connectionId != null ? getConnectionName(campaign.connectionId) : "Multi-conexão"}</span>
                       <span>
                         Criado {formatDistanceToNow(new Date(campaign.createdAt), { addSuffix: true, locale: ptBR })}
                       </span>

@@ -35,6 +35,9 @@ export const whatsappConnections = mysqlTable("whatsapp_connections", {
   // Aquecimento (warmup): teto diário de mensagens para esta conexão somando
   // todos os disparos. Útil para chips novos. Quando null, sem teto por conexão.
   warmupDailyLimit: int("warmup_daily_limit"),
+  // Proxy estático (Webshare) atribuído a esta conexão. Toda vez que a sessão
+  // Baileys subir, sai pelo mesmo IP — reduz risco de ban por IP variável.
+  proxyId: int("proxy_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
   lastConnectedAt: timestamp("last_connected_at"),
@@ -42,6 +45,30 @@ export const whatsappConnections = mysqlTable("whatsapp_connections", {
 
 export type WhatsappConnection = typeof whatsappConnections.$inferSelect;
 export type InsertWhatsappConnection = typeof whatsappConnections.$inferInsert;
+
+/**
+ * Webshare proxies table - proxies estáticos importados do Webshare
+ * (https://dashboard.webshare.io). Cada conexão Baileys recebe um proxy
+ * fixo via `whatsappConnections.proxyId` para manter IP estável.
+ */
+export const webshareProxies = mysqlTable("webshare_proxies", {
+  id: int("id").autoincrement().primaryKey(),
+  // Identificador do proxy no Webshare (vem da API). Usado para reconciliação.
+  webshareProxyId: varchar("webshare_proxy_id", { length: 64 }).notNull().unique(),
+  host: varchar("host", { length: 100 }).notNull(),
+  port: int("port").notNull(),
+  username: varchar("username", { length: 100 }).notNull(),
+  password: varchar("password", { length: 200 }).notNull(),
+  // ISO-3166-1 alpha-2 (BR, US, ...). Usado para fallback regional.
+  countryCode: varchar("country_code", { length: 2 }).notNull(),
+  status: mysqlEnum("status", ["available", "assigned", "dead"]).default("available").notNull(),
+  lastVerifiedAt: timestamp("last_verified_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
+});
+
+export type WebshareProxy = typeof webshareProxies.$inferSelect;
+export type InsertWebshareProxy = typeof webshareProxies.$inferInsert;
 
 /**
  * Telegram connections table
@@ -331,7 +358,10 @@ export type InsertWhatsappBlacklist = typeof whatsappBlacklist.$inferInsert;
 export const baileysCampaigns = mysqlTable("baileys_campaigns", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("user_id").notNull(),
-  connectionId: int("connection_id").notNull(),
+  // Legado: campanhas antigas (pré-multi-conexão) apontavam para uma única
+  // conexão aqui. Novas campanhas usam a tabela `baileys_campaign_connections`
+  // (N:N). Mantemos a coluna nullable para retrocompat e fallback de leitura.
+  connectionId: int("connection_id"),
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
   // JSON array com 1 a 5 variações de texto da mensagem (anti-ban)
@@ -380,11 +410,31 @@ export const baileysCampaignRecipients = mysqlTable("baileys_campaign_recipients
   retryCount: int("retry_count").default(0).notNull(),
   lastRetryAt: timestamp("last_retry_at"),
   sentAt: timestamp("sent_at"),
+  // Qual conexão WhatsApp efetivamente disparou (round-robin multi-conexão).
+  // Nullable porque ainda não foi enviado, ou veio de campanha legada single-conn.
+  sentFromConnectionId: int("sent_from_connection_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export type BaileysCampaignRecipient = typeof baileysCampaignRecipients.$inferSelect;
 export type InsertBaileysCampaignRecipient = typeof baileysCampaignRecipients.$inferInsert;
+
+/**
+ * Tabela de junção N:N entre campanhas Baileys e conexões WhatsApp.
+ * Substitui o uso legado de `baileysCampaigns.connectionId` para permitir
+ * que uma campanha distribua mensagens entre múltiplas conexões (round-robin).
+ */
+export const baileysCampaignConnections = mysqlTable("baileys_campaign_connections", {
+  id: int("id").autoincrement().primaryKey(),
+  campaignId: int("campaign_id").notNull(),
+  connectionId: int("connection_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  uniqCampaignConnection: unique("uniq_campaign_connection").on(t.campaignId, t.connectionId),
+}));
+
+export type BaileysCampaignConnection = typeof baileysCampaignConnections.$inferSelect;
+export type InsertBaileysCampaignConnection = typeof baileysCampaignConnections.$inferInsert;
 
 // ==========================================
 // BILLING & SUBSCRIPTION TABLES

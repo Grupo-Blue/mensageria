@@ -59,6 +59,12 @@ export class BaileysCampaignScheduler {
   private readonly processing = new Set<number>();
   /** Campanhas que já tiveram o limite diário registrado em log (evita spam). */
   private readonly dailyLimitNotified = new Set<number>();
+  /**
+   * Cursor de round-robin por campanha: índice da última conexão usada (na ordem
+   * de `getBaileysCampaignConnectionIds`). Vive em memória — após restart, recomeça
+   * do 0, o que é aceitável (round-robin perfeito não é requisito).
+   */
+  private readonly roundRobinCursor = new Map<number, number>();
   private constructor() {}
 
   static getInstance(): BaileysCampaignScheduler {
@@ -183,40 +189,77 @@ export class BaileysCampaignScheduler {
   }
 
   /**
+   * Round-robin: escolhe a próxima conexão da campanha que está saudável e dentro
+   * do warmup. Avança o cursor circularmente em `roundRobinCursor`. Conexões em
+   * `unhealthy` (marcadas neste loop por erro de backend) são puladas.
+   *
+   * Retorna `null` quando NENHUMA conexão atende — o caller decide se pausa a
+   * campanha (todas com erro de backend) ou aguarda o dia seguinte (warmup).
+   */
+  private async pickNextConnection(
+    campaignId: number,
+    connectionIds: number[],
+    unhealthy: Set<number>,
+  ): Promise<{
+    pick: { id: number; identification: string; phoneNumber: string | null } | null;
+    /** Quantas das conexões disponíveis foram puladas por warmup já saturado. */
+    warmupExhaustedCount: number;
+  }> {
+    const N = connectionIds.length;
+    if (N === 0) return { pick: null, warmupExhaustedCount: 0 };
+    let warmupExhaustedCount = 0;
+    const cursor = this.roundRobinCursor.get(campaignId) ?? -1;
+    for (let i = 1; i <= N; i++) {
+      const idx = (cursor + i) % N;
+      const cid = connectionIds[idx];
+      if (unhealthy.has(cid)) continue;
+      const conn = await db.getWhatsappConnectionById(cid);
+      if (!conn) continue;
+      const warmupLimit = (conn as { warmupDailyLimit?: number | null }).warmupDailyLimit;
+      if (typeof warmupLimit === "number" && warmupLimit > 0) {
+        const sentToday = await db.countBaileysSentTodayForConnection(cid);
+        if (sentToday >= warmupLimit) {
+          warmupExhaustedCount++;
+          continue;
+        }
+      }
+      this.roundRobinCursor.set(campaignId, idx);
+      return {
+        pick: { id: conn.id, identification: conn.identification, phoneNumber: conn.phoneNumber },
+        warmupExhaustedCount,
+      };
+    }
+    return { pick: null, warmupExhaustedCount };
+  }
+
+  /**
    * Loop de envio de uma campanha: envia 1 mensagem, espera o delay anti-ban e repete.
    * Encerra quando: não há mais pendentes (→ `completed`), a campanha sai de `running`
-   * (pausa/remoção) ou a conexão WhatsApp fica indisponível (→ `paused`).
+   * (pausa/remoção) ou TODAS as conexões da campanha ficam indisponíveis (→ `paused`).
+   *
+   * Roteamento round-robin: a cada mensagem, escolhe a próxima conexão saudável
+   * da lista atribuída à campanha. Conexões que falham por backend caído entram
+   * num blocklist local até o fim deste loop (próximo tick do scheduler reavalia).
    */
   private async processCampaign(campaignId: number) {
     if (this.processing.has(campaignId)) return;
     this.processing.add(campaignId);
-    let backendPrimed = false;
-    let connectionErrorRecoveryDone = false;
+    /** Conexões que reportaram backend down NESTE loop — puladas pelo round-robin. */
+    const unhealthyConnections = new Set<number>();
+    /** Conexões já com priming (sync+reconnect) feito nesta execução. */
+    const primedConnections = new Set<number>();
+    /** Última mensagem de erro de backend down — usada se TODAS as conexões caírem. */
+    let lastBackendDownMessage: string | null = null;
     try {
       while (true) {
         const campaign = await db.getBaileysCampaignById(campaignId);
         if (!campaign || campaign.status !== "running") break;
 
-        const connection = await db.getWhatsappConnectionById(campaign.connectionId);
-        if (!connection) {
+        const connectionIds = await db.getBaileysCampaignConnectionIds(campaignId);
+        if (connectionIds.length === 0) {
           await db.updateBaileysCampaign(campaignId, { status: "failed", completedAt: new Date() });
-          console.error(
-            `[BaileysCampaignScheduler] Campanha ${campaignId}: conexão ${campaign.connectionId} não encontrada no banco (registro apagado?)`,
-          );
+          console.error(`[BaileysCampaignScheduler] Campanha ${campaignId} sem conexões atribuídas`);
           break;
-        }
-
-        if (!backendPrimed) {
-          backendPrimed = true;
-          const priming = await ensureBackendConnection(connection.identification);
-          if (priming.reconnected) {
-            console.log(
-              `[BaileysCampaignScheduler] Conexão "${connection.identification}" reconectada — aguardando 35s para sync do WhatsApp antes do primeiro envio`,
-            );
-            await new Promise((resolve) => setTimeout(resolve, 35000));
-          } else if (priming.connected) {
-            await new Promise((resolve) => setTimeout(resolve, 5000));
-          }
         }
 
         // Pega só o próximo destinatário pendente (LIMIT 1) — evita carregar a lista
@@ -225,7 +268,14 @@ export class BaileysCampaignScheduler {
         if (!nextRecipient) {
           await db.updateBaileysCampaign(campaignId, { status: "completed", completedAt: new Date() });
           this.dailyLimitNotified.delete(campaignId);
-          await this.fireDispatchWebhook(campaign, connection.identification, connection.phoneNumber);
+          // Para o webhook de "concluída", usa a primeira conexão atribuída como
+          // identificador (campo legado `company`).
+          const firstConn = await db.getWhatsappConnectionById(connectionIds[0]);
+          await this.fireDispatchWebhook(
+            campaign,
+            firstConn?.identification ?? "",
+            firstConn?.phoneNumber ?? null,
+          );
           console.log(`[BaileysCampaignScheduler] Campanha ${campaignId} concluída`);
           break;
         }
@@ -244,32 +294,66 @@ export class BaileysCampaignScheduler {
           }
         }
 
-        // Limite diário por conexão (aquecimento de chip novo): soma todos os disparos
-        // desta conexão. Quando setado e atingido, pausa a iteração até o próximo dia.
-        const warmupLimit = (connection as { warmupDailyLimit?: number | null }).warmupDailyLimit;
-        if (typeof warmupLimit === "number" && warmupLimit > 0) {
-          const sentTodayByConnection = await db.countBaileysSentTodayForConnection(
-            campaign.connectionId,
-          );
-          if (sentTodayByConnection >= warmupLimit) {
-            const notifyKey = -campaign.connectionId; // chave negativa para distinguir do per-campaign
+        // Round-robin: escolhe a próxima conexão saudável.
+        const { pick, warmupExhaustedCount } = await this.pickNextConnection(
+          campaignId,
+          connectionIds,
+          unhealthyConnections,
+        );
+
+        if (!pick) {
+          // Nenhuma conexão disponível. Decide o motivo:
+          //   - Mistura/totalidade de unhealthy (com ao menos UMA backend-down)
+          //     → pausa a campanha (usuário precisa reconectar).
+          //   - Só warmup saturado → idle, sai do loop, próximo tick reavalia.
+          // Sem o termo "unhealthy + warmup esgotados == total" a campanha
+          // ficaria em loop infinito de retry no próximo tick (unhealthy reset).
+          const totalUnavailable = unhealthyConnections.size + warmupExhaustedCount;
+          if (
+            totalUnavailable === connectionIds.length &&
+            unhealthyConnections.size > 0 &&
+            lastBackendDownMessage
+          ) {
+            await db.updateBaileysCampaignRecipient(nextRecipient.id, {
+              status: "failed",
+              errorMessage: lastBackendDownMessage.slice(0, 1000),
+            });
+            await this.refreshCounters(campaignId);
+            await db.updateBaileysCampaign(campaignId, { status: "paused" });
+            console.warn(
+              `[BaileysCampaignScheduler] Campanha ${campaignId} pausada: todas as ${connectionIds.length} conexões indisponíveis (${unhealthyConnections.size} unhealthy + ${warmupExhaustedCount} warmup). Último erro: "${lastBackendDownMessage}". Reconecte em Conexões e clique em Retomar.`,
+            );
+            break;
+          }
+          if (warmupExhaustedCount > 0) {
+            const notifyKey = -campaignId;
             if (!this.dailyLimitNotified.has(notifyKey)) {
               console.log(
-                `[BaileysCampaignScheduler] Conexão ${connection.identification}: warmup diário (${warmupLimit}) atingido — disparo ${campaignId} aguarda até amanhã`,
+                `[BaileysCampaignScheduler] Campanha ${campaignId}: todas as conexões com warmup esgotado — aguarda próximo dia`,
               );
               this.dailyLimitNotified.add(notifyKey);
             }
-            break;
+          }
+          break;
+        }
+
+        // Priming do backend (uma vez por conexão por execução do loop).
+        if (!primedConnections.has(pick.id)) {
+          primedConnections.add(pick.id);
+          const priming = await ensureBackendConnection(pick.identification);
+          if (priming.reconnected) {
+            console.log(
+              `[BaileysCampaignScheduler] Conexão "${pick.identification}" reconectada — aguardando 35s para sync do WhatsApp antes do primeiro envio`,
+            );
+            await sleep(35000);
+          } else if (priming.connected) {
+            await sleep(5000);
           }
         }
 
-        // Nota: NÃO fazemos pre-flight health check aqui. Antes era feito um
-        // checkConnectionHealth(); se falhasse por qualquer motivo (timeout,
-        // URL errada, 401, ...), a campanha era pausada silenciosamente.
-        // Trocamos por "deixar o send ser o teste": se o backend disser que a
-        // conexão caiu (400/404 com mensagem específica), pausamos no catch
-        // abaixo, com o motivo real visível no errorMessage do destinatário.
-
+        // Nota: NÃO fazemos pre-flight health check. O backend reportará 400/404
+        // se a sessão caiu — tratado no catch abaixo (marca a conexão como
+        // unhealthy e tenta a próxima no round-robin).
         const recipient = nextRecipient as BaileysCampaignRecipient;
         const variants = parseMessageVariants(campaign.messageVariants);
         try {
@@ -278,7 +362,7 @@ export class BaileysCampaignScheduler {
           }
           const { text, variantIndex } = renderMessage(variants, recipient);
           const result = await sendBaileysMessage(
-            connection.identification,
+            pick.identification,
             recipient.phoneNumber,
             text,
             {
@@ -292,6 +376,7 @@ export class BaileysCampaignScheduler {
             status: "sent",
             whatsappMessageId: result.messageId ?? null,
             sentVariantIndex: variantIndex,
+            sentFromConnectionId: pick.id,
             sentAt: new Date(),
             errorMessage: null,
           });
@@ -308,40 +393,27 @@ export class BaileysCampaignScheduler {
             const ra = errResp?.headers?.["retry-after"];
             const retrySec = ra ? Math.max(1, parseInt(ra, 10) || 60) : 60;
             console.warn(
-              `[BaileysCampaignScheduler] Backend respondeu 429 ao enviar para ${recipient.phoneNumber}; aguardando ${retrySec}s antes de retomar a campanha ${campaignId}`,
+              `[BaileysCampaignScheduler] Backend respondeu 429 (conn="${pick.identification}"); aguardando ${retrySec}s antes de retomar a campanha ${campaignId}`,
             );
             await sleep(retrySec * 1000);
-            continue; // não atualiza recipient, não roda refresh, não roda delay — re-tenta
+            continue; // re-tenta no próximo tick (mesmo recipient, próxima conexão via RR)
           }
 
-          // Conexão WhatsApp caída no backend (404 'não encontrada' ou 400
-          // 'não está ativa'): marca este destinatário como falho e PAUSA a
-          // campanha com o motivo real visível na UI. O usuário reconecta o
-          // WhatsApp e clica em Retomar.
-          const backendMsg = errMsg;
-          const isConnectionDown = isBackendConnectionMissingError(status, backendMsg);
+          // Conexão WhatsApp caída no backend (404/400): tenta UMA recuperação
+          // via sync/connect; se falhar, marca essa conexão como unhealthy e
+          // segue tentando o mesmo destinatário nas demais conexões.
+          const isConnectionDown = isBackendConnectionMissingError(status, errMsg);
           if (isConnectionDown) {
-            if (!connectionErrorRecoveryDone) {
-              connectionErrorRecoveryDone = true;
-              console.warn(
-                `[BaileysCampaignScheduler] Campanha ${campaignId}: "${backendMsg}" — tentando sync/reconnect...`,
-              );
-              const health = await ensureBackendConnection(connection.identification);
-              if (health.connected) {
-                continue;
-              }
-            }
-
-            await db.updateBaileysCampaignRecipient(recipient.id, {
-              status: "failed",
-              errorMessage: backendMsg.slice(0, 1000),
-            });
-            await this.refreshCounters(campaignId);
-            await db.updateBaileysCampaign(campaignId, { status: "paused" });
+            lastBackendDownMessage = errMsg;
             console.warn(
-              `[BaileysCampaignScheduler] Campanha ${campaignId} pausada: backend reportou "${backendMsg}". Reconecte o WhatsApp em Conexões e clique em Retomar.`,
+              `[BaileysCampaignScheduler] Campanha ${campaignId} conn="${pick.identification}": "${errMsg}" — tentando sync/reconnect...`,
             );
-            break;
+            const health = await ensureBackendConnection(pick.identification);
+            if (health.connected) {
+              continue; // mesma conexão recuperada — re-tenta o mesmo recipient
+            }
+            unhealthyConnections.add(pick.id);
+            continue; // mesmo recipient, próximo round-robin pula esta conexão
           }
 
           const userFacingError = isBaileysSendTimeoutError(errMsg)
@@ -351,9 +423,10 @@ export class BaileysCampaignScheduler {
           await db.updateBaileysCampaignRecipient(recipient.id, {
             status: "failed",
             errorMessage: userFacingError.slice(0, 1000),
+            sentFromConnectionId: pick.id,
           });
           console.error(
-            `[BaileysCampaignScheduler] Falha campanha=${campaignId} conexão="${connection.identification}" destino=${recipient.phoneNumber} HTTP=${status ?? "n/a"}:`,
+            `[BaileysCampaignScheduler] Falha campanha=${campaignId} conexão="${pick.identification}" destino=${recipient.phoneNumber} HTTP=${status ?? "n/a"}:`,
             errMsg,
             responseData != null ? { response: responseData } : "",
           );

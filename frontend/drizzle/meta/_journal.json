@@ -78,6 +78,13 @@
       "when": 1779487862606,
       "tag": "0010_curved_next_avengers",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "5",
+      "when": 1779931144556,
+      "tag": "0011_crazy_sugar_man",
+      "breakpoints": true
     }
   ]
 }

@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -130,7 +131,8 @@ export default function BaileysCampaignNew() {
   // Passo 1 — mensagem
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [connectionId, setConnectionId] = useState<number | null>(null);
+  // Multi-conexão: usuário seleciona N conexões; scheduler faz round-robin.
+  const [connectionIds, setConnectionIds] = useState<number[]>([]);
   const [variants, setVariants] = useState<string[]>([""]);
   // Mídia opcional (compartilhada por todos os destinatários)
   const [mediaType, setMediaType] = useState<"" | "image" | "document" | "audio">("");
@@ -203,7 +205,7 @@ export default function BaileysCampaignNew() {
   const mediaConfigured = mediaType !== "";
   const mediaValid = !mediaConfigured || mediaUrl.trim().length > 0;
   const canProceedStep1 =
-    connectionId !== null &&
+    connectionIds.length > 0 &&
     name.trim().length > 0 &&
     nonEmptyVariants.length >= 1 &&
     mediaValid;
@@ -212,7 +214,7 @@ export default function BaileysCampaignNew() {
 
   const handleCreate = async () => {
     if (!canProceedStep1) {
-      toast.error("Preencha a conexão, o nome e ao menos uma variação de mensagem");
+      toast.error("Selecione ao menos uma conexão, preencha o nome e uma variação de mensagem");
       return;
     }
     if (!canProceedStep2) {
@@ -241,7 +243,7 @@ export default function BaileysCampaignNew() {
     const recipientsToSend = finalRecipients;
     try {
       const created = await createMutation.mutateAsync({
-        connectionId: connectionId!,
+        connectionIds,
         name: name.trim(),
         description: description.trim() || undefined,
         messageVariants: nonEmptyVariants,
@@ -397,28 +399,61 @@ export default function BaileysCampaignNew() {
               </div>
 
               <div className="space-y-2">
-                <Label>Conexão WhatsApp *</Label>
-                <Select
-                  value={connectionId?.toString() ?? ""}
-                  onValueChange={(val) => setConnectionId(parseInt(val, 10))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione a conexão" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {connections.map((conn: ConnectionRow) => (
-                      <SelectItem key={conn.id} value={conn.id.toString()}>
-                        {conn.identification}
-                        {conn.phoneNumber ? ` (${conn.phoneNumber})` : ""}
-                        {conn.status === "connected" ? " — conectado" : " — desconectado"}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-gray-500">
-                  A conexão precisa estar conectada no momento do envio. Se cair, o disparo é
-                  pausado automaticamente e pode ser retomado depois.
-                </p>
+                <Label>
+                  Conexões WhatsApp * <span className="text-gray-500 font-normal">({connectionIds.length} selecionada{connectionIds.length === 1 ? "" : "s"})</span>
+                </Label>
+                <div className="border rounded-md divide-y max-h-72 overflow-y-auto">
+                  {connections.map((conn: ConnectionRow) => {
+                    const checked = connectionIds.includes(conn.id);
+                    return (
+                      <label
+                        key={conn.id}
+                        className="flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer"
+                      >
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={(val) => {
+                            setConnectionIds((prev) =>
+                              val
+                                ? Array.from(new Set([...prev, conn.id]))
+                                : prev.filter((id) => id !== conn.id),
+                            );
+                          }}
+                        />
+                        <div className="flex-1 text-sm">
+                          <div className="font-medium text-gray-900">
+                            {conn.identification}
+                            {conn.phoneNumber ? ` (${conn.phoneNumber})` : ""}
+                          </div>
+                          <div className={`text-xs ${conn.status === "connected" ? "text-green-600" : "text-gray-500"}`}>
+                            {conn.status === "connected" ? "conectado" : "desconectado"}
+                          </div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+                <div className="flex items-center justify-between text-xs text-gray-500">
+                  <p>
+                    O disparo distribui as mensagens em <strong>round-robin</strong> entre as conexões
+                    selecionadas. Conexões com warmup esgotado são puladas automaticamente.
+                  </p>
+                  {connections.length > 1 && (
+                    <button
+                      type="button"
+                      className="text-blue-600 hover:underline whitespace-nowrap ml-3"
+                      onClick={() =>
+                        setConnectionIds(
+                          connectionIds.length === connections.length
+                            ? []
+                            : connections.map((c: ConnectionRow) => c.id),
+                        )
+                      }
+                    >
+                      {connectionIds.length === connections.length ? "Limpar" : "Selecionar todas"}
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Editor de variações */}

@@ -12,6 +12,12 @@ import { notifyCampaignDispatched, renderTemplateBody } from "./whatsappBusiness
 import { ensureBackendConnection } from "./baileysCampaign/dispatcher";
 import { getChatWebhookConfig } from "./whatsappBusiness/chatWebhookConfig";
 import { ENV } from "./_core/env";
+import {
+  assignProxyToConnection,
+  releaseProxyFromConnection,
+  replaceDeadProxy,
+  syncFromWebshare,
+} from "./webshare/assignment";
 import { billingRouter } from "./routers/billing";
 import { adminRouter } from "./routers/admin";
 import type { BaileysCampaignRecipient, InsertBaileysCampaign } from "../drizzle/schema";
@@ -123,6 +129,24 @@ export const appRouter = router({
             status: "connecting"
           });
 
+          // Atribui proxy estático (Webshare) à conexão recém-criada. Sem
+          // WEBSHARE_API_KEY, vira no-op e a sessão sobe sem proxy.
+          const created = await db.getWhatsappConnectionByIdentification(input.identification);
+          let assignedProxy: { host: string; port: number; username: string; password: string } | null = null;
+          if (created) {
+            try {
+              const proxy = await assignProxyToConnection(created.id);
+              if (proxy) {
+                assignedProxy = {
+                  host: proxy.host, port: proxy.port,
+                  username: proxy.username, password: proxy.password,
+                };
+              }
+            } catch (proxyError: any) {
+              console.error('[whatsapp.create] Atribuição de proxy falhou (segue sem proxy):', proxyError.message);
+            }
+          }
+
           const apiToken = process.env.BACKEND_API_TOKEN;
           if (!apiToken) throw new Error('BACKEND_API_TOKEN não configurado');
 
@@ -137,13 +161,16 @@ export const appRouter = router({
             console.warn('[whatsapp.create] Token cache sync failed (non-critical):', syncError.message);
           }
 
-          // Criar conexão Baileys no backend Docker
+          // Criar conexão Baileys no backend Docker. O proxy (se atribuído) é
+          // enviado no body — backend instancia HttpsProxyAgent e memoriza para
+          // sobreviver a reconexões automáticas.
           try {
-            console.log('[whatsapp.create] Creating Baileys connection in backend');
-            await axios.post(`${BACKEND_API_URL}/connections/${input.identification}/connect`, {}, {
-              headers: { 'x-auth-api': apiToken },
-              timeout: 10000
-            });
+            console.log('[whatsapp.create] Creating Baileys connection in backend', assignedProxy ? '(com proxy)' : '(sem proxy)');
+            await axios.post(
+              `${BACKEND_API_URL}/connections/${input.identification}/connect`,
+              assignedProxy ? { proxy: assignedProxy } : {},
+              { headers: { 'x-auth-api': apiToken }, timeout: 10000 },
+            );
             console.log('[whatsapp.create] Baileys connection created successfully');
           } catch (backendError: any) {
             console.error('[whatsapp.create] Backend connection creation failed:', backendError.message);
@@ -275,6 +302,12 @@ export const appRouter = router({
       }
     }),
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
+      // Devolve o proxy ao pool antes de excluir a conexão.
+      try {
+        await releaseProxyFromConnection(input.id);
+      } catch (err: any) {
+        console.error('[whatsapp.delete] releaseProxyFromConnection falhou:', err.message);
+      }
       await db.deleteWhatsappConnection(input.id);
       return { success: true };
     }),
@@ -1747,13 +1780,15 @@ export const appRouter = router({
         const isOwner = campaign.userId === ctx.user.id;
         const isMember = await db.isMemberOfOwner(campaign.userId, ctx.user.id);
         if (!isOwner && !isMember) throw new Error("Campanha não encontrada");
-        return { ...campaign, isOwner };
+        const connectionIds = await db.getBaileysCampaignConnectionIds(input.id);
+        return { ...campaign, isOwner, connectionIds };
       }),
 
-    // Cria uma campanha Baileys
+    // Cria uma campanha Baileys (multi-conexão: round-robin entre N conexões)
     create: protectedProcedure
       .input(z.object({
-        connectionId: z.number(),
+        // Conexões WhatsApp que farão o disparo (round-robin). Mínimo 1.
+        connectionIds: z.array(z.number()).min(1),
         name: z.string().min(1),
         description: z.string().optional(),
         // 1 a 5 variações de texto da mensagem (anti-ban)
@@ -1772,10 +1807,14 @@ export const appRouter = router({
         mediaMimeType: z.string().max(100).optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        // Verifica se a conexão Baileys pertence ao usuário
-        const connection = await db.getWhatsappConnectionById(input.connectionId);
-        if (!connection || connection.userId !== ctx.user.id) {
-          throw new Error("Conexão WhatsApp não encontrada");
+        // Verifica que TODAS as conexões pertencem ao usuário.
+        const uniqueIds = Array.from(new Set(input.connectionIds));
+        const connections = await Promise.all(uniqueIds.map((id) => db.getWhatsappConnectionById(id)));
+        for (let i = 0; i < uniqueIds.length; i++) {
+          const c = connections[i];
+          if (!c || c.userId !== ctx.user.id) {
+            throw new Error(`Conexão WhatsApp ${uniqueIds[i]} não encontrada`);
+          }
         }
 
         if (input.maxDelaySeconds < input.minDelaySeconds) {
@@ -1787,7 +1826,9 @@ export const appRouter = router({
 
         const id = await db.createBaileysCampaign({
           userId: ctx.user.id,
-          connectionId: input.connectionId,
+          // Coluna legada: salva a primeira conexão para retrocompat de leitura
+          // por código antigo. A fonte da verdade é `baileys_campaign_connections`.
+          connectionId: uniqueIds[0],
           name: input.name,
           description: input.description,
           messageVariants: JSON.stringify(input.messageVariants),
@@ -1805,6 +1846,8 @@ export const appRouter = router({
           mediaMimeType: input.mediaMimeType,
         });
 
+        await db.setBaileysCampaignConnections(id, uniqueIds);
+
         return { success: true, id };
       }),
 
@@ -1819,6 +1862,8 @@ export const appRouter = router({
         minDelaySeconds: z.number().min(1).max(3600).optional(),
         maxDelaySeconds: z.number().min(1).max(3600).optional(),
         dailyLimit: z.number().min(1).max(100000).optional(),
+        // Quando presente, substitui o conjunto de conexões round-robin.
+        connectionIds: z.array(z.number()).min(1).optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         const campaign = await db.getBaileysCampaignById(input.id);
@@ -1835,6 +1880,17 @@ export const appRouter = router({
           throw new Error("O delay máximo deve ser maior ou igual ao mínimo");
         }
 
+        if (input.connectionIds) {
+          const uniqueIds = Array.from(new Set(input.connectionIds));
+          for (const cid of uniqueIds) {
+            const c = await db.getWhatsappConnectionById(cid);
+            if (!c || c.userId !== ctx.user.id) {
+              throw new Error(`Conexão WhatsApp ${cid} não encontrada`);
+            }
+          }
+          await db.setBaileysCampaignConnections(input.id, uniqueIds);
+        }
+
         const updateData: Partial<InsertBaileysCampaign> = {};
         if (input.name !== undefined) updateData.name = input.name;
         if (input.description !== undefined) updateData.description = input.description;
@@ -1846,8 +1902,13 @@ export const appRouter = router({
           updateData.scheduledAt = new Date(input.scheduledAt);
           updateData.status = "scheduled";
         }
+        if (input.connectionIds && input.connectionIds.length > 0) {
+          updateData.connectionId = input.connectionIds[0];
+        }
 
-        await db.updateBaileysCampaign(input.id, updateData);
+        if (Object.keys(updateData).length > 0) {
+          await db.updateBaileysCampaign(input.id, updateData);
+        }
         return { success: true };
       }),
 
@@ -1957,7 +2018,9 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    // Inicia a campanha — apenas marca o status; o envio é feito pelo scheduler
+    // Inicia a campanha — apenas marca o status; o envio é feito pelo scheduler.
+    // Valida que PELO MENOS UMA das conexões está saudável; se todas estiverem
+    // caídas, recusa o start com a lista das conexões com problema.
     start: protectedProcedure
       .input(z.object({ campaignId: z.number() }))
       .mutation(async ({ ctx, input }) => {
@@ -1973,14 +2036,24 @@ export const appRouter = router({
         if (counts.pending === 0) {
           throw new Error("Nenhum destinatário pendente na campanha");
         }
-        const connection = await db.getWhatsappConnectionById(campaign.connectionId);
-        if (!connection) throw new Error("Conexão WhatsApp não encontrada");
 
-        const health = await ensureBackendConnection(connection.identification);
-        if (!health.connected) {
+        const connectionIds = await db.getBaileysCampaignConnectionIds(input.campaignId);
+        if (connectionIds.length === 0) {
+          throw new Error("Campanha sem conexões atribuídas");
+        }
+
+        // Tenta priming em paralelo. Sucesso se ao menos uma estiver saudável.
+        const checks = await Promise.all(connectionIds.map(async (cid) => {
+          const c = await db.getWhatsappConnectionById(cid);
+          if (!c) return { id: cid, identification: `#${cid}`, ok: false };
+          const health = await ensureBackendConnection(c.identification);
+          return { id: cid, identification: c.identification, ok: health.connected };
+        }));
+        const healthy = checks.filter((c) => c.ok);
+        if (healthy.length === 0) {
+          const names = checks.map((c) => c.identification).join(", ");
           throw new Error(
-            `WhatsApp "${connection.identification}" não está ativo no servidor de envio. ` +
-              "Abra Conexões, verifique o QR Code e tente novamente.",
+            `Nenhuma conexão WhatsApp ativa (${names}). Abra Conexões, verifique o QR Code e tente novamente.`,
           );
         }
 
@@ -1989,7 +2062,7 @@ export const appRouter = router({
           startedAt: campaign.startedAt ?? new Date(),
           completedAt: null,
         });
-        return { success: true, pending: counts.pending };
+        return { success: true, pending: counts.pending, activeConnections: healthy.length };
       }),
 
     // Pausa uma campanha em execução
@@ -2007,7 +2080,7 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    // Retoma uma campanha pausada
+    // Retoma uma campanha pausada (multi-conexão: ao menos uma deve estar ativa)
     resume: protectedProcedure
       .input(z.object({ campaignId: z.number() }))
       .mutation(async ({ ctx, input }) => {
@@ -2023,19 +2096,28 @@ export const appRouter = router({
         if (!next) {
           throw new Error("Nenhum destinatário pendente para retomar");
         }
-        const connection = await db.getWhatsappConnectionById(campaign.connectionId);
-        if (!connection) throw new Error("Conexão WhatsApp não encontrada");
 
-        const health = await ensureBackendConnection(connection.identification);
-        if (!health.connected) {
+        const connectionIds = await db.getBaileysCampaignConnectionIds(input.campaignId);
+        if (connectionIds.length === 0) {
+          throw new Error("Campanha sem conexões atribuídas");
+        }
+
+        const checks = await Promise.all(connectionIds.map(async (cid) => {
+          const c = await db.getWhatsappConnectionById(cid);
+          if (!c) return { identification: `#${cid}`, ok: false };
+          const health = await ensureBackendConnection(c.identification);
+          return { identification: c.identification, ok: health.connected };
+        }));
+        const healthy = checks.filter((c) => c.ok);
+        if (healthy.length === 0) {
+          const names = checks.map((c) => c.identification).join(", ");
           throw new Error(
-            `WhatsApp "${connection.identification}" não está ativo no servidor de envio. ` +
-              "Reconecte em Conexões antes de retomar o disparo.",
+            `Nenhuma conexão WhatsApp ativa (${names}). Reconecte em Conexões antes de retomar o disparo.`,
           );
         }
 
         await db.updateBaileysCampaign(input.campaignId, { status: "running" });
-        return { success: true };
+        return { success: true, activeConnections: healthy.length };
       }),
 
     // Estatísticas de envio (dono ou membro convidado)
@@ -2102,6 +2184,69 @@ export const appRouter = router({
         const { campaignId, ...settings } = input;
         await db.updateBaileysCampaign(campaignId, settings);
         return { success: true };
+      }),
+  }),
+
+  // =====================================================
+  // Webshare proxies (Webshare.io) — gestão de IPs de saída por conexão Baileys
+  // =====================================================
+  webshareProxies: router({
+    // Lista todos os proxies (status, país, atribuição). Restrito a admin.
+    list: protectedProcedure.query(async ({ ctx }) => {
+      if (ctx.user.role !== "admin") {
+        throw new Error("Apenas administradores podem listar proxies");
+      }
+      return await db.listWebshareProxies();
+    }),
+
+    // Importa proxies da conta Webshare (chama API com WEBSHARE_API_KEY).
+    sync: protectedProcedure.mutation(async ({ ctx }) => {
+      if (ctx.user.role !== "admin") {
+        throw new Error("Apenas administradores podem sincronizar proxies");
+      }
+      const result = await syncFromWebshare();
+      if (!result) {
+        throw new Error("WEBSHARE_API_KEY não configurada");
+      }
+      return { success: true, ...result };
+    }),
+
+    // Substitui o proxy de uma conexão por outro do mesmo país (recovery manual).
+    replaceForConnection: protectedProcedure
+      .input(z.object({ connectionId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const conn = await db.getWhatsappConnectionById(input.connectionId);
+        if (!conn || conn.userId !== ctx.user.id) {
+          throw new Error("Conexão não encontrada");
+        }
+        const replacement = await replaceDeadProxy(input.connectionId);
+        if (!replacement) {
+          throw new Error("Sem proxy substituto disponível no mesmo país");
+        }
+        return {
+          success: true,
+          proxy: { host: replacement.host, port: replacement.port, countryCode: replacement.countryCode },
+        };
+      }),
+
+    // Proxy atribuído à conexão (info para a UI exibir "país" / IP atual).
+    getForConnection: protectedProcedure
+      .input(z.object({ connectionId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const conn = await db.getWhatsappConnectionById(input.connectionId);
+        if (!conn || conn.userId !== ctx.user.id) {
+          throw new Error("Conexão não encontrada");
+        }
+        const proxy = await db.getWebshareProxyForConnection(input.connectionId);
+        if (!proxy) return null;
+        // Não devolve credenciais (username/password) para o cliente.
+        return {
+          id: proxy.id,
+          host: proxy.host,
+          port: proxy.port,
+          countryCode: proxy.countryCode,
+          status: proxy.status,
+        };
       }),
   }),
 
