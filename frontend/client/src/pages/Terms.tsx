@@ -8,18 +8,16 @@ export default function Terms() {
       {/* Header */}
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <Link href="/">
-            <a className="flex items-center gap-2">
-              <MessageSquare className="h-8 w-8 text-primary" />
-              <span className="text-xl font-bold">Mensageria</span>
-            </a>
+          <Link href="/" className="flex items-center gap-2">
+            <MessageSquare className="h-8 w-8 text-primary" />
+            <span className="text-xl font-bold">Mensageria</span>
           </Link>
-          <Link href="/">
-            <Button variant="ghost">
+          <Button variant="ghost" asChild>
+            <Link href="/">
               <ArrowLeft className="h-4 w-4 mr-2" />
               Voltar
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
       </header>
 
@@ -124,8 +122,8 @@ export default function Terms() {
           <h2>9. Privacidade</h2>
           <p>
             Sua privacidade é importante para nós. Consulte nossa{" "}
-            <Link href="/privacy">
-              <a className="text-primary hover:underline">Política de Privacidade</a>
+            <Link href="/privacy" className="text-primary hover:underline">
+              Política de Privacidade
             </Link>{" "}
             para entender como coletamos e usamos seus dados.
           </p>
@@ -157,8 +155,13 @@ export default function Terms() {
 
           <h2>13. Contato</h2>
           <p>
-            Para dúvidas sobre estes Termos, entre em contato através do email:
-            suporte@exemplo.com
+            Para dúvidas sobre estes Termos, entre em contato através do email:{" "}
+            <a
+              href="mailto:contato@bluelabs.digital"
+              className="text-primary hover:underline"
+            >
+              contato@bluelabs.digital
+            </a>
           </p>
         </div>
       </main>

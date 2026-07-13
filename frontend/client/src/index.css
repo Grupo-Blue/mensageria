@@ -120,7 +120,17 @@
   *::after {
     @apply border-border;
   }
-  
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+  }
+
   *:focus-visible {
     @apply outline-ring/50;
   }
