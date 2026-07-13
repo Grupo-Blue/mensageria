@@ -8,18 +8,16 @@ export default function Privacy() {
       {/* Header */}
       <header className="border-b bg-background/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <Link href="/">
-            <a className="flex items-center gap-2">
-              <MessageSquare className="h-8 w-8 text-primary" />
-              <span className="text-xl font-bold">Mensageria</span>
-            </a>
+          <Link href="/" className="flex items-center gap-2">
+            <MessageSquare className="h-8 w-8 text-primary" />
+            <span className="text-xl font-bold">Mensageria</span>
           </Link>
-          <Link href="/">
-            <Button variant="ghost">
+          <Button variant="ghost" asChild>
+            <Link href="/">
               <ArrowLeft className="h-4 w-4 mr-2" />
               Voltar
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
       </header>
 
@@ -166,8 +164,13 @@ export default function Privacy() {
             </li>
           </ul>
           <p>
-            Para exercer esses direitos, entre em contato pelo email:
-            privacidade@exemplo.com
+            Para exercer esses direitos, entre em contato pelo email:{" "}
+            <a
+              href="mailto:contato@bluelabs.digital"
+              className="text-primary hover:underline"
+            >
+              contato@bluelabs.digital
+            </a>
           </p>
 
           <h2>7. Cookies e Tecnologias Similares</h2>
@@ -207,10 +210,22 @@ export default function Privacy() {
           <p>Para questões sobre privacidade, contate:</p>
           <ul>
             <li>
-              <strong>Email:</strong> privacidade@exemplo.com
+              <strong>Email:</strong>{" "}
+              <a
+                href="mailto:contato@bluelabs.digital"
+                className="text-primary hover:underline"
+              >
+                contato@bluelabs.digital
+              </a>
             </li>
             <li>
-              <strong>Encarregado de Dados (DPO):</strong> dpo@exemplo.com
+              <strong>Encarregado de Dados (DPO):</strong>{" "}
+              <a
+                href="mailto:contato@bluelabs.digital"
+                className="text-primary hover:underline"
+              >
+                contato@bluelabs.digital
+              </a>
             </li>
           </ul>
 

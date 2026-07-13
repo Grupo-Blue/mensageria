@@ -91,29 +91,29 @@ export default function Landing() {
             <span className="text-xl font-bold">Mensageria</span>
           </div>
           <nav className="hidden md:flex items-center gap-6">
-            <a href="#features" className="text-sm hover:text-primary">
+            <a href="#features" className="text-sm hover:text-primary transition-colors">
               Recursos
             </a>
-            <a href="#pricing" className="text-sm hover:text-primary">
+            <a href="#pricing" className="text-sm hover:text-primary transition-colors">
               Preços
             </a>
-            <Link href="/terms">
-              <a className="text-sm hover:text-primary">Termos</a>
+            <Link href="/terms" className="text-sm hover:text-primary transition-colors">
+              Termos
             </Link>
           </nav>
           <div className="flex items-center gap-4">
             {user ? (
-              <Link href="/dashboard">
-                <Button>Acessar Painel</Button>
-              </Link>
+              <Button asChild>
+                <Link href="/dashboard">Acessar Painel</Link>
+              </Button>
             ) : (
               <>
-                <Link href="/dashboard">
-                  <Button variant="ghost">Entrar</Button>
-                </Link>
-                <Link href="/dashboard">
-                  <Button>Começar Grátis</Button>
-                </Link>
+                <Button variant="ghost" asChild>
+                  <Link href="/dashboard">Entrar</Link>
+                </Button>
+                <Button asChild>
+                  <Link href="/dashboard">Começar Grátis</Link>
+                </Button>
               </>
             )}
           </div>
@@ -130,7 +130,7 @@ export default function Landing() {
           <Badge variant="secondary" className="mb-4">
             API de WhatsApp Multitenant
           </Badge>
-          <h1 className="text-4xl md:text-6xl font-bold mb-6 bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+          <h1 className="text-4xl md:text-6xl font-bold mb-6 bg-gradient-to-r from-primary to-purple-700 bg-clip-text text-transparent">
             Automatize seu WhatsApp
             <br />
             de forma profissional
@@ -141,17 +141,15 @@ export default function Landing() {
             todos os tamanhos.
           </p>
           <div className="flex items-center justify-center gap-4">
-            <Link href="/dashboard">
-              <Button size="lg" className="gap-2">
+            <Button size="lg" className="gap-2" asChild>
+              <Link href="/dashboard">
                 Começar Gratuitamente
                 <ArrowRight className="h-4 w-4" />
-              </Button>
-            </Link>
-            <Link href="#pricing">
-              <Button size="lg" variant="outline">
-                Ver Preços
-              </Button>
-            </Link>
+              </Link>
+            </Button>
+            <Button size="lg" variant="outline" asChild>
+              <a href="#pricing">Ver Preços</a>
+            </Button>
           </div>
         </motion.div>
       </section>
@@ -302,23 +300,24 @@ export default function Landing() {
                         className="w-full"
                         variant="outline"
                         onClick={() => {
-                          window.location.href = `mailto:comercial@exemplo.com?subject=Interesse no Plano Enterprise`;
+                          window.location.href = `mailto:contato@bluelabs.digital?subject=Interesse no Plano Enterprise`;
                         }}
                       >
                         <Mail className="h-4 w-4 mr-2" />
                         Fale Conosco
                       </Button>
                     ) : (
-                      <Link href={user ? "/billing" : "/dashboard"}>
-                        <Button
-                          className="w-full"
-                          variant={plan.slug === "pro" ? "default" : "outline"}
-                        >
+                      <Button
+                        className="w-full"
+                        variant={plan.slug === "pro" ? "default" : "outline"}
+                        asChild
+                      >
+                        <Link href={user ? "/billing" : "/dashboard"}>
                           {plan.priceMonthly === 0
                             ? "Começar Grátis"
                             : "Assinar Agora"}
-                        </Button>
-                      </Link>
+                        </Link>
+                      </Button>
                     )}
                   </CardContent>
                 </Card>
@@ -330,7 +329,7 @@ export default function Landing() {
 
       {/* CTA */}
       <section className="container mx-auto px-4 py-20">
-        <Card className="bg-gradient-to-r from-primary to-purple-600 text-white border-0">
+        <Card className="bg-gradient-to-r from-primary to-purple-700 text-white border-0">
           <CardContent className="py-12 text-center">
             <h2 className="text-3xl font-bold mb-4">
               Pronto para começar?
@@ -339,12 +338,12 @@ export default function Landing() {
               Crie sua conta gratuita e comece a automatizar suas mensagens de
               WhatsApp em minutos.
             </p>
-            <Link href="/dashboard">
-              <Button size="lg" variant="secondary" className="gap-2">
+            <Button size="lg" variant="secondary" className="gap-2" asChild>
+              <Link href="/dashboard">
                 Criar Conta Grátis
                 <ArrowRight className="h-4 w-4" />
-              </Button>
-            </Link>
+              </Link>
+            </Button>
           </CardContent>
         </Card>
       </section>
@@ -366,19 +365,14 @@ export default function Landing() {
               <h4 className="font-semibold mb-4">Produto</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li>
-                  <a href="#features" className="hover:text-primary">
+                  <a href="#features" className="hover:text-primary transition-colors">
                     Recursos
                   </a>
                 </li>
                 <li>
-                  <a href="#pricing" className="hover:text-primary">
+                  <a href="#pricing" className="hover:text-primary transition-colors">
                     Preços
                   </a>
-                </li>
-                <li>
-                  <Link href="/api">
-                    <a className="hover:text-primary">Documentação API</a>
-                  </Link>
                 </li>
               </ul>
             </div>
@@ -386,13 +380,13 @@ export default function Landing() {
               <h4 className="font-semibold mb-4">Legal</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
                 <li>
-                  <Link href="/terms">
-                    <a className="hover:text-primary">Termos de Serviço</a>
+                  <Link href="/terms" className="hover:text-primary transition-colors">
+                    Termos de Serviço
                   </Link>
                 </li>
                 <li>
-                  <Link href="/privacy">
-                    <a className="hover:text-primary">Política de Privacidade</a>
+                  <Link href="/privacy" className="hover:text-primary transition-colors">
+                    Política de Privacidade
                   </Link>
                 </li>
               </ul>
@@ -400,7 +394,14 @@ export default function Landing() {
             <div>
               <h4 className="font-semibold mb-4">Contato</h4>
               <ul className="space-y-2 text-sm text-muted-foreground">
-                <li>suporte@exemplo.com</li>
+                <li>
+                  <a
+                    href="mailto:contato@bluelabs.digital"
+                    className="hover:text-primary transition-colors"
+                  >
+                    contato@bluelabs.digital
+                  </a>
+                </li>
               </ul>
             </div>
           </div>

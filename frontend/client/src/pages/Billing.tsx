@@ -283,7 +283,7 @@ export default function Billing() {
                             className="w-full"
                             variant="outline"
                             onClick={() => {
-                              window.location.href = `mailto:comercial@exemplo.com?subject=Interesse no Plano Enterprise`;
+                              window.location.href = `mailto:contato@bluelabs.digital?subject=Interesse no Plano Enterprise`;
                             }}
                           >
                             <Mail className="h-4 w-4 mr-2" />
