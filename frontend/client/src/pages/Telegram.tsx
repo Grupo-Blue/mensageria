@@ -1,3 +1,7 @@
+// Implementação futura: o Telegram não faz parte da UI atual — esta página não está
+// registrada em App.tsx nem no menu. O suporte no servidor (router tRPC `telegram`,
+// tabela `telegram_connections`) e no backend (services/Telegram) segue disponível;
+// para reativar, basta registrar a rota `/telegram` e o item de menu novamente.
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";

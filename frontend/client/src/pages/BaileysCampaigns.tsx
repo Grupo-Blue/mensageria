@@ -1,4 +1,3 @@
-import DashboardLayout from "@/components/DashboardLayout";
 import ContactListsManager from "@/components/ContactListsManager";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -121,28 +120,18 @@ export default function BaileysCampaigns() {
 
   if (isLoading) {
     return (
-      <DashboardLayout>
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-        </div>
-      </DashboardLayout>
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+      </div>
     );
   }
 
   const hasConnections = connections && connections.length > 0;
 
   return (
-    <DashboardLayout>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex justify-between items-start">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Disparos WhatsApp</h1>
-            <p className="text-gray-600 mt-2">
-              Envie mensagens em massa pelo WhatsApp conectado via QR Code, com variações de
-              texto e intervalos aleatórios para reduzir o risco de banimento.
-            </p>
-          </div>
+    <div className="space-y-6">
+        {/* Barra de ações — o título da página é do shell (Disparo via WhatsApp). */}
+        <div className="flex justify-end items-start">
           {hasConnections ? (
             <Button asChild>
               <Link href="/disparos/new">
@@ -392,7 +381,6 @@ export default function BaileysCampaigns() {
             </CardContent>
           </Card>
         )}
-      </div>
-    </DashboardLayout>
+    </div>
   );
 }

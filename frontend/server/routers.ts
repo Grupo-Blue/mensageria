@@ -20,6 +20,7 @@ import {
 } from "./webshare/assignment";
 import { billingRouter } from "./routers/billing";
 import { adminRouter } from "./routers/admin";
+import { dashboardRouter } from "./routers/dashboard";
 import type { BaileysCampaignRecipient, InsertBaileysCampaign } from "../drizzle/schema";
 
 // Special marker for variables that should use recipient name
@@ -53,6 +54,7 @@ export const appRouter = router({
   system: systemRouter,
   billing: billingRouter,
   admin: adminRouter,
+  dashboard: dashboardRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
     logout: publicProcedure.mutation(async ({ ctx }) => {
@@ -387,7 +389,7 @@ export const appRouter = router({
       }
     }),
     sendMessage: protectedProcedure.input(z.object({ connectionId: z.number(), identification: z.string(), recipient: z.string(), message: z.string() })).mutation(async ({ ctx, input }) => {
-      await db.createMessage({ userId: ctx.user.id, platform: "whatsapp", connectionId: input.connectionId, recipient: input.recipient, content: input.message, status: "pending" });
+      const messageId = await db.createMessage({ userId: ctx.user.id, platform: "whatsapp", connectionId: input.connectionId, recipient: input.recipient, content: input.message, status: "pending" });
       try {
         const apiToken = process.env.BACKEND_API_TOKEN;
         if (!apiToken) throw new Error('BACKEND_API_TOKEN não configurado no servidor');
@@ -398,22 +400,28 @@ export const appRouter = router({
           { phone: input.recipient, message: input.message },
           { headers: { 'x-auth-api': apiToken }, timeout: 30000 }
         );
+        // Sem isto a mensagem ficaria "pending" para sempre e nunca entraria no histórico.
+        await db.updateMessageStatus(messageId, "sent");
         return { success: true };
       } catch (error: any) {
         console.error('[whatsapp.sendMessage] Erro:', error.code, error.message, error.response?.status, error.response?.data);
-        if (error.code === 'ECONNREFUSED') {
-          throw new Error(`Backend não acessível em ${BACKEND_API_URL}. Verifique se o backend Docker está rodando.`);
-        }
-        if (error.code === 'ETIMEDOUT' || error.code === 'ECONNABORTED') {
-          throw new Error('Timeout ao conectar com o backend. Verifique a conexão.');
-        }
-        if (error.response?.status === 401) {
-          throw new Error('Acesso negado pelo backend. Verifique BACKEND_API_TOKEN.');
-        }
-        throw new Error(error.response?.data?.message || error.response?.data?.error || error.message || "Erro ao enviar mensagem");
+
+        const userFacingError =
+          error.code === 'ECONNREFUSED'
+            ? `Backend não acessível em ${BACKEND_API_URL}. Verifique se o backend Docker está rodando.`
+            : error.code === 'ETIMEDOUT' || error.code === 'ECONNABORTED'
+              ? 'Timeout ao conectar com o backend. Verifique a conexão.'
+              : error.response?.status === 401
+                ? 'Acesso negado pelo backend. Verifique BACKEND_API_TOKEN.'
+                : error.response?.data?.message || error.response?.data?.error || error.message || "Erro ao enviar mensagem";
+
+        await db.updateMessageStatus(messageId, "failed", String(userFacingError).slice(0, 1000));
+        throw new Error(userFacingError);
       }
     }),
   }),
+  // Implementação futura: o Telegram foi retirado da UI (nenhuma página o consome hoje).
+  // As procedures abaixo continuam funcionais para quando o canal for reativado.
   telegram: router({
     list: protectedProcedure.query(async ({ ctx }) => {
       return await db.getTelegramConnections(ctx.user.id);
@@ -460,9 +468,6 @@ export const appRouter = router({
   messages: router({
     list: protectedProcedure.input(z.object({ limit: z.number().optional().default(50) })).query(async ({ ctx, input }) => {
       return await db.getMessages(ctx.user.id, input.limit);
-    }),
-    stats: protectedProcedure.query(async ({ ctx }) => {
-      return await db.getDashboardStats(ctx.user.id);
     }),
   }),
   webhook: router({
@@ -855,6 +860,37 @@ export const appRouter = router({
           ...t,
           components: JSON.parse(t.components),
         }));
+      }),
+
+    // Apelido e descrição locais do template. A Meta exige nomes técnicos; isto dá ao
+    // usuário um nome que ele reconheça, sem alterar nada do lado da Meta.
+    updateTemplateAlias: protectedProcedure
+      .input(z.object({
+        templateId: z.number(),
+        alias: z.string().max(120).nullable(),
+        description: z.string().max(500).nullable(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        // O template pertence a uma conta, que pertence a um usuário — a autorização
+        // precisa percorrer essa cadeia, senão qualquer um renomeia template alheio.
+        const template = await db.getWhatsappTemplateById(input.templateId);
+        if (!template) throw new Error("Template não encontrado");
+
+        const account = await db.getWhatsappBusinessAccountById(template.businessAccountId);
+        if (!account || account.userId !== ctx.user.id) {
+          throw new Error("Template não encontrado");
+        }
+
+        const trim = (value: string | null) => {
+          const trimmed = value?.trim() ?? "";
+          return trimmed.length > 0 ? trimmed : null;
+        };
+
+        await db.updateWhatsappTemplateAlias(input.templateId, {
+          alias: trim(input.alias),
+          description: trim(input.description),
+        });
+        return { success: true };
       }),
 
     // Test sending a message
@@ -1282,7 +1318,14 @@ export const appRouter = router({
     // List all campaigns for the user (own + from accounts that invited them)
     list: protectedProcedure.query(async ({ ctx }) => {
       const list = await db.getCampaignsVisibleToUser(ctx.user.id);
-      return list.map((c) => ({ ...c, isOwner: c.userId === ctx.user.id }));
+      // A campanha guarda o nome técnico da Meta; anexa o apelido para a tela não voltar a
+      // mostrar "comercial_follow_up_7" depois que o usuário deu um nome ao template.
+      const aliases = await db.getTemplateAliasesForCampaigns(list);
+      return list.map((c) => ({
+        ...c,
+        isOwner: c.userId === ctx.user.id,
+        templateAlias: aliases.get(`${c.businessAccountId}:${c.templateName}`) ?? null,
+      }));
     }),
 
     // Get a specific campaign by ID (owner or invited member)
@@ -1294,7 +1337,11 @@ export const appRouter = router({
         const isOwner = campaign.userId === ctx.user.id;
         const isMember = await db.isMemberOfOwner(campaign.userId, ctx.user.id);
         if (!isOwner && !isMember) throw new Error("Campanha não encontrada");
-        return campaign;
+        const aliases = await db.getTemplateAliasesForCampaigns([campaign]);
+        return {
+          ...campaign,
+          templateAlias: aliases.get(`${campaign.businessAccountId}:${campaign.templateName}`) ?? null,
+        };
       }),
 
     // Create a new campaign
@@ -1524,6 +1571,8 @@ export const appRouter = router({
             await db.updateCampaignRecipient(recipient.id, {
               status: "failed",
               errorMessage: "Contato na blacklist (opt-out)",
+              // Momento da tentativa: sem isso a falha não entra na série diária do dashboard.
+              sentAt: new Date(),
             });
             skippedBlacklisted++;
             failedCount++;
@@ -1581,6 +1630,8 @@ export const appRouter = router({
             await db.updateCampaignRecipient(recipient.id, {
               status: "failed",
               errorMessage: error.message,
+              // Momento da tentativa: sem isso a falha não entra na série diária do dashboard.
+              sentAt: new Date(),
             });
             failedCount++;
           }

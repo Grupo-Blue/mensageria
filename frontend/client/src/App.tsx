@@ -5,18 +5,15 @@ import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
-import WhatsApp from "./pages/WhatsApp";
-import WhatsAppBusiness from "./pages/WhatsAppBusiness";
-import Telegram from "./pages/Telegram";
+import DisparoWhatsApp from "./pages/DisparoWhatsApp";
+import DisparoApiOficial from "./pages/DisparoApiOficial";
 import SendMessage from "./pages/SendMessage";
 import Settings from "./pages/Settings";
 import API from "./pages/API";
 import WebhookConfig from "./pages/WebhookConfig";
 import ConnectionSettings from "./pages/ConnectionSettings";
-import Campaigns from "./pages/Campaigns";
 import CampaignNew from "./pages/CampaignNew";
 import CampaignDetail from "./pages/CampaignDetail";
-import BaileysCampaigns from "./pages/BaileysCampaigns";
 import BaileysCampaignNew from "./pages/BaileysCampaignNew";
 import BaileysCampaignDetail from "./pages/BaileysCampaignDetail";
 import InviteUsers from "./pages/InviteUsers";
@@ -44,20 +41,23 @@ function Router() {
 
       {/* App pages (authenticated) */}
       <Route path={"/dashboard"} component={Home} />
-      <Route path={"/whatsapp"} component={WhatsApp} />
-      <Route path={"/whatsapp-business"} component={WhatsAppBusiness} />
-      <Route path={"/telegram"} component={Telegram} />
       <Route path={"/send"} component={SendMessage} />
       <Route path={"/settings"} component={Settings} />
       <Route path={"/api"} component={API} />
       <Route path={"/webhook"} component={WebhookConfig} />
       <Route path={"/connections"} component={ConnectionSettings} />
+
+      {/* Disparos via API Oficial (Meta): /campaigns e /whatsapp-business são as duas abas. */}
       <Route path={"/campaigns/new"} component={CampaignNew} />
       <Route path={"/campaigns/:id"} component={CampaignDetail} />
-      <Route path={"/campaigns"} component={Campaigns} />
+      <Route path={"/campaigns"} component={DisparoApiOficial} />
+      <Route path={"/whatsapp-business"} component={DisparoApiOficial} />
+
+      {/* Disparo via WhatsApp (QR Code): /disparos e /whatsapp são as duas abas. */}
       <Route path={"/disparos/new"} component={BaileysCampaignNew} />
       <Route path={"/disparos/:id"} component={BaileysCampaignDetail} />
-      <Route path={"/disparos"} component={BaileysCampaigns} />
+      <Route path={"/disparos"} component={DisparoWhatsApp} />
+      <Route path={"/whatsapp"} component={DisparoWhatsApp} />
       <Route path={"/billing"} component={Billing} />
       <Route path={"/convidar-usuarios"} component={InviteUsers} />
       <Route path={"/aceitar-convite"} component={AcceptInvite} />

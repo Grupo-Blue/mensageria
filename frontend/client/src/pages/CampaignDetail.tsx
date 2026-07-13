@@ -450,7 +450,11 @@ export default function CampaignDetail() {
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-500">Template</p>
-                <p className="mt-1">{campaign.templateName}</p>
+                {/* O nome técnico continua visível: é ele que identifica o template na Meta. */}
+                <p className="mt-1">{campaign.templateAlias || campaign.templateName}</p>
+                {campaign.templateAlias && (
+                  <p className="text-xs text-gray-500 font-mono">{campaign.templateName}</p>
+                )}
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-500">Idioma</p>

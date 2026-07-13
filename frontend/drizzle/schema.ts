@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, boolean, unique, decimal, date, json, serial } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, boolean, unique, index, decimal, date, json, serial } from "drizzle-orm/mysql-core";
 
 /**
  * Core user table backing auth flow.
@@ -41,7 +41,9 @@ export const whatsappConnections = mysqlTable("whatsapp_connections", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
   lastConnectedAt: timestamp("last_connected_at"),
-});
+}, (table) => ({
+  userIdx: index("idx_whatsapp_connections_user").on(table.userId),
+}));
 
 export type WhatsappConnection = typeof whatsappConnections.$inferSelect;
 export type InsertWhatsappConnection = typeof whatsappConnections.$inferInsert;
@@ -101,7 +103,9 @@ export const messages = mysqlTable("messages", {
   status: mysqlEnum("status", ["sent", "failed", "pending"]).default("pending").notNull(),
   errorMessage: text("error_message"),
   sentAt: timestamp("sent_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  userSentAtIdx: index("idx_messages_user_sent_at").on(table.userId, table.sentAt),
+}));
 
 export type Message = typeof messages.$inferSelect;
 export type InsertMessage = typeof messages.$inferInsert;
@@ -256,7 +260,9 @@ export const campaignRecipients = mysqlTable("campaign_recipients", {
   deliveredAt: timestamp("delivered_at"),
   readAt: timestamp("read_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  campaignStatusSentAtIdx: index("idx_campaign_recipients_campaign_status_sent_at").on(table.campaignId, table.status, table.sentAt),
+}));
 
 export type CampaignRecipient = typeof campaignRecipients.$inferSelect;
 export type InsertCampaignRecipient = typeof campaignRecipients.$inferInsert;
@@ -273,6 +279,11 @@ export const whatsappTemplates = mysqlTable("whatsapp_templates", {
   category: varchar("category", { length: 50 }).notNull(),
   status: varchar("status", { length: 50 }).notNull(),
   components: text("components").notNull(),
+  // Apelido e descrição LOCAIS: a Meta exige nomes técnicos (promo_black_friday_v2), que
+  // ninguém reconhece na hora de escolher. Estes campos não existem na Meta e sobrevivem ao
+  // sync — o upsert só grava as colunas vindas de lá. O envio continua usando `name`.
+  alias: varchar("alias", { length: 120 }),
+  description: varchar("description", { length: 500 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().onUpdateNow().notNull(),
 }, (table) => {
@@ -414,7 +425,13 @@ export const baileysCampaignRecipients = mysqlTable("baileys_campaign_recipients
   // Nullable porque ainda não foi enviado, ou veio de campanha legada single-conn.
   sentFromConnectionId: int("sent_from_connection_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  // Caminho principal: destinatários de uma campanha por status, com o recorte de
+  // data (limite diário, série do dashboard) coberto pela terceira coluna.
+  campaignStatusSentAtIdx: index("idx_baileys_recipients_campaign_status_sent_at").on(table.campaignId, table.status, table.sentAt),
+  // Enviados/dia por conexão: warmup no scheduler e capacidade no dashboard.
+  connStatusSentAtIdx: index("idx_baileys_recipients_conn_status_sent_at").on(table.sentFromConnectionId, table.status, table.sentAt),
+}));
 
 export type BaileysCampaignRecipient = typeof baileysCampaignRecipients.$inferSelect;
 export type InsertBaileysCampaignRecipient = typeof baileysCampaignRecipients.$inferInsert;

@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/sidebar";
 import { APP_LOGO, APP_TITLE, getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, MessageSquare, Bot, Send, Settings as SettingsIcon, Code, Building2, Megaphone, Moon, Sun, KeyRound, UserPlus, Rocket } from "lucide-react";
+import { LayoutDashboard, LogOut, Send, Settings as SettingsIcon, Code, Megaphone, Moon, Sun, KeyRound, UserPlus, Rocket } from "lucide-react";
 import { CSSProperties, useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -28,19 +28,30 @@ import { Button } from "./ui/button";
 import { useTheme } from "@/contexts/ThemeContext";
 import { motion } from "framer-motion";
 
+// `path` é para onde o item leva; `matches` são as outras rotas que pertencem a ele (as abas),
+// para o item continuar destacado nelas e nas sub-rotas (/disparos/123).
 const menuItems = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/", color: "text-blue-600", bgColor: "bg-blue-50 dark:bg-blue-950/30", hoverBg: "hover:bg-blue-50/50 dark:hover:bg-blue-950/20" },
-  { icon: Megaphone, label: "Campanhas", path: "/campaigns", color: "text-purple-600", bgColor: "bg-purple-50 dark:bg-purple-950/30", hoverBg: "hover:bg-purple-50/50 dark:hover:bg-purple-950/20" },
-  { icon: Rocket, label: "Disparos WhatsApp", path: "/disparos", color: "text-fuchsia-600", bgColor: "bg-fuchsia-50 dark:bg-fuchsia-950/30", hoverBg: "hover:bg-fuchsia-50/50 dark:hover:bg-fuchsia-950/20" },
-  { icon: UserPlus, label: "Convidar usuários", path: "/convidar-usuarios", color: "text-violet-600", bgColor: "bg-violet-50 dark:bg-violet-950/30", hoverBg: "hover:bg-violet-50/50 dark:hover:bg-violet-950/20" },
-  { icon: Building2, label: "WhatsApp Business", path: "/whatsapp-business", color: "text-emerald-600", bgColor: "bg-emerald-50 dark:bg-emerald-950/30", hoverBg: "hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20" },
-  { icon: MessageSquare, label: "WhatsApp", path: "/whatsapp", color: "text-green-600", bgColor: "bg-green-50 dark:bg-green-950/30", hoverBg: "hover:bg-green-50/50 dark:hover:bg-green-950/20" },
-  { icon: Bot, label: "Telegram", path: "/telegram", color: "text-sky-600", bgColor: "bg-sky-50 dark:bg-sky-950/30", hoverBg: "hover:bg-sky-50/50 dark:hover:bg-sky-950/20" },
-  { icon: Send, label: "Enviar Mensagens", path: "/send", color: "text-pink-600", bgColor: "bg-pink-50 dark:bg-pink-950/30", hoverBg: "hover:bg-pink-50/50 dark:hover:bg-pink-950/20" },
-  { icon: KeyRound, label: "API & Integrações", path: "/connections", color: "text-amber-600", bgColor: "bg-amber-50 dark:bg-amber-950/30", hoverBg: "hover:bg-amber-50/50 dark:hover:bg-amber-950/20" },
-  { icon: Code, label: "Documentação API", path: "/api", color: "text-orange-600", bgColor: "bg-orange-50 dark:bg-orange-950/30", hoverBg: "hover:bg-orange-50/50 dark:hover:bg-orange-950/20" },
-  { icon: SettingsIcon, label: "Configurações", path: "/settings", color: "text-gray-600", bgColor: "bg-gray-50 dark:bg-gray-800/30", hoverBg: "hover:bg-gray-50/50 dark:hover:bg-gray-800/20" },
+  { icon: LayoutDashboard, label: "Dashboard", path: "/dashboard", matches: [] as string[], color: "text-blue-600", bgColor: "bg-blue-50 dark:bg-blue-950/30", hoverBg: "hover:bg-blue-50/50 dark:hover:bg-blue-950/20" },
+  { icon: Rocket, label: "Disparo via WhatsApp", path: "/disparos", matches: ["/whatsapp"], color: "text-fuchsia-600", bgColor: "bg-fuchsia-50 dark:bg-fuchsia-950/30", hoverBg: "hover:bg-fuchsia-50/50 dark:hover:bg-fuchsia-950/20" },
+  { icon: Megaphone, label: "Disparos via API Oficial", path: "/campaigns", matches: ["/whatsapp-business"], color: "text-purple-600", bgColor: "bg-purple-50 dark:bg-purple-950/30", hoverBg: "hover:bg-purple-50/50 dark:hover:bg-purple-950/20" },
+  { icon: UserPlus, label: "Convidar usuários", path: "/convidar-usuarios", matches: [] as string[], color: "text-violet-600", bgColor: "bg-violet-50 dark:bg-violet-950/30", hoverBg: "hover:bg-violet-50/50 dark:hover:bg-violet-950/20" },
+  { icon: Send, label: "Enviar Mensagens", path: "/send", matches: [] as string[], color: "text-pink-600", bgColor: "bg-pink-50 dark:bg-pink-950/30", hoverBg: "hover:bg-pink-50/50 dark:hover:bg-pink-950/20" },
+  { icon: KeyRound, label: "API & Integrações", path: "/connections", matches: [] as string[], color: "text-amber-600", bgColor: "bg-amber-50 dark:bg-amber-950/30", hoverBg: "hover:bg-amber-50/50 dark:hover:bg-amber-950/20" },
+  { icon: Code, label: "Documentação API", path: "/api", matches: [] as string[], color: "text-orange-600", bgColor: "bg-orange-50 dark:bg-orange-950/30", hoverBg: "hover:bg-orange-50/50 dark:hover:bg-orange-950/20" },
+  { icon: SettingsIcon, label: "Configurações", path: "/settings", matches: [] as string[], color: "text-gray-600", bgColor: "bg-gray-50 dark:bg-gray-800/30", hoverBg: "hover:bg-gray-50/50 dark:hover:bg-gray-800/20" },
 ];
+
+type MenuItem = (typeof menuItems)[number];
+
+/**
+ * A barra no prefixo é de propósito: sem ela, "/whatsapp" casaria com "/whatsapp-business",
+ * que pertence a outro item do menu.
+ */
+function isMenuItemActive(item: MenuItem, location: string): boolean {
+  return [item.path, ...item.matches].some(
+    (path) => location === path || location.startsWith(`${path}/`),
+  );
+}
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
 const DEFAULT_WIDTH = 300;
@@ -142,7 +153,7 @@ function DashboardLayoutContent({
 }) {
   const { user, logout } = useAuth();
   const [location, setLocation] = useLocation();
-  const activeMenuItem = menuItems.find(item => item.path === location);
+  const activeMenuItem = menuItems.find(item => isMenuItemActive(item, location));
   const isMobile = useIsMobile();
   const { theme, setTheme, toggleTheme } = useTheme();
 
@@ -163,7 +174,7 @@ function DashboardLayoutContent({
         <SidebarContent className="px-3 py-4">
           <SidebarMenu className="space-y-1">
             {menuItems.map(item => {
-              const isActive = location === item.path;
+              const isActive = isMenuItemActive(item, location);
               return (
                 <SidebarMenuItem key={item.path}>
                   <SidebarMenuButton

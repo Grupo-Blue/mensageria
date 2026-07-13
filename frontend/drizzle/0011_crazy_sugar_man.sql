@@ -1,4 +1,4 @@
-CREATE TABLE `baileys_campaign_connections` (
+CREATE TABLE IF NOT EXISTS `baileys_campaign_connections` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`campaign_id` int NOT NULL,
 	`connection_id` int NOT NULL,
@@ -7,7 +7,7 @@ CREATE TABLE `baileys_campaign_connections` (
 	CONSTRAINT `uniq_campaign_connection` UNIQUE(`campaign_id`,`connection_id`)
 );
 --> statement-breakpoint
-CREATE TABLE `webshare_proxies` (
+CREATE TABLE IF NOT EXISTS `webshare_proxies` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`webshare_proxy_id` varchar(64) NOT NULL,
 	`host` varchar(100) NOT NULL,

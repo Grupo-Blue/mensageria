@@ -1,6 +1,5 @@
-import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -13,13 +12,14 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
 import { trpc } from "@/lib/trpc";
-import { CheckCircle, Loader2, Plus, QrCode, Smartphone, Trash2, XCircle, AlertTriangle, Copy, Key, Webhook, RefreshCw } from "lucide-react";
+import { CheckCircle, Loader2, Plus, QrCode, Smartphone, Trash2, Unplug, XCircle, AlertTriangle, Copy, Key, Webhook, RefreshCw } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { io, Socket } from "socket.io-client";
@@ -351,14 +351,10 @@ export default function WhatsApp() {
   }
 
   return (
-    <DashboardLayout>
-      <div className="space-y-8">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-medium text-foreground mb-2">WhatsApp</h1>
-            <p className="text-muted-foreground text-base">Gerencie suas conexões WhatsApp</p>
-          </div>
-          <Dialog
+    <div className="space-y-8">
+      {/* Barra de ações — o título da página é do shell (Disparo via WhatsApp). */}
+      <div className="flex justify-end items-center">
+        <Dialog
             open={isDialogOpen}
             onOpenChange={(open) => {
               if (!open) {
@@ -549,10 +545,10 @@ export default function WhatsApp() {
               return (
                 <Card
                   key={conn.id}
-                  className="material-card-elevated hover:elevation-3 transition-all duration-300 cursor-pointer"
+                  className="material-card-elevated hover:elevation-3 transition-all duration-300 cursor-pointer overflow-hidden"
                   onClick={() => handleConnectionClick(conn)}
                 >
-                  <CardHeader>
+                  <CardHeader className="p-4 pb-2">
                     <CardTitle className="flex items-center justify-between text-lg gap-2">
                       <span className="truncate font-medium">{conn.identification}</span>
                       {isConnected ? (
@@ -580,26 +576,33 @@ export default function WhatsApp() {
                       )}
                     </CardDescription>
                   </CardHeader>
-                  <CardContent>
-                    <div className="flex gap-2">
-                      {isConnected && (
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={(e) => e.stopPropagation()}
-                              disabled={disconnectMutation.isPending}
-                              className="flex-1"
-                            >
-                              {disconnectMutation.isPending ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                "Desconectar"
-                              )}
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                  <CardFooter
+                    className="flex justify-end gap-2 p-4 pt-2"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {isConnected && (
+                      <AlertDialog>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="icon-sm"
+                                aria-label="Desconectar"
+                                disabled={disconnectMutation.isPending}
+                                className="rounded-md shrink-0"
+                              >
+                                {disconnectMutation.isPending ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Unplug className="h-4 w-4" />
+                                )}
+                              </Button>
+                            </AlertDialogTrigger>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">Desconectar</TooltipContent>
+                        </Tooltip>
+                        <AlertDialogContent onClick={(e) => e.stopPropagation()}>
                             <AlertDialogHeader>
                               <AlertDialogTitle>Desconectar este WhatsApp?</AlertDialogTitle>
                               <AlertDialogDescription>
@@ -620,28 +623,30 @@ export default function WhatsApp() {
                                 Desconectar
                               </AlertDialogAction>
                             </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
+                        </AlertDialogContent>
+                      </AlertDialog>
                       )}
                       <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={(e) => e.stopPropagation()}
-                            disabled={deleteMutation.isPending}
-                            className="flex-1"
-                          >
-                            {deleteMutation.isPending ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <>
-                                <Trash2 className="h-4 w-4 mr-1" />
-                                Remover
-                              </>
-                            )}
-                          </Button>
-                        </AlertDialogTrigger>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="destructive"
+                                size="icon-sm"
+                                aria-label="Remover conexão"
+                                disabled={deleteMutation.isPending}
+                                className="rounded-md shrink-0"
+                              >
+                                {deleteMutation.isPending ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+                              </Button>
+                            </AlertDialogTrigger>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">Remover</TooltipContent>
+                        </Tooltip>
                         <AlertDialogContent onClick={(e) => e.stopPropagation()}>
                           <AlertDialogHeader>
                             <AlertDialogTitle>Remover esta conexão?</AlertDialogTitle>
@@ -666,8 +671,7 @@ export default function WhatsApp() {
                           </AlertDialogFooter>
                         </AlertDialogContent>
                       </AlertDialog>
-                    </div>
-                  </CardContent>
+                  </CardFooter>
                 </Card>
               );
             })}
@@ -781,6 +785,5 @@ export default function WhatsApp() {
           </DialogContent>
         </Dialog>
       </div>
-    </DashboardLayout>
   );
 }

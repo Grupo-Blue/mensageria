@@ -1,10 +1,27 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
 import { trpc } from "@/lib/trpc";
-import { MessageSquare, Bot, Send, CheckCircle, XCircle, Clock, TrendingUp, Users, Zap, ArrowRight, Activity } from "lucide-react";
+import {
+  Smartphone,
+  Gauge,
+  ListChecks,
+  Rocket,
+  AlertTriangle,
+  ArrowRight,
+  QrCode,
+  WifiOff,
+  ShieldAlert,
+  PauseCircle,
+  Send,
+} from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
+import { formatDistanceToNow } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 const container = {
   hidden: { opacity: 0 },
@@ -21,376 +38,482 @@ const item = {
   show: { opacity: 1, y: 0 }
 };
 
+const HISTORY_DAYS = 30;
+
+const formatNumber = (value: number): string => value.toLocaleString("pt-BR");
+
+/**
+ * A série vem como "YYYY-MM-DD". Fatiar a string em vez de usar new Date(): a string
+ * seria lida como UTC e, no fuso do Brasil, o gráfico mostraria o dia anterior.
+ */
+const formatDayLabel = (date: string): string => `${date.slice(8, 10)}/${date.slice(5, 7)}`;
+
+interface Alert {
+  key: string;
+  icon: typeof AlertTriangle;
+  message: string;
+  href: string;
+}
+
 export default function Home() {
-  const { data: whatsappConnections, isLoading: loadingWhatsapp } = trpc.whatsapp.list.useQuery();
-  const { data: telegramConnections, isLoading: loadingTelegram } = trpc.telegram.list.useQuery();
-  const { data: messages, isLoading: loadingMessages } = trpc.messages.list.useQuery({ limit: 10 });
-  const { data: statsData, isLoading: loadingStats } = trpc.messages.stats.useQuery();
+  const { data: overview, isLoading: loadingOverview } = trpc.dashboard.overview.useQuery();
+  const { data: connections, isLoading: loadingConnections, isError: errorConnections } =
+    trpc.dashboard.connectionsHealth.useQuery();
+  const { data: history, isLoading: loadingHistory, isError: errorHistory } = trpc.dashboard.sendHistory.useQuery({
+    days: HISTORY_DAYS,
+  });
 
-  const whatsappConnected = whatsappConnections?.filter(c => c.status === "connected").length || 0;
-  const telegramConnected = telegramConnections?.filter(c => c.status === "connected").length || 0;
-  const totalMessages = messages?.length || 0;
-  const messagesSent = messages?.filter(m => m.status === "sent").length || 0;
-  const successRate = totalMessages > 0 ? Math.round((messagesSent / totalMessages) * 100) : 0;
+  const connectionStats = overview?.connections;
+  const capacity = overview?.capacity;
+  const queue = overview?.queue;
+  const campaigns = overview?.campaigns;
 
-  // Format trend percentage
-  const formatTrend = (trend: number, trendUp: boolean): string => {
-    if (trend === 0) return "0%";
-    const sign = trendUp ? "+" : "";
-    return `${sign}${trend}%`;
-  };
+  // Alertas: só o que pede ação. Um chip caído significa campanha disparando com
+  // menos capacidade — é o prejuízo silencioso deste tipo de sistema.
+  const alerts: Alert[] = [];
+  for (const conn of connections ?? []) {
+    const label = conn.phoneNumber || conn.identification;
+    if (conn.status === "disconnected") {
+      const since = conn.lastConnectedAt
+        ? ` (último contato ${formatDistanceToNow(new Date(conn.lastConnectedAt), { addSuffix: true, locale: ptBR })})`
+        : "";
+      alerts.push({
+        key: `down-${conn.id}`,
+        icon: WifiOff,
+        message: `${label} está desconectado${since} — os disparos não saem por esse número.`,
+        href: "/whatsapp",
+      });
+    }
+    if (conn.status === "qr_code") {
+      alerts.push({
+        key: `qr-${conn.id}`,
+        icon: QrCode,
+        message: `${label} está aguardando a leitura do QR Code.`,
+        href: "/whatsapp",
+      });
+    }
+    if (conn.proxyStatus === "dead") {
+      alerts.push({
+        key: `proxy-${conn.id}`,
+        icon: ShieldAlert,
+        message: `O proxy de ${label} está morto — o IP de saída não está fixo.`,
+        href: "/connections",
+      });
+    }
+    if (conn.status === "connected" && conn.warmupDailyLimit != null && conn.sentToday >= conn.warmupDailyLimit) {
+      alerts.push({
+        key: `warmup-${conn.id}`,
+        icon: Gauge,
+        message: `${label} atingiu o teto de aquecimento do dia (${formatNumber(conn.warmupDailyLimit)}) e foi pausado até amanhã.`,
+        href: "/connections",
+      });
+    }
+  }
+  if (campaigns && campaigns.paused > 0) {
+    alerts.push({
+      key: "paused",
+      icon: PauseCircle,
+      message: `${campaigns.paused} campanha(s) pausada(s) — retome em Disparos para continuar o envio.`,
+      href: "/disparos",
+    });
+  }
 
-  const stats = [
+  const capacityPercent =
+    capacity?.dailyLimit && capacity.dailyLimit > 0
+      ? Math.min(100, Math.round((capacity.usedAgainstLimit / capacity.dailyLimit) * 100))
+      : 0;
+
+  const hasHistory = (history?.totals.sent ?? 0) + (history?.totals.failed ?? 0) > 0;
+
+  // Cada card declara de quais queries depende: o de capacidade cai no total de
+  // "enviadas hoje" (que vem do histórico) quando nenhum telefone tem teto definido,
+  // então precisa esperar as duas — senão mostraria 0 enquanto o histórico não chega.
+  const cards = [
     {
-      title: "WhatsApp Conectados",
-      value: loadingWhatsapp ? "..." : whatsappConnected,
-      total: whatsappConnections?.length || 0,
-      icon: MessageSquare,
+      title: "Telefones",
+      icon: Smartphone,
       gradient: "from-green-500 to-emerald-600",
-      iconBg: "bg-green-500",
       href: "/whatsapp",
-      trend: loadingStats ? "..." : formatTrend(statsData?.whatsapp.trend || 0, statsData?.whatsapp.trendUp ?? true),
-      trendUp: statsData?.whatsapp.trendUp ?? true,
+      loading: loadingOverview,
+      value: connectionStats ? `${connectionStats.connected} de ${connectionStats.total}` : "—",
+      caption: connectionStats
+        ? [
+            `${connectionStats.connected} conectados`,
+            connectionStats.connecting > 0 ? `${connectionStats.connecting} conectando` : null,
+            connectionStats.qrCode > 0 ? `${connectionStats.qrCode} aguardando QR` : null,
+            connectionStats.disconnected > 0 ? `${connectionStats.disconnected} caídos` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")
+        : "",
     },
     {
-      title: "Telegram Conectados",
-      value: loadingTelegram ? "..." : telegramConnected,
-      total: telegramConnections?.length || 0,
-      icon: Bot,
+      title: "Capacidade hoje",
+      icon: Gauge,
       gradient: "from-blue-500 to-cyan-600",
-      iconBg: "bg-blue-500",
-      href: "/telegram",
-      trend: loadingStats ? "..." : formatTrend(statsData?.telegram.trend || 0, statsData?.telegram.trendUp ?? true),
-      trendUp: statsData?.telegram.trendUp ?? true,
+      href: "/connections",
+      loading: loadingOverview || loadingHistory,
+      value: capacity
+        ? capacity.dailyLimit != null
+          ? `${formatNumber(capacity.usedAgainstLimit)} / ${formatNumber(capacity.dailyLimit)}`
+          : formatNumber(history?.totals.sentToday ?? 0)
+        : "—",
+      caption: capacity
+        ? capacity.dailyLimit != null
+          ? [
+              `${capacityPercent}% do teto de aquecimento consumido`,
+              // Sem isto, um chip disparando sem teto ficaria invisível no card.
+              capacity.uncappedConnections > 0
+                ? `${capacity.uncappedConnections} telefone(s) sem teto`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")
+          : "Enviadas hoje · nenhum teto de aquecimento definido"
+        : "",
     },
     {
-      title: "Mensagens Enviadas",
-      value: loadingMessages ? "..." : messagesSent,
-      total: totalMessages,
-      icon: Send,
+      title: "Na fila",
+      icon: ListChecks,
       gradient: "from-purple-500 to-pink-600",
-      iconBg: "bg-purple-500",
-      href: "/send",
-      trend: loadingStats ? "..." : formatTrend(statsData?.messages.trend || 0, statsData?.messages.trendUp ?? true),
-      trendUp: statsData?.messages.trendUp ?? true,
+      href: "/disparos",
+      loading: loadingOverview,
+      value: queue ? formatNumber(queue.pending) : "—",
+      caption: queue
+        ? queue.pending === 0
+          ? "Nada aguardando envio"
+          : queue.etaMinutes != null
+            ? `~${formatDuration(queue.etaMinutes)} no ritmo atual`
+            : "Sem telefone conectado para disparar"
+        : "",
     },
     {
-      title: "Taxa de Sucesso",
-      value: loadingMessages ? "..." : `${successRate}%`,
-      total: 100,
-      icon: Activity,
+      title: "Campanhas ativas",
+      icon: Rocket,
       gradient: "from-orange-500 to-red-600",
-      iconBg: "bg-orange-500",
-      href: "/send",
-      trend: loadingStats ? "..." : formatTrend(statsData?.successRate.trend || 0, statsData?.successRate.trendUp ?? true),
-      trendUp: statsData?.successRate.trendUp ?? true,
-    },
-  ];
-
-  const quickActions = [
-    {
-      title: "Conectar WhatsApp",
-      description: "Adicionar nova conexão",
-      icon: MessageSquare,
-      gradient: "from-green-400 to-emerald-500",
-      href: "/whatsapp",
-    },
-    {
-      title: "Conectar Telegram",
-      description: "Adicionar bot",
-      icon: Bot,
-      gradient: "from-blue-400 to-cyan-500",
-      href: "/telegram",
-    },
-    {
-      title: "Enviar Mensagem",
-      description: "Enviar para WhatsApp ou Telegram",
-      icon: Send,
-      gradient: "from-purple-400 to-pink-500",
-      href: "/send",
-    },
-    {
-      title: "Criar Campanha",
-      description: "Envio em massa automatizado",
-      icon: Zap,
-      gradient: "from-orange-400 to-red-500",
-      href: "/campaigns/new",
+      href: "/disparos",
+      loading: loadingOverview,
+      value: campaigns ? formatNumber(campaigns.running) : "—",
+      caption: campaigns
+        ? [
+            campaigns.scheduled > 0 ? `${campaigns.scheduled} agendada(s)` : null,
+            campaigns.paused > 0 ? `${campaigns.paused} pausada(s)` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ") || "Nenhuma campanha pausada ou agendada"
+        : "",
     },
   ];
 
   return (
     <DashboardLayout>
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50/30 to-purple-50/30 dark:from-gray-900 dark:via-gray-900 dark:to-gray-900">
-        <div className="space-y-8 max-w-7xl mx-auto p-6">
-        {/* Header with enhanced gradient and effects */}
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-blue-600 via-purple-600 to-pink-600 p-12 text-white shadow-2xl border border-white/20"
-        >
-          <div className="relative z-10">
-            <motion.div
-              initial={{ scale: 0.9 }}
-              animate={{ scale: 1 }}
-              transition={{ duration: 0.5, delay: 0.2 }}
-            >
-              <div className="flex items-center gap-4 mb-4">
-                <motion.div
-                  animate={{ rotate: [0, 10, -10, 0] }}
-                  transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
-                  className="text-6xl"
-                >
-                  👋
-                </motion.div>
-                <div>
-                  <h1 className="text-5xl font-black mb-2 tracking-tight drop-shadow-lg">Bem-vindo ao Mensageria!</h1>
-                  <p className="text-blue-100 text-xl font-medium">Gerencie suas conexões e mensagens em um só lugar</p>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-          {/* Enhanced decorative elements */}
-          <motion.div 
-            className="absolute top-0 right-0 w-96 h-96 bg-white/10 rounded-full blur-3xl -mr-48 -mt-48"
-            animate={{ opacity: [0.3, 0.6, 0.3] }}
-            transition={{ duration: 3, repeat: Infinity }}
-          />
-          <motion.div 
-            className="absolute bottom-0 left-0 w-96 h-96 bg-white/10 rounded-full blur-3xl -ml-48 -mb-48"
-            animate={{ opacity: [0.3, 0.6, 0.3] }}
-            transition={{ duration: 3, repeat: Infinity, delay: 1 }}
-          />
-          <motion.div 
-            className="absolute top-1/2 right-1/4 w-64 h-64 bg-yellow-400/20 rounded-full blur-2xl"
-            animate={{ opacity: [0.2, 0.4, 0.2] }}
-            transition={{ duration: 3, repeat: Infinity, delay: 2 }}
-          />
-          <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0zNiAzNGMwIDMuMzE0LTIuNjg2IDYtNiA2cy02LTIuNjg2LTYtNiAyLjY4Ni02IDYtNiA2IDIuNjg2IDYgNnoiIGZpbGw9IndoaXRlIiBmaWxsLW9wYWNpdHk9IjAuMDUiLz48L2c+PC9zdmc+')] opacity-20" />
-        </motion.div>
+        <div className="space-y-6 sm:space-y-8 max-w-7xl mx-auto p-4 sm:p-6">
+          {/* Header */}
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <h1 className="text-4xl font-black text-gray-900 dark:text-white tracking-tight">Dashboard</h1>
+            <p className="text-gray-600 dark:text-gray-400 mt-2 text-lg">
+              A operação agora e o histórico dos seus disparos
+            </p>
+          </motion.div>
 
-        {/* Stats Grid - Enhanced Design */}
-        <motion.div
-          variants={container}
-          initial="hidden"
-          animate="show"
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
-        >
-          {stats.map((stat, index) => (
-            <motion.div key={stat.title} variants={item}>
-              <Link href={stat.href}>
-                <Card className="group relative overflow-hidden cursor-pointer transition-all duration-300 hover:shadow-2xl hover:-translate-y-2 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 backdrop-blur-sm">
-                  {/* Gradient overlay */}
-                  <div className={`absolute inset-0 bg-gradient-to-br ${stat.gradient} opacity-0 group-hover:opacity-5 transition-opacity duration-300`} />
-                  
-                  {/* Shine effect on hover */}
-                  <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/20 to-transparent" />
-                  
-                  <CardHeader className="pb-4">
-                    <div className="flex items-start justify-between">
-                      <CardTitle className="text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
-                        {stat.title}
-                      </CardTitle>
-                      <motion.div
-                        whileHover={{ scale: 1.15, rotate: 10 }}
-                        className={`p-3.5 rounded-2xl bg-gradient-to-br ${stat.gradient} shadow-xl shadow-${stat.iconBg}/20`}
-                      >
-                        <stat.icon className="w-6 h-6 text-white" />
-                      </motion.div>
-                    </div>
-                  </CardHeader>
-                  
-                  <CardContent className="space-y-4">
-                    <div className="flex items-end justify-between">
-                      <div>
-                        <div className="text-5xl font-black bg-gradient-to-br from-gray-900 to-gray-700 dark:from-white dark:to-gray-300 bg-clip-text text-transparent tracking-tight">
-                          {stat.value}
+          {/* AGORA — auto-fill evita 4 colunas espremidas quando a sidebar está aberta */}
+          <motion.div
+            variants={container}
+            initial="hidden"
+            animate="show"
+            className="grid gap-4 sm:gap-5 [grid-template-columns:repeat(auto-fill,minmax(min(100%,15.5rem),1fr))]"
+          >
+            {cards.map((card) => (
+              <motion.div key={card.title} variants={item} className="min-w-0 flex">
+                <Link href={card.href} className="block h-full min-w-0 flex-1">
+                  <Card className="group relative h-full min-w-0 overflow-hidden cursor-pointer transition-all duration-300 hover:shadow-xl hover:-translate-y-0.5 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50">
+                    <CardContent className="p-4 sm:p-5">
+                      <div className="flex gap-3 sm:gap-4 min-w-0">
+                        <div
+                          className={`flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${card.gradient} shadow-md`}
+                        >
+                          <card.icon className="h-5 w-5 text-white" />
                         </div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 font-semibold">
-                          de {stat.total} total
+
+                        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                          <p className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 leading-tight">
+                            {card.title}
+                          </p>
+
+                          {card.loading ? (
+                            <>
+                              <Skeleton className="h-7 sm:h-8 w-20" />
+                              <Skeleton className="h-3.5 w-full" />
+                              <Skeleton className="h-3.5 w-4/5" />
+                            </>
+                          ) : (
+                            <>
+                              <p className="text-xl sm:text-2xl font-black text-gray-900 dark:text-white leading-none tabular-nums tracking-tight [overflow-wrap:anywhere]">
+                                {card.value}
+                              </p>
+
+                              {card.caption ? (
+                                <ul className="space-y-0.5 text-[11px] sm:text-xs text-gray-500 dark:text-gray-400 font-medium leading-snug">
+                                  {card.caption.split(" · ").map((part, index) => (
+                                    <li key={`${card.title}-${index}`} className="[overflow-wrap:anywhere]">
+                                      {part}
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : null}
+
+                              {card.title === "Capacidade hoje" && capacity?.dailyLimit != null && (
+                                <Progress value={capacityPercent} className="mt-1 h-1.5" />
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              </motion.div>
+            ))}
+          </motion.div>
+
+          {/* ALERTAS */}
+          {alerts.length > 0 && (
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+              <Card className="border border-amber-200 dark:border-amber-900/50 bg-amber-50/60 dark:bg-amber-950/20">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-lg font-bold text-amber-900 dark:text-amber-200">
+                    <AlertTriangle className="w-5 h-5" />
+                    Precisa da sua atenção
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {alerts.map((alert) => (
+                    <Link key={alert.key} href={alert.href}>
+                      <div className="flex items-center gap-3 p-3 rounded-xl bg-white/70 dark:bg-gray-900/40 border border-amber-200/60 dark:border-amber-900/40 hover:border-amber-400 transition-colors cursor-pointer group">
+                        <alert.icon className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
+                        <span className="text-sm text-gray-800 dark:text-gray-200 font-medium flex-1">
+                          {alert.message}
+                        </span>
+                        <ArrowRight className="w-4 h-4 text-amber-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                    </Link>
+                  ))}
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+
+          {/* HISTÓRICO DE ENVIO */}
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+            <Card className="border border-gray-200 dark:border-gray-700 shadow-lg bg-white dark:bg-gray-800/50">
+              <CardHeader className="border-b border-gray-200 dark:border-gray-700">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <CardTitle className="text-2xl font-black text-gray-900 dark:text-white">
+                      Histórico de envio
+                    </CardTitle>
+                    <CardDescription className="text-base">
+                      Campanhas e envios avulsos somados, nos últimos {HISTORY_DAYS} dias
+                    </CardDescription>
+                  </div>
+                  {history && hasHistory && (
+                    <div className="flex gap-6">
+                      <div>
+                        <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Enviadas</p>
+                        <p className="text-2xl font-black text-gray-900 dark:text-white">
+                          {formatNumber(history.totals.sent)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Taxa de falha</p>
+                        <p className="text-2xl font-black text-gray-900 dark:text-white">
+                          {history.totals.failureRate.toFixed(1)}%
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Ritmo</p>
+                        <p className="text-2xl font-black text-gray-900 dark:text-white">
+                          {formatNumber(history.totals.dailyAverage)}
+                          <span className="text-sm font-semibold text-gray-500">/dia</span>
                         </p>
                       </div>
                     </div>
-                    
-                    <div className={`flex items-center gap-2 px-3 py-2 rounded-lg bg-gradient-to-r ${stat.trendUp ? 'from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20' : 'from-red-50 to-rose-50 dark:from-red-900/20 dark:to-rose-900/20'} border ${stat.trendUp ? 'border-green-200 dark:border-green-800' : 'border-red-200 dark:border-red-800'}`}>
-                      <TrendingUp className={`w-4 h-4 ${stat.trendUp ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`} />
-                      <span className={`text-sm font-bold ${stat.trendUp ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>
-                        {stat.trend}
-                      </span>
-                      <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">vs último mês</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            </motion.div>
-          ))}
-        </motion.div>
-
-        {/* Quick Actions - Enhanced Design */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-        >
-          <Card className="border border-gray-200 dark:border-gray-700 shadow-xl overflow-hidden bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm">
-            <CardHeader className="bg-gradient-to-r from-gray-50 via-gray-100 to-gray-50 dark:from-gray-800 dark:via-gray-900 dark:to-gray-800 border-b border-gray-200 dark:border-gray-700 p-8">
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-3xl font-black text-gray-900 dark:text-white mb-2">Ações Rápidas</CardTitle>
-                  <CardDescription className="text-base text-gray-600 dark:text-gray-400">
-                    Acesse rapidamente as funcionalidades principais
-                  </CardDescription>
-                </div>
-                <motion.div
-                  animate={{ rotate: [0, 10, -10, 0] }}
-                  transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
-                  className="p-4 rounded-2xl bg-gradient-to-br from-yellow-400 to-orange-500 shadow-lg"
-                >
-                  <Zap className="w-8 h-8 text-white" />
-                </motion.div>
-              </div>
-            </CardHeader>
-            <CardContent className="p-8">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {quickActions.map((action, index) => (
-                  <Link key={action.title} href={action.href}>
-                    <motion.div
-                      whileHover={{ scale: 1.03, y: -8 }}
-                      whileTap={{ scale: 0.97 }}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.4 + index * 0.1 }}
-                      className="group relative overflow-hidden rounded-2xl p-8 bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 border-2 border-gray-200 dark:border-gray-700 hover:border-transparent transition-all cursor-pointer shadow-lg hover:shadow-2xl"
-                    >
-                      {/* Animated gradient overlay on hover */}
-                      <div className={`absolute inset-0 bg-gradient-to-br ${action.gradient} opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
-                      
-                      {/* Shine effect */}
-                      <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/30 to-transparent" />
-                      
-                      <div className="relative z-10">
-                        <motion.div
-                          whileHover={{ rotate: 360, scale: 1.1 }}
-                          transition={{ duration: 0.6 }}
-                          className="mb-6 inline-block"
-                        >
-                          <div className={`p-5 rounded-2xl bg-gradient-to-br ${action.gradient} shadow-xl group-hover:shadow-2xl transition-shadow`}>
-                            <action.icon className="w-8 h-8 text-white" />
-                          </div>
-                        </motion.div>
-                        
-                        <div className="space-y-3">
-                          <div className="font-black text-xl text-gray-900 dark:text-white group-hover:text-white flex items-center gap-3 transition-colors">
-                            {action.title}
-                            <ArrowRight className="w-5 h-5 opacity-0 group-hover:opacity-100 transition-all transform group-hover:translate-x-2" />
-                          </div>
-                          <div className="text-sm text-gray-600 dark:text-gray-400 group-hover:text-white/90 transition-colors font-semibold leading-relaxed">
-                            {action.description}
-                          </div>
-                        </div>
-                      </div>
-                    </motion.div>
-                  </Link>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        {/* Recent Messages - Enhanced Design */}
-        {messages && messages.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-          >
-            <Card className="border border-gray-200 dark:border-gray-700 shadow-xl overflow-hidden bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm">
-              <CardHeader className="bg-gradient-to-r from-gray-50 via-gray-100 to-gray-50 dark:from-gray-800 dark:via-gray-900 dark:to-gray-800 border-b border-gray-200 dark:border-gray-700 p-8">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-3xl font-black text-gray-900 dark:text-white mb-2">Mensagens Recentes</CardTitle>
-                    <CardDescription className="text-base text-gray-600 dark:text-gray-400">
-                      Últimas {messages.length} mensagens enviadas
-                    </CardDescription>
-                  </div>
-                  <Link href="/send">
-                    <Button className="gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-bold shadow-lg hover:shadow-xl transition-all">
-                      Ver Todas
-                      <ArrowRight className="w-4 h-4" />
-                    </Button>
-                  </Link>
+                  )}
                 </div>
               </CardHeader>
-              <CardContent className="p-6">
-                <div className="space-y-4">
-                  {messages.map((message, index) => (
-                    <motion.div
-                      key={message.id}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.5 + index * 0.05 }}
-                      whileHover={{ scale: 1.02, x: 4 }}
-                      className="flex items-center justify-between p-6 bg-gradient-to-r from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 rounded-2xl hover:shadow-xl transition-all group border-2 border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-700"
-                    >
-                      <div className="flex items-center space-x-5 flex-1 min-w-0">
-                        <motion.div
-                          whileHover={{ scale: 1.15, rotate: 5 }}
-                          className={`p-4 rounded-2xl shadow-lg ${message.platform === "whatsapp" ? "bg-gradient-to-br from-green-500 to-emerald-600" : "bg-gradient-to-br from-blue-500 to-cyan-600"}`}
-                        >
-                          {message.platform === "whatsapp" ? (
-                            <MessageSquare className="w-6 h-6 text-white" />
-                          ) : (
-                            <Bot className="w-6 h-6 text-white" />
-                          )}
-                        </motion.div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-black text-gray-900 dark:text-white text-lg mb-1">
-                            {message.recipient}
-                          </p>
-                          <p className="text-sm text-gray-600 dark:text-gray-400 truncate max-w-md font-medium">
-                            {message.content}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-5 flex-shrink-0">
-                        <div className="flex items-center gap-2">
-                          {message.status === "sent" && (
-                            <div className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/30 dark:to-emerald-900/30 rounded-full border border-green-200 dark:border-green-800 shadow-sm">
-                              <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
-                              <span className="text-sm font-bold text-green-700 dark:text-green-300">Enviado</span>
-                            </div>
-                          )}
-                          {message.status === "failed" && (
-                            <div className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-red-50 to-rose-50 dark:from-red-900/30 dark:to-rose-900/30 rounded-full border border-red-200 dark:border-red-800 shadow-sm">
-                              <XCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
-                              <span className="text-sm font-bold text-red-700 dark:text-red-300">Falhou</span>
-                            </div>
-                          )}
-                          {message.status === "pending" && (
-                            <div className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-yellow-50 to-amber-50 dark:from-yellow-900/30 dark:to-amber-900/30 rounded-full border border-yellow-200 dark:border-yellow-800 shadow-sm">
-                              <Clock className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
-                              <span className="text-sm font-bold text-yellow-700 dark:text-yellow-300">Pendente</span>
-                            </div>
-                          )}
-                        </div>
-                        <span className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap font-semibold px-3 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                          {new Date(message.sentAt).toLocaleString("pt-BR", {
-                            day: "2-digit",
-                            month: "short",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </span>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
+              <CardContent className="pt-6">
+                {loadingHistory ? (
+                  <Skeleton className="h-[300px] w-full" />
+                ) : errorHistory ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <AlertTriangle className="w-8 h-8 text-amber-500 mb-3" />
+                    <p className="text-lg font-bold text-gray-900 dark:text-white">
+                      Não foi possível carregar o histórico
+                    </p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                      Isto é uma falha de leitura — não significa que nada foi enviado. Recarregue a página.
+                    </p>
+                  </div>
+                ) : hasHistory ? (
+                  <div className="h-[300px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={history?.series ?? []}>
+                        <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200 dark:stroke-gray-700" />
+                        <XAxis dataKey="date" tickFormatter={formatDayLabel} fontSize={12} />
+                        <YAxis fontSize={12} allowDecimals={false} />
+                        <Tooltip
+                          labelFormatter={(value: string) => formatDayLabel(value)}
+                          formatter={(value: number, name: string) => [formatNumber(value), name]}
+                        />
+                        <Legend />
+                        <Bar dataKey="sent" name="Enviadas" stackId="envios" fill="#10B981" radius={[0, 0, 0, 0]} />
+                        <Bar dataKey="failed" name="Falhas" stackId="envios" fill="#EF4444" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <div className="p-4 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-600 mb-4">
+                      <Send className="w-8 h-8 text-white" />
+                    </div>
+                    <p className="text-lg font-bold text-gray-900 dark:text-white">Nenhum disparo ainda</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 mb-4">
+                      Assim que a primeira campanha rodar, o histórico aparece aqui.
+                    </p>
+                    <Link href="/disparos/new">
+                      <Button className="gap-2">
+                        Criar disparo
+                        <ArrowRight className="w-4 h-4" />
+                      </Button>
+                    </Link>
+                  </div>
+                )}
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-4">
+                  O WhatsApp via QR Code confirma apenas o envio — entrega e leitura só existem nas campanhas pela API
+                  oficial da Meta.
+                </p>
               </CardContent>
             </Card>
           </motion.div>
-        )}
+
+          {/* TELEFONES */}
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
+            <Card className="border border-gray-200 dark:border-gray-700 shadow-lg bg-white dark:bg-gray-800/50">
+              <CardHeader className="border-b border-gray-200 dark:border-gray-700">
+                <CardTitle className="text-2xl font-black text-gray-900 dark:text-white">Telefones</CardTitle>
+                <CardDescription className="text-base">
+                  Quanto cada número já disparou hoje e quanto ainda cabe no aquecimento
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pt-6">
+                {loadingConnections ? (
+                  <div className="space-y-3">
+                    <Skeleton className="h-14 w-full" />
+                    <Skeleton className="h-14 w-full" />
+                  </div>
+                ) : errorConnections ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <AlertTriangle className="w-8 h-8 text-amber-500 mb-3" />
+                    <p className="text-lg font-bold text-gray-900 dark:text-white">
+                      Não foi possível carregar os telefones
+                    </p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                      Falha de leitura — recarregue a página.
+                    </p>
+                  </div>
+                ) : (connections?.length ?? 0) === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <p className="text-lg font-bold text-gray-900 dark:text-white">Nenhum telefone conectado</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 mb-4">
+                      Conecte um WhatsApp para começar a disparar.
+                    </p>
+                    <Link href="/whatsapp">
+                      <Button className="gap-2">
+                        Conectar WhatsApp
+                        <ArrowRight className="w-4 h-4" />
+                      </Button>
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {connections?.map((conn) => {
+                      const warmupPercent =
+                        conn.warmupDailyLimit && conn.warmupDailyLimit > 0
+                          ? Math.min(100, Math.round((conn.sentToday / conn.warmupDailyLimit) * 100))
+                          : null;
+
+                      return (
+                        <div
+                          key={conn.id}
+                          className="flex flex-wrap items-center gap-4 p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/30"
+                        >
+                          <div
+                            className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                              conn.status === "connected"
+                                ? "bg-green-500"
+                                : conn.status === "disconnected"
+                                  ? "bg-red-500"
+                                  : "bg-amber-500"
+                            }`}
+                          />
+                          <div className="min-w-[180px] flex-1">
+                            <p className="font-bold text-gray-900 dark:text-white">
+                              {conn.phoneNumber || conn.identification}
+                            </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              {conn.status === "connected"
+                                ? "Conectado"
+                                : conn.status === "disconnected"
+                                  ? "Desconectado"
+                                  : conn.status === "qr_code"
+                                    ? "Aguardando QR"
+                                    : "Conectando"}
+                            </p>
+                          </div>
+                          <div className="min-w-[120px]">
+                            <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Hoje</p>
+                            <p className="text-lg font-black text-gray-900 dark:text-white">
+                              {formatNumber(conn.sentToday)}
+                            </p>
+                          </div>
+                          <div className="min-w-[200px] flex-1">
+                            <p className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">
+                              Aquecimento
+                            </p>
+                            {warmupPercent != null ? (
+                              <div className="flex items-center gap-3">
+                                <Progress value={warmupPercent} className="h-2 flex-1" />
+                                <span className="text-xs font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap">
+                                  {formatNumber(conn.sentToday)}/{formatNumber(conn.warmupDailyLimit ?? 0)}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-gray-500 dark:text-gray-400">Sem teto definido</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
         </div>
       </div>
     </DashboardLayout>
   );
+}
+
+/** Minutos → "2h 30min" / "45min", para o ETA da fila. */
+function formatDuration(minutes: number): string {
+  if (minutes < 60) return `${minutes}min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest > 0 ? `${hours}h ${rest}min` : `${hours}h`;
 }

@@ -317,6 +317,8 @@ export class BaileysCampaignScheduler {
             await db.updateBaileysCampaignRecipient(nextRecipient.id, {
               status: "failed",
               errorMessage: lastBackendDownMessage.slice(0, 1000),
+              // Momento da tentativa: sem isso a falha não entra na série diária do dashboard.
+              sentAt: new Date(),
             });
             await this.refreshCounters(campaignId);
             await db.updateBaileysCampaign(campaignId, { status: "paused" });
@@ -424,6 +426,8 @@ export class BaileysCampaignScheduler {
             status: "failed",
             errorMessage: userFacingError.slice(0, 1000),
             sentFromConnectionId: pick.id,
+            // Momento da tentativa: sem isso a falha não entra na série diária do dashboard.
+            sentAt: new Date(),
           });
           console.error(
             `[BaileysCampaignScheduler] Falha campanha=${campaignId} conexão="${pick.identification}" destino=${recipient.phoneNumber} HTTP=${status ?? "n/a"}:`,
