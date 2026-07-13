@@ -296,15 +296,11 @@ export default function Landing() {
                     </ul>
 
                     {plan.isEnterprise ? (
-                      <Button
-                        className="w-full"
-                        variant="outline"
-                        onClick={() => {
-                          window.location.href = `mailto:contato@bluelabs.digital?subject=Interesse no Plano Enterprise`;
-                        }}
-                      >
-                        <Mail className="h-4 w-4 mr-2" />
-                        Fale Conosco
+                      <Button className="w-full" variant="outline" asChild>
+                        <a href="mailto:contato@bluelabs.digital?subject=Interesse%20no%20Plano%20Enterprise">
+                          <Mail className="h-4 w-4 mr-2" />
+                          Fale Conosco
+                        </a>
                       </Button>
                     ) : (
                       <Button
