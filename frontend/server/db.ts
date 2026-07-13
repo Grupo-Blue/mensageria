@@ -352,11 +352,13 @@ export async function getMessages(userId: number, limit: number = 50) {
   return await db.select().from(messages).where(eq(messages.userId, userId)).orderBy(desc(messages.sentAt)).limit(limit);
 }
 
-export async function createMessage(message: InsertMessage) {
+/** Devolve o id da linha criada, para que o chamador possa fechar o status depois do envio. */
+export async function createMessage(message: InsertMessage): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  
-  await db.insert(messages).values(message);
+
+  const [result] = await db.insert(messages).values(message);
+  return Number(result.insertId);
 }
 
 export async function updateMessageStatus(id: number, status: "sent" | "failed" | "pending", errorMessage?: string) {
@@ -1162,6 +1164,56 @@ export async function getWhatsappTemplates(businessAccountId: number) {
   return await db.select().from(whatsappTemplates).where(eq(whatsappTemplates.businessAccountId, businessAccountId));
 }
 
+/**
+ * Apelido local dos templates usados por estas campanhas, indexado por "contaId:nomeTemplate".
+ * A campanha guarda o nome técnico da Meta (não há FK para o template), então o vínculo é por
+ * (conta, nome) — o mesmo par que identifica o template do lado de lá.
+ */
+export async function getTemplateAliasesForCampaigns(
+  items: Array<{ businessAccountId: number; templateName: string }>,
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const db = await getDb();
+  if (!db || items.length === 0) return out;
+
+  const accountIds = Array.from(new Set(items.map((i) => i.businessAccountId)));
+  const rows = await db
+    .select({
+      businessAccountId: whatsappTemplates.businessAccountId,
+      name: whatsappTemplates.name,
+      alias: whatsappTemplates.alias,
+    })
+    .from(whatsappTemplates)
+    .where(inArray(whatsappTemplates.businessAccountId, accountIds));
+
+  for (const r of rows as Array<{ businessAccountId: number; name: string; alias: string | null }>) {
+    if (r.alias) out.set(`${r.businessAccountId}:${r.name}`, r.alias);
+  }
+  return out;
+}
+
+export async function getWhatsappTemplateById(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const results = await db.select().from(whatsappTemplates).where(eq(whatsappTemplates.id, id)).limit(1);
+  return results[0] || null;
+}
+
+/**
+ * Grava apenas o apelido e a descrição locais. Nome, idioma e components pertencem à Meta e
+ * são sobrescritos a cada sync — por isso não passam por aqui.
+ */
+export async function updateWhatsappTemplateAlias(
+  id: number,
+  data: { alias: string | null; description: string | null },
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.update(whatsappTemplates).set(data).where(eq(whatsappTemplates.id, id));
+}
+
 export async function getWhatsappTemplateByName(businessAccountId: number, templateName: string) {
   const db = await getDb();
   if (!db) return null;
@@ -1933,137 +1985,378 @@ export async function filterBlacklistedNumbers(
   }
 }
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dashboard
+//
+// Os disparos em massa vivem em baileys_campaign_recipients / campaign_recipients;
+// a tabela `messages` só recebe envios avulsos. Qualquer número do dashboard que
+// represente "mensagens enviadas" precisa somar as três fontes.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ConnectionHealth {
+  id: number;
+  identification: string;
+  phoneNumber: string | null;
+  status: "connected" | "disconnected" | "qr_code" | "connecting";
+  warmupDailyLimit: number | null;
+  sentToday: number;
+  lastConnectedAt: Date | null;
+  proxyStatus: "available" | "assigned" | "dead" | null;
+}
+
+export interface DashboardOverview {
+  connections: { total: number; connected: number; qrCode: number; connecting: number; disconnected: number };
+  /** Teto de disparo do dia, considerando apenas as conexões conectadas que têm warmup definido. */
+  capacity: { dailyLimit: number | null; usedAgainstLimit: number; uncappedConnections: number };
+  queue: { pending: number; etaMinutes: number | null };
+  campaigns: { running: number; scheduled: number; paused: number };
+}
+
+export interface DailySend {
+  /** YYYY-MM-DD */
+  date: string;
+  sent: number;
+  failed: number;
+}
+
+export interface SendHistory {
+  series: DailySend[];
+  totals: { sent: number; failed: number; failureRate: number; sentToday: number; dailyAverage: number };
+}
+
+/** Contas cujos disparos o usuário enxerga: a dele + as de quem o convidou (role viewer). */
+async function getVisibleOwnerIds(userId: number): Promise<number[]> {
+  return [userId, ...(await getOwnerIdsForMember(userId))];
+}
+
+function startOfToday(): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+/** YYYY-MM-DD no fuso local do processo — o dia como o usuário o entende. */
+function toDayKey(d: Date): string {
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${month}-${day}`;
+}
+
 /**
- * Get dashboard statistics with trends (current period vs previous period)
+ * Offset local do processo em '+HH:MM'. O Drizzle grava TIMESTAMP como wall-clock UTC
+ * (mapToDriverValue usa toISOString), então DATE_FORMAT direto devolveria o dia em UTC —
+ * e um envio das 21h no Brasil cairia no dia seguinte. Convertendo para este offset, o
+ * dia agrupado no SQL passa a ser o mesmo dia de toDayKey().
+ *
+ * Usa o offset de agora para toda a janela: numa virada de horário de verão, eventos na
+ * primeira hora do dia podem cair no bucket vizinho. Aceitável — a alternativa exigiria
+ * as tabelas de fuso do MySQL carregadas.
  */
-export async function getDashboardStats(userId: number) {
+function localUtcOffset(): string {
+  const minutes = -new Date().getTimezoneOffset();
+  const sign = minutes >= 0 ? "+" : "-";
+  const abs = Math.abs(minutes);
+  return `${sign}${String(Math.floor(abs / 60)).padStart(2, "0")}:${String(abs % 60).padStart(2, "0")}`;
+}
+
+/**
+ * Instante → 'YYYY-MM-DD HH:mm:ss' em UTC, que é exatamente como o Drizzle grava
+ * TIMESTAMP. Necessário nos WHERE que comparam uma expressão SQL (COALESCE) com uma
+ * data: nesse caminho o Drizzle não aplica o encoder da coluna e entregaria o Date ao
+ * mysql2, que o serializaria no fuso local — desalinhando o filtro do resto da query.
+ */
+function toMysqlUtc(d: Date): string {
+  return d.toISOString().slice(0, 19).replace("T", " ");
+}
+
+/**
+ * Enviados HOJE por conexão, em uma única query (o scheduler tem a versão de uma
+ * conexão só em countBaileysSentTodayForConnection). O OR/isNull cobre campanhas
+ * legadas, anteriores ao round-robin, em que o destinatário não guarda de qual
+ * conexão saiu — nesse caso vale a conexão única da campanha.
+ */
+async function getSentTodayByConnection(userId: number): Promise<Map<number, number>> {
+  const out = new Map<number, number>();
   const db = await getDb();
-  if (!db) {
-    return {
-      whatsapp: { current: 0, previous: 0, trend: 0, trendUp: true },
-      telegram: { current: 0, previous: 0, trend: 0, trendUp: true },
-      messages: { current: 0, previous: 0, trend: 0, trendUp: true },
-      successRate: { current: 0, previous: 0, trend: 0, trendUp: true },
-    };
+  if (!db) return out;
+
+  const rows = await db
+    .select({
+      connectionId: sql<number>`COALESCE(${baileysCampaignRecipients.sentFromConnectionId}, ${baileysCampaigns.connectionId})`,
+      count: sql<number>`COUNT(*)`,
+    })
+    .from(baileysCampaignRecipients)
+    .innerJoin(baileysCampaigns, eq(baileysCampaigns.id, baileysCampaignRecipients.campaignId))
+    .where(
+      and(
+        eq(baileysCampaigns.userId, userId),
+        eq(baileysCampaignRecipients.status, "sent"),
+        gte(baileysCampaignRecipients.sentAt, startOfToday()),
+      ),
+    )
+    .groupBy(sql`COALESCE(${baileysCampaignRecipients.sentFromConnectionId}, ${baileysCampaigns.connectionId})`);
+
+  for (const r of rows as Array<{ connectionId: number | null; count: number }>) {
+    if (r.connectionId == null) continue; // campanha legada sem conexão registrada
+    out.set(Number(r.connectionId), Number(r.count));
   }
+  return out;
+}
 
-  const now = new Date();
-  const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const previousMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
+/**
+ * Saúde de cada telefone do usuário: estado da sessão, quanto já disparou hoje e
+ * situação do proxy. Alimenta os alertas e a tabela de telefones do dashboard.
+ *
+ * Escopo: apenas as conexões do próprio usuário. Convidados (viewer) enxergam os
+ * disparos de quem os convidou, mas não os chips — isso exporia telefones que a
+ * tela de Conexões nunca mostrou a eles.
+ */
+export async function getConnectionsHealth(userId: number): Promise<ConnectionHealth[]> {
+  const db = await getDb();
+  if (!db) return [];
 
-  // WhatsApp connections - compare current connected vs connected at start of previous month
-  const allWhatsapp = await db.select().from(whatsappConnections).where(eq(whatsappConnections.userId, userId));
-  const whatsappCurrent = allWhatsapp.filter(c => c.status === "connected").length;
-  
-  // Para conexões, vamos contar quantas estavam conectadas no início do mês anterior
-  // (baseado em lastConnectedAt antes do início do mês anterior)
-  const whatsappPrevious = allWhatsapp.filter(c => 
-    c.lastConnectedAt && 
-    c.lastConnectedAt < previousMonthStart &&
-    c.status === "connected"
-  ).length;
+  const rows = await db
+    .select({
+      id: whatsappConnections.id,
+      identification: whatsappConnections.identification,
+      phoneNumber: whatsappConnections.phoneNumber,
+      status: whatsappConnections.status,
+      warmupDailyLimit: whatsappConnections.warmupDailyLimit,
+      lastConnectedAt: whatsappConnections.lastConnectedAt,
+      proxyStatus: webshareProxies.status,
+    })
+    .from(whatsappConnections)
+    .leftJoin(webshareProxies, eq(webshareProxies.id, whatsappConnections.proxyId))
+    .where(eq(whatsappConnections.userId, userId))
+    .orderBy(desc(whatsappConnections.id));
 
-  // Telegram connections - same logic
-  const allTelegram = await db.select().from(telegramConnections).where(eq(telegramConnections.userId, userId));
-  const telegramCurrent = allTelegram.filter(c => c.status === "connected").length;
-  const telegramPrevious = allTelegram.filter(c => 
-    c.lastConnectedAt && 
-    c.lastConnectedAt < previousMonthStart &&
-    c.status === "connected"
-  ).length;
+  const sentToday = await getSentTodayByConnection(userId);
 
-  // Messages sent (current vs previous month)
-  const messagesCurrentList = await db.select()
-    .from(messages)
-    .where(
-      and(
-        eq(messages.userId, userId),
-        eq(messages.status, "sent"),
-        gte(messages.sentAt, currentMonthStart)
-      )
-    );
-  
-  const messagesPreviousList = await db.select()
-    .from(messages)
-    .where(
-      and(
-        eq(messages.userId, userId),
-        eq(messages.status, "sent"),
-        gte(messages.sentAt, previousMonthStart),
-        lt(messages.sentAt, currentMonthStart)
-      )
-    );
-
-  const messagesCurrentCount = messagesCurrentList.length;
-  const messagesPreviousCount = messagesPreviousList.length;
-
-  // Success rate (current vs previous month)
-  const allMessagesCurrent = await db.select()
-    .from(messages)
-    .where(
-      and(
-        eq(messages.userId, userId),
-        gte(messages.sentAt, currentMonthStart)
-      )
-    );
-
-  const allMessagesPrevious = await db.select()
-    .from(messages)
-    .where(
-      and(
-        eq(messages.userId, userId),
-        gte(messages.sentAt, previousMonthStart),
-        lt(messages.sentAt, currentMonthStart)
-      )
-    );
-
-  const currentSent = allMessagesCurrent.filter(m => m.status === "sent").length;
-  const currentTotal = allMessagesCurrent.length;
-  const successRateCurrent = currentTotal > 0 ? Math.round((currentSent / currentTotal) * 100) : 0;
-
-  const previousSent = allMessagesPrevious.filter(m => m.status === "sent").length;
-  const previousTotal = allMessagesPrevious.length;
-  const successRatePrevious = previousTotal > 0 ? Math.round((previousSent / previousTotal) * 100) : 0;
-
-  // Calculate trends
-  const calculateTrend = (current: number, previous: number): { trend: number; trendUp: boolean } => {
-    if (previous === 0) {
-      return { trend: current > 0 ? 100 : 0, trendUp: current > 0 };
-    }
-    const change = ((current - previous) / previous) * 100;
-    return { trend: Math.round(change), trendUp: change >= 0 };
+  type HealthRow = Omit<ConnectionHealth, "sentToday" | "proxyStatus"> & {
+    proxyStatus: ConnectionHealth["proxyStatus"] | undefined;
   };
 
-  const whatsappTrend = calculateTrend(whatsappCurrent, whatsappPrevious);
-  const telegramTrend = calculateTrend(telegramCurrent, telegramPrevious);
-  const messagesTrend = calculateTrend(messagesCurrentCount, messagesPreviousCount);
-  const successRateTrend = calculateTrend(successRateCurrent, successRatePrevious);
+  return (rows as HealthRow[]).map((r) => ({
+    id: r.id,
+    identification: r.identification,
+    phoneNumber: r.phoneNumber,
+    status: r.status,
+    warmupDailyLimit: r.warmupDailyLimit,
+    sentToday: sentToday.get(r.id) ?? 0,
+    lastConnectedAt: r.lastConnectedAt,
+    proxyStatus: r.proxyStatus ?? null,
+  }));
+}
+
+/**
+ * Bloco "AGORA": o que exige ação nos próximos minutos. A capacidade é derivada da
+ * mesma fonte de getConnectionsHealth, para que os dois cards nunca se contradigam.
+ */
+export async function getDashboardOverview(userId: number): Promise<DashboardOverview> {
+  const empty: DashboardOverview = {
+    connections: { total: 0, connected: 0, qrCode: 0, connecting: 0, disconnected: 0 },
+    capacity: { dailyLimit: null, usedAgainstLimit: 0, uncappedConnections: 0 },
+    queue: { pending: 0, etaMinutes: null },
+    campaigns: { running: 0, scheduled: 0, paused: 0 },
+  };
+
+  const db = await getDb();
+  if (!db) return empty;
+
+  const ownerIds = await getVisibleOwnerIds(userId);
+  const health = await getConnectionsHealth(userId);
+
+  const connections = {
+    total: health.length,
+    connected: health.filter((c) => c.status === "connected").length,
+    qrCode: health.filter((c) => c.status === "qr_code").length,
+    connecting: health.filter((c) => c.status === "connecting").length,
+    disconnected: health.filter((c) => c.status === "disconnected").length,
+  };
+
+  // Teto do dia: só conexões conectadas contam, porque são as que podem disparar
+  // agora. As sem warmup definido não têm teto — reportadas à parte para a UI não
+  // fingir um limite que não existe.
+  const connected = health.filter((c) => c.status === "connected");
+  const capped = connected.filter((c) => c.warmupDailyLimit != null);
+  const capacity = {
+    dailyLimit: capped.length > 0 ? capped.reduce((sum, c) => sum + (c.warmupDailyLimit ?? 0), 0) : null,
+    usedAgainstLimit: capped.reduce((sum, c) => sum + c.sentToday, 0),
+    uncappedConnections: connected.length - capped.length,
+  };
+
+  const campaignRows = await db
+    .select({ status: baileysCampaigns.status, count: sql<number>`COUNT(*)` })
+    .from(baileysCampaigns)
+    .where(inArray(baileysCampaigns.userId, ownerIds))
+    .groupBy(baileysCampaigns.status);
+
+  const campaignsByStatus = { running: 0, scheduled: 0, paused: 0 };
+  for (const r of campaignRows as Array<{ status: string; count: number }>) {
+    if (r.status === "running" || r.status === "scheduled" || r.status === "paused") {
+      campaignsByStatus[r.status] = Number(r.count);
+    }
+  }
+
+  // Fila + ETA, por campanha em execução.
+  //
+  // O ritmo NÃO é proporcional ao número de chips: o scheduler processa cada campanha
+  // num laço serial — envia uma mensagem e dorme o delay aleatório
+  // (baileysCampaignScheduler.ts, `await sleep(randomDelayMs(...))`). O round-robin só
+  // decide QUAL chip dispara, não paraleliza. O que roda em paralelo são as campanhas,
+  // uma `processCampaign` por campanha em execução.
+  //
+  // Logo: cada campanha leva `pendentes × delay médio`, e o todo termina quando a mais
+  // demorada terminar — ou seja, o MÁXIMO entre elas, não a soma dividida por chips.
+  const perCampaign = await db
+    .select({
+      pending: sql<number>`COUNT(*)`,
+      avgDelay: sql<number>`AVG((${baileysCampaigns.minDelaySeconds} + ${baileysCampaigns.maxDelaySeconds}) / 2)`,
+    })
+    .from(baileysCampaignRecipients)
+    .innerJoin(baileysCampaigns, eq(baileysCampaigns.id, baileysCampaignRecipients.campaignId))
+    .where(
+      and(
+        inArray(baileysCampaigns.userId, ownerIds),
+        eq(baileysCampaigns.status, "running"),
+        eq(baileysCampaignRecipients.status, "pending"),
+      ),
+    )
+    .groupBy(baileysCampaigns.id);
+
+  let pending = 0;
+  let slowestSeconds = 0;
+  for (const row of perCampaign as Array<{ pending: number; avgDelay: number | null }>) {
+    const count = Number(row.pending);
+    pending += count;
+    const delay = Number(row.avgDelay ?? 0);
+    if (delay > 0) slowestSeconds = Math.max(slowestSeconds, count * delay);
+  }
+
+  // Sem chip conectado a fila não anda — não há estimativa honesta a dar.
+  const etaMinutes =
+    pending > 0 && connections.connected > 0 && slowestSeconds > 0
+      ? Math.ceil(slowestSeconds / 60)
+      : null;
+
+  return { connections, capacity, queue: { pending, etaMinutes }, campaigns: campaignsByStatus };
+}
+
+/**
+ * Série diária de envios somando as TRÊS fontes (campanhas Baileys, campanhas Meta e
+ * envios avulsos), com os totais derivados da própria série — assim os KPIs do topo
+ * nunca contradizem o gráfico.
+ *
+ * Sobre COALESCE(sent_at, created_at): falhas gravadas antes desta feature não têm
+ * sent_at (os schedulers não o preenchiam), então caem no created_at do destinatário —
+ * uma aproximação. Falhas novas trazem o timestamp real da tentativa.
+ */
+export async function getSendHistory(userId: number, days: number): Promise<SendHistory> {
+  const emptyTotals = { sent: 0, failed: 0, failureRate: 0, sentToday: 0, dailyAverage: 0 };
+
+  // Janela: `days` dias corridos terminando hoje (hoje incluso).
+  const since = startOfToday();
+  since.setDate(since.getDate() - (days - 1));
+
+  const buckets = new Map<string, DailySend>();
+  for (let i = 0; i < days; i++) {
+    const d = new Date(since);
+    d.setDate(since.getDate() + i);
+    const key = toDayKey(d);
+    buckets.set(key, { date: key, sent: 0, failed: 0 });
+  }
+
+  const db = await getDb();
+  if (!db) return { series: Array.from(buckets.values()), totals: emptyTotals };
+
+  const ownerIds = await getVisibleOwnerIds(userId);
+
+  const add = (day: string, status: string, count: number) => {
+    const bucket = buckets.get(day);
+    if (!bucket) return; // fora da janela (borda de fuso) — ignora em vez de inventar um dia
+    if (status === "failed") bucket.failed += count;
+    else bucket.sent += count; // sent, delivered e read são todos "saiu" para o histórico
+  };
+
+  // O banco guarda TIMESTAMP em UTC; o dia precisa ser o do usuário. Daí o CONVERT_TZ
+  // no agrupamento e o limite da janela já convertido para UTC no filtro.
+  const tz = localUtcOffset();
+  const sinceUtc = toMysqlUtc(since);
+
+  // 1) Campanhas Baileys (disparo em massa) — a fonte principal do produto.
+  const baileysAt = sql`COALESCE(${baileysCampaignRecipients.sentAt}, ${baileysCampaignRecipients.createdAt})`;
+  const baileysDay = sql<string>`DATE_FORMAT(CONVERT_TZ(${baileysAt}, '+00:00', ${tz}), '%Y-%m-%d')`;
+  const baileysRows = await db
+    .select({ day: baileysDay, status: baileysCampaignRecipients.status, count: sql<number>`COUNT(*)` })
+    .from(baileysCampaignRecipients)
+    .innerJoin(baileysCampaigns, eq(baileysCampaigns.id, baileysCampaignRecipients.campaignId))
+    .where(
+      and(
+        inArray(baileysCampaigns.userId, ownerIds),
+        inArray(baileysCampaignRecipients.status, ["sent", "failed"]),
+        sql`${baileysAt} >= ${sinceUtc}`,
+      ),
+    )
+    .groupBy(baileysDay, baileysCampaignRecipients.status);
+
+  for (const r of baileysRows as Array<{ day: string; status: string; count: number }>) {
+    add(String(r.day), r.status, Number(r.count));
+  }
+
+  // 2) Campanhas Meta (API oficial). delivered/read também já saíram.
+  const metaAt = sql`COALESCE(${campaignRecipients.sentAt}, ${campaignRecipients.createdAt})`;
+  const metaDay = sql<string>`DATE_FORMAT(CONVERT_TZ(${metaAt}, '+00:00', ${tz}), '%Y-%m-%d')`;
+  const metaRows = await db
+    .select({ day: metaDay, status: campaignRecipients.status, count: sql<number>`COUNT(*)` })
+    .from(campaignRecipients)
+    .innerJoin(campaigns, eq(campaigns.id, campaignRecipients.campaignId))
+    .where(
+      and(
+        inArray(campaigns.userId, ownerIds),
+        inArray(campaignRecipients.status, ["sent", "delivered", "read", "failed"]),
+        sql`${metaAt} >= ${sinceUtc}`,
+      ),
+    )
+    .groupBy(metaDay, campaignRecipients.status);
+
+  for (const r of metaRows as Array<{ day: string; status: string; count: number }>) {
+    add(String(r.day), r.status, Number(r.count));
+  }
+
+  // 3) Envios avulsos (página Enviar Mensagem e rotas legadas). `messages.sentAt` é
+  // NOT NULL com default, então dispensa o COALESCE.
+  const messageDay = sql<string>`DATE_FORMAT(CONVERT_TZ(${messages.sentAt}, '+00:00', ${tz}), '%Y-%m-%d')`;
+  const messageRows = await db
+    .select({ day: messageDay, status: messages.status, count: sql<number>`COUNT(*)` })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.userId, userId),
+        inArray(messages.status, ["sent", "failed"]),
+        gte(messages.sentAt, since),
+      ),
+    )
+    .groupBy(messageDay, messages.status);
+
+  for (const r of messageRows as Array<{ day: string; status: string; count: number }>) {
+    add(String(r.day), r.status, Number(r.count));
+  }
+
+  const series = Array.from(buckets.values());
+  const sent = series.reduce((sum, d) => sum + d.sent, 0);
+  const failed = series.reduce((sum, d) => sum + d.failed, 0);
+  const attempts = sent + failed;
+  const todayKey = toDayKey(new Date());
 
   return {
-    whatsapp: {
-      current: whatsappCurrent,
-      previous: whatsappPrevious,
-      trend: whatsappTrend.trend,
-      trendUp: whatsappTrend.trendUp,
-    },
-    telegram: {
-      current: telegramCurrent,
-      previous: telegramPrevious,
-      trend: telegramTrend.trend,
-      trendUp: telegramTrend.trendUp,
-    },
-    messages: {
-      current: messagesCurrentCount,
-      previous: messagesPreviousCount,
-      trend: messagesTrend.trend,
-      trendUp: messagesTrend.trendUp,
-    },
-    successRate: {
-      current: successRateCurrent,
-      previous: successRatePrevious,
-      trend: successRateTrend.trend,
-      trendUp: successRateTrend.trendUp,
+    series,
+    totals: {
+      sent,
+      failed,
+      failureRate: attempts > 0 ? (failed / attempts) * 100 : 0,
+      sentToday: buckets.get(todayKey)?.sent ?? 0,
+      dailyAverage: days > 0 ? Math.round(sent / days) : 0,
     },
   };
 }

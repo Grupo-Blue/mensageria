@@ -1,4 +1,5 @@
 import DashboardLayout from "@/components/DashboardLayout";
+import { TemplatePicker } from "@/components/TemplatePicker";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -656,36 +657,19 @@ export default function CampaignNew() {
                       <p className="text-sm">Sincronize os templates ou crie um no Meta Business Suite.</p>
                     </div>
                   ) : (
-                    <div className="grid gap-2 max-h-64 overflow-y-auto">
-                      {approvedTemplates.map((template) => (
-                        <div
-                          key={template.id}
-                          className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                            templateName === template.name
-                              ? "border-blue-500 bg-blue-50"
-                              : "border-gray-200 hover:border-gray-300"
-                          }`}
-                          onClick={() => {
-                            setTemplateName(template.name);
-                            setTemplateLanguage(template.language);
-                            setTemplateVariables({});
-                            setVariableUseRecipientName({});
-                          }}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="font-medium">{template.name}</p>
-                              <p className="text-sm text-gray-500">
-                                {template.category} | {template.language}
-                              </p>
-                            </div>
-                            <Badge variant="outline" className="text-xs">
-                              {template.status}
-                            </Badge>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    <TemplatePicker
+                      // Remonta ao trocar de conta: sem isto, a busca digitada para a conta
+                      // anterior continuaria filtrando a lista da nova, que apareceria vazia.
+                      key={businessAccountId}
+                      templates={approvedTemplates}
+                      value={templateName}
+                      onSelect={(template) => {
+                        setTemplateName(template.name);
+                        setTemplateLanguage(template.language);
+                        setTemplateVariables({});
+                        setVariableUseRecipientName({});
+                      }}
+                    />
                   )}
                 </div>
               )}
@@ -1317,7 +1301,7 @@ export default function CampaignNew() {
                 <h4 className="font-medium text-blue-900 mb-2">Resumo da Campanha</h4>
                 <ul className="text-sm text-blue-800 space-y-1">
                   <li><strong>Nome:</strong> {name || "-"}</li>
-                  <li><strong>Template:</strong> {templateName || "-"}</li>
+                  <li><strong>Template:</strong> {selectedTemplate?.alias || templateName || "-"}</li>
                   <li>
                     <strong>Destinatarios:</strong>{" "}
                     {recipientSource === "list" ? (

@@ -296,6 +296,8 @@ export class CampaignScheduler {
           await db.updateCampaignRecipient(recipient.id, {
             status: "failed",
             errorMessage: `Retry ${retryNumber} failed: ${error.message}`,
+            // Momento da tentativa: sem isso a falha não entra na série diária do dashboard.
+            sentAt: new Date(),
           });
           failCount++;
           console.error(`[CampaignScheduler] Retry failed for ${recipient.phoneNumber}:`, error.message);
@@ -408,6 +410,8 @@ export class CampaignScheduler {
         await db.updateCampaignRecipient(recipient.id, {
           status: "failed",
           errorMessage: `Manual retry ${retryNumber} failed: ${error.message}`,
+          // Momento da tentativa: sem isso a falha não entra na série diária do dashboard.
+          sentAt: new Date(),
         });
         failed++;
       }
@@ -522,6 +526,8 @@ export class CampaignScheduler {
           await db.updateCampaignRecipient(recipient.id, {
             status: "failed",
             errorMessage: error.message,
+            // Momento da tentativa: sem isso a falha não entra na série diária do dashboard.
+            sentAt: new Date(),
           });
           failedCount++;
           console.error(`[CampaignScheduler] Failed to send to ${recipient.phoneNumber}:`, error.message);

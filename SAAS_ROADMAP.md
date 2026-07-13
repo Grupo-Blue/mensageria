@@ -170,12 +170,10 @@ export const payments = mysqlTable('payments', {
 
 | Plano | Preço/mês | Conexões Baileys | Contas Meta | Campanhas/mês | Mensagens/mês |
 |-------|-----------|------------------|-------------|---------------|---------------|
-| **Free** | R$ 0 | 1 | 0 | 1 | 100 |
-| **Starter** | R$ 57 | 3 | 1 | 10 | 5.000 |
-| **Pro** | R$ 297 | 10 | 3 | 50 | 25.000 |
-| **Enterprise** | Sob consulta | Ilimitado | 10+ | Ilimitado | 100.000+ |
-
-> **Nota:** O plano Enterprise terá um botão "Fale Conosco" que abre email para contato comercial, pois o preço será avaliado caso a caso.
+| **Free** | R$ 0 | 1 | 1 | 2 | 200 |
+| **Starter** | R$ 97 | 2 | 1 | 10 | 2.000 |
+| **Profissional** | R$ 297 | 5 | 5 | Ilimitado | 25.000 |
+| **Enterprise** | R$ 797 | Ilimitado | 10 | Ilimitado | 500.000 |
 
 #### 1.2 Middleware de Verificação de Limites
 
@@ -783,7 +781,8 @@ STRIPE_PRICE_STARTER_MONTHLY=price_xxx
 STRIPE_PRICE_STARTER_YEARLY=price_xxx
 STRIPE_PRICE_PRO_MONTHLY=price_xxx
 STRIPE_PRICE_PRO_YEARLY=price_xxx
-# Enterprise não tem price_id pois é sob consulta
+STRIPE_PRICE_ENTERPRISE_MONTHLY=price_xxx
+STRIPE_PRICE_ENTERPRISE_YEARLY=price_xxx
 
 # Email (SMTP)
 SMTP_HOST=smtp.gmail.com

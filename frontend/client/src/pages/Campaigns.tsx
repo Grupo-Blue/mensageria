@@ -1,4 +1,3 @@
-import DashboardLayout from "@/components/DashboardLayout";
 import ContactListsManager from "@/components/ContactListsManager";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -116,27 +115,18 @@ export default function Campaigns() {
 
   if (isLoading) {
     return (
-      <DashboardLayout>
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-        </div>
-      </DashboardLayout>
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+      </div>
     );
   }
 
   const hasBusinessAccounts = businessAccounts && businessAccounts.length > 0;
 
   return (
-    <DashboardLayout>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex justify-between items-start">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Campanhas de Marketing</h1>
-            <p className="text-gray-600 mt-2">
-              Crie e gerencie campanhas de mensagens em massa via WhatsApp Business API
-            </p>
-          </div>
+    <div className="space-y-6">
+        {/* Barra de ações — o título da página é do shell (Disparos via API Oficial). */}
+        <div className="flex justify-end items-start">
           {hasBusinessAccounts ? (
             <Button asChild>
               <Link href="/campaigns/new">
@@ -196,7 +186,8 @@ export default function Campaigns() {
                           {getStatusBadge(campaign.status)}
                         </CardTitle>
                         <CardDescription>
-                          {campaign.description || `Template: ${campaign.templateName}`}
+                          {campaign.description ||
+                            `Template: ${campaign.templateAlias || campaign.templateName}`}
                         </CardDescription>
                       </div>
                       <DropdownMenu>
@@ -404,7 +395,6 @@ export default function Campaigns() {
             </CardContent>
           </Card>
         )}
-      </div>
-    </DashboardLayout>
+    </div>
   );
 }

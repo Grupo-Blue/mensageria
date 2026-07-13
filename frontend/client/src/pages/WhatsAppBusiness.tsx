@@ -1,4 +1,3 @@
-import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -50,11 +49,14 @@ import {
   PlusCircle,
   Info,
   Edit,
+  Search,
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import BlacklistManager from "@/components/BlacklistManager";
+import { TemplatePicker, foldText } from "@/components/TemplatePicker";
+import { TemplatePreviewButton, type PreviewComponent } from "@/components/TemplatePreview";
 
 interface TemplateComponent {
   type: string;
@@ -329,25 +331,16 @@ export default function WhatsAppBusiness() {
 
   if (isLoading) {
     return (
-      <DashboardLayout>
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-        </div>
-      </DashboardLayout>
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+      </div>
     );
   }
 
   return (
-    <DashboardLayout>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex justify-between items-start">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">WhatsApp Business API</h1>
-            <p className="text-gray-600 mt-2">
-              Configure suas contas da API oficial do WhatsApp Business para envio de campanhas de marketing
-            </p>
-          </div>
+    <div className="space-y-6">
+        {/* Barra de ações — o título da página é do shell (Disparos via API Oficial). */}
+        <div className="flex justify-end items-start">
           <div className="flex gap-2">
             {/* Test Message Button */}
             {accounts && accounts.length > 0 && (
@@ -407,28 +400,19 @@ export default function WhatsAppBusiness() {
                     {testAccountId && (
                       <div className="space-y-2">
                         <Label>Template de Mensagem *</Label>
-                        <Select
+                        <TemplatePicker
+                          // Remonta ao trocar de conta: sem isto, a busca digitada para a conta
+                          // anterior continuaria filtrando a lista da nova, que apareceria vazia.
+                          key={testAccountId}
+                          templates={(testTemplates ?? []).filter(t => t.status === "APPROVED")}
                           value={testTemplateName}
-                          onValueChange={(val) => {
-                            setTestTemplateName(val);
-                            const template = testTemplates?.find(t => t.name === val);
-                            if (template) {
-                              setTestTemplateLanguage(template.language);
-                            }
+                          onSelect={(template) => {
+                            setTestTemplateName(template.name);
+                            setTestTemplateLanguage(template.language);
                             setTestVariables({});
                           }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecione um template" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {testTemplates?.filter(t => t.status === "APPROVED").map((template) => (
-                              <SelectItem key={template.id} value={template.name}>
-                                {template.name} ({template.language})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                          emptyMessage="Nenhum template aprovado nesta conta. Sincronize os templates."
+                        />
                       </div>
                     )}
 
@@ -1094,7 +1078,7 @@ export default function WhatsAppBusiness() {
               Gerencie os contatos que não devem receber mensagens. Contatos são adicionados automaticamente quando respondem "SAIR" ou similar.
             </p>
             <Tabs defaultValue={accounts[0]?.id.toString()}>
-              <TabsList className="w-full flex-wrap h-auto gap-1">
+              <TabsList aria-label="Contas da blacklist" className="w-full flex-wrap h-auto gap-1">
                 {accounts.map((account) => (
                   <TabsTrigger key={account.id} value={account.id.toString()} className="flex-grow">
                     {account.name}
@@ -1206,8 +1190,7 @@ export default function WhatsAppBusiness() {
             </div>
           </CardContent>
         </Card>
-      </div>
-    </DashboardLayout>
+    </div>
   );
 }
 
@@ -1477,25 +1460,194 @@ function AccountCard({ account, onDelete, onSyncTemplates, isSyncing, isDeleting
           </div>
         </div>
 
-        {/* Templates Preview */}
-        {approvedTemplates.length > 0 && (
-          <div className="mt-4 pt-4 border-t">
-            <p className="text-xs font-medium text-gray-500 uppercase mb-2">Templates Disponiveis</p>
-            <div className="flex flex-wrap gap-2">
-              {approvedTemplates.slice(0, 5).map((template) => (
-                <Badge key={template.id} variant="outline" className="text-xs">
-                  {template.name} ({template.language})
-                </Badge>
-              ))}
-              {approvedTemplates.length > 5 && (
-                <Badge variant="outline" className="text-xs">
-                  +{approvedTemplates.length - 5} mais
-                </Badge>
-              )}
-            </div>
-          </div>
-        )}
+        {/* Templates: o nome da Meta é técnico, então cada um pode ganhar um apelido local. */}
+        {(templates?.length ?? 0) > 0 && <TemplateManager templates={templates ?? []} />}
       </CardContent>
     </Card>
+  );
+}
+
+interface ManagedTemplate {
+  id: number;
+  name: string;
+  language: string;
+  status: string;
+  alias?: string | null;
+  description?: string | null;
+  components?: PreviewComponent[];
+}
+
+/**
+ * Gestão dos apelidos. Tem busca pelo mesmo motivo que o seletor tem: uma conta com dezenas de
+ * templates de nome técnico é exatamente onde achar o certo é difícil.
+ *
+ * Lista TODOS os status (não só APPROVED): um template ainda pendente de aprovação também merece
+ * ser apelidado antes de entrar em uso.
+ */
+function TemplateManager({ templates }: { templates: ManagedTemplate[] }) {
+  const [search, setSearch] = useState("");
+
+  const filtered = useMemo(() => {
+    const term = foldText(search.trim());
+    if (!term) return templates;
+    return templates.filter((template) =>
+      [template.alias, template.description, template.name].some(
+        (field) => field && foldText(field).includes(term),
+      ),
+    );
+  }, [templates, search]);
+
+  return (
+    <div className="mt-4 pt-4 border-t space-y-2">
+      <p className="text-xs font-medium text-gray-500 uppercase">Templates e apelidos</p>
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          placeholder="Buscar por apelido, descrição ou nome do template..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-10"
+        />
+      </div>
+      {filtered.length === 0 ? (
+        <p className="text-sm text-muted-foreground py-4 text-center">
+          Nenhum template corresponde a "{search.trim()}".
+        </p>
+      ) : (
+        <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+          {filtered.map((template) => (
+            <TemplateRow key={template.id} template={template} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface TemplateRowProps {
+  template: {
+    id: number;
+    name: string;
+    language: string;
+    status: string;
+    alias?: string | null;
+    description?: string | null;
+    components?: PreviewComponent[];
+  };
+}
+
+/**
+ * Uma linha de template com o apelido local. O nome da Meta fica sempre visível — é ele que
+ * identifica o template do lado de lá e é ele que a campanha envia.
+ */
+function TemplateRow({ template }: TemplateRowProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [alias, setAlias] = useState(template.alias ?? "");
+  const [description, setDescription] = useState(template.description ?? "");
+  const utils = trpc.useUtils();
+
+  const updateAliasMutation = trpc.whatsappBusiness.updateTemplateAlias.useMutation({
+    onSuccess: () => {
+      toast.success("Apelido salvo!");
+      utils.whatsappBusiness.getTemplates.invalidate();
+      setIsOpen(false);
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  return (
+    <div className="flex items-start justify-between gap-3 p-2 rounded-lg border border-gray-200 dark:border-gray-700">
+      <div className="min-w-0">
+        <p className="text-sm font-medium truncate">{template.alias || template.name}</p>
+        {template.alias && (
+          <p className="text-xs text-muted-foreground font-mono truncate">{template.name}</p>
+        )}
+        {template.description && (
+          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{template.description}</p>
+        )}
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        {/* Templates não aprovados também podem ser apelidados — só não aparecem para seleção. */}
+        {template.status !== "APPROVED" && (
+          <Badge variant="secondary" className="text-xs">{template.status}</Badge>
+        )}
+        <Badge variant="outline" className="text-xs">{template.language}</Badge>
+        <TemplatePreviewButton
+          templateLabel={template.alias || template.name}
+          components={template.components}
+        />
+        <Dialog
+          open={isOpen}
+          onOpenChange={(open) => {
+            // Ao reabrir, parte sempre do que está salvo — não de uma edição abandonada.
+            if (open) {
+              setAlias(template.alias ?? "");
+              setDescription(template.description ?? "");
+            }
+            setIsOpen(open);
+          }}
+        >
+          <DialogTrigger asChild>
+            <Button variant="ghost" size="sm" aria-label={`Editar apelido de ${template.name}`}>
+              <Edit className="w-4 h-4" />
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Apelido do template</DialogTitle>
+              <DialogDescription>
+                Um nome que faça sentido para você. Só vale aqui no sistema — na Meta o template
+                continua sendo <span className="font-mono">{template.name}</span>.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor={`alias-${template.id}`}>Apelido</Label>
+                <Input
+                  id={`alias-${template.id}`}
+                  value={alias}
+                  maxLength={120}
+                  placeholder="Ex.: Promoção Black Friday"
+                  onChange={(e) => setAlias(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor={`desc-${template.id}`}>Descrição</Label>
+                <Textarea
+                  id={`desc-${template.id}`}
+                  value={description}
+                  maxLength={500}
+                  rows={3}
+                  placeholder="Quando usar este template?"
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setIsOpen(false)}
+                disabled={updateAliasMutation.isPending}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={() =>
+                  updateAliasMutation.mutate({
+                    templateId: template.id,
+                    alias: alias.trim() || null,
+                    description: description.trim() || null,
+                  })
+                }
+                disabled={updateAliasMutation.isPending}
+              >
+                {updateAliasMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Salvar
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </div>
   );
 }

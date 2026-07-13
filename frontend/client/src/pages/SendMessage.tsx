@@ -6,25 +6,23 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { Bot, Loader2, MessageSquare, Send } from "lucide-react";
+import { Loader2, Send } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 
 export default function SendMessage() {
-  const [platform, setPlatform] = useState<"whatsapp" | "telegram">("whatsapp");
   const [selectedConnection, setSelectedConnection] = useState("");
   const [recipient, setRecipient] = useState("");
   const [message, setMessage] = useState("");
 
   const { data: whatsappConnections, refetch: refetchWhatsapp } = trpc.whatsapp.list.useQuery();
-  const { data: telegramConnections } = trpc.telegram.list.useQuery();
-  
+
   const syncWhatsappMutation = trpc.whatsapp.sync.useMutation({
     onSuccess: () => {
       refetchWhatsapp();
     },
   });
-  
+
   // Sincronizar conexões ao carregar a página
   useEffect(() => {
     syncWhatsappMutation.mutate();
@@ -41,19 +39,7 @@ export default function SendMessage() {
     },
   });
 
-  const sendTelegramMutation = trpc.telegram.sendMessage.useMutation({
-    onSuccess: () => {
-      toast.success("Mensagem enviada com sucesso!");
-      setRecipient("");
-      setMessage("");
-    },
-    onError: (error) => {
-      toast.error(error.message);
-    },
-  });
-
   const activeWhatsappConnections = whatsappConnections?.filter(c => c.status === "connected") || [];
-  const activeTelegramConnections = telegramConnections?.filter(c => c.status === "connected") || [];
 
   const handleSend = () => {
     if (!selectedConnection) {
@@ -69,30 +55,18 @@ export default function SendMessage() {
       return;
     }
 
-    if (platform === "whatsapp") {
-      const connection = whatsappConnections?.find(c => c.id.toString() === selectedConnection);
-      if (!connection) return;
+    const connection = whatsappConnections?.find(c => c.id.toString() === selectedConnection);
+    if (!connection) return;
 
-      sendWhatsappMutation.mutate({
-        connectionId: connection.id,
-        identification: connection.identification,
-        recipient: recipient.trim(),
-        message: message.trim(),
-      });
-    } else {
-      const connection = telegramConnections?.find(c => c.id.toString() === selectedConnection);
-      if (!connection) return;
-
-      sendTelegramMutation.mutate({
-        connectionId: connection.id,
-        botToken: connection.botToken,
-        chatId: recipient.trim(),
-        message: message.trim(),
-      });
-    }
+    sendWhatsappMutation.mutate({
+      connectionId: connection.id,
+      identification: connection.identification,
+      recipient: recipient.trim(),
+      message: message.trim(),
+    });
   };
 
-  const isPending = sendWhatsappMutation.isPending || sendTelegramMutation.isPending;
+  const isPending = sendWhatsappMutation.isPending;
 
   return (
     <DashboardLayout>
@@ -101,118 +75,55 @@ export default function SendMessage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Enviar Mensagem</h1>
           <p className="text-gray-600 mt-2">
-            Envie mensagens via WhatsApp ou Telegram
+            Envie mensagens via WhatsApp
           </p>
-        </div>
-
-        {/* Platform Selection */}
-        <div className="flex space-x-4">
-          <Button
-            variant={platform === "whatsapp" ? "default" : "outline"}
-            className="flex-1"
-            onClick={() => {
-              setPlatform("whatsapp");
-              setSelectedConnection("");
-              setRecipient("");
-            }}
-          >
-            <MessageSquare className="w-4 h-4 mr-2" />
-            WhatsApp
-          </Button>
-          <Button
-            variant={platform === "telegram" ? "default" : "outline"}
-            className="flex-1"
-            onClick={() => {
-              setPlatform("telegram");
-              setSelectedConnection("");
-              setRecipient("");
-            }}
-          >
-            <Bot className="w-4 h-4 mr-2" />
-            Telegram
-          </Button>
         </div>
 
         {/* Send Form */}
         <Card>
           <CardHeader>
-            <CardTitle>
-              {platform === "whatsapp" ? "Enviar via WhatsApp" : "Enviar via Telegram"}
-            </CardTitle>
+            <CardTitle>Enviar via WhatsApp</CardTitle>
             <CardDescription>
-              {platform === "whatsapp"
-                ? "Envie mensagens para números de WhatsApp"
-                : "Envie mensagens para chats do Telegram"}
+              Envie mensagens para números de WhatsApp
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {/* Connection Selection */}
             <div className="space-y-2">
               <Label htmlFor="connection">Conexão</Label>
-              {platform === "whatsapp" ? (
-                activeWhatsappConnections.length > 0 ? (
-                  <Select value={selectedConnection} onValueChange={setSelectedConnection}>
-                    <SelectTrigger id="connection">
-                      <SelectValue placeholder="Selecione uma conexão WhatsApp" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {activeWhatsappConnections.map((conn) => (
-                        <SelectItem key={conn.id} value={conn.id.toString()}>
-                          {conn.identification} {conn.phoneNumber && `(${conn.phoneNumber})`}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <p className="text-sm text-yellow-800">
-                      Nenhuma conexão WhatsApp ativa. Conecte um WhatsApp primeiro.
-                    </p>
-                  </div>
-                )
+              {activeWhatsappConnections.length > 0 ? (
+                <Select value={selectedConnection} onValueChange={setSelectedConnection}>
+                  <SelectTrigger id="connection">
+                    <SelectValue placeholder="Selecione uma conexão WhatsApp" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {activeWhatsappConnections.map((conn) => (
+                      <SelectItem key={conn.id} value={conn.id.toString()}>
+                        {conn.identification} {conn.phoneNumber && `(${conn.phoneNumber})`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               ) : (
-                activeTelegramConnections.length > 0 ? (
-                  <Select value={selectedConnection} onValueChange={setSelectedConnection}>
-                    <SelectTrigger id="connection">
-                      <SelectValue placeholder="Selecione um bot Telegram" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {activeTelegramConnections.map((conn) => (
-                        <SelectItem key={conn.id} value={conn.id.toString()}>
-                          @{conn.botUsername || "Bot"}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <p className="text-sm text-yellow-800">
-                      Nenhum bot Telegram ativo. Conecte um bot primeiro.
-                    </p>
-                  </div>
-                )
+                <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-sm text-yellow-800">
+                    Nenhuma conexão WhatsApp ativa. Conecte um WhatsApp primeiro.
+                  </p>
+                </div>
               )}
             </div>
 
             {/* Recipient */}
             <div className="space-y-2">
-              <Label htmlFor="recipient">
-                {platform === "whatsapp" ? "Número WhatsApp" : "Chat ID"}
-              </Label>
+              <Label htmlFor="recipient">Número WhatsApp</Label>
               <Input
                 id="recipient"
-                placeholder={
-                  platform === "whatsapp"
-                    ? "5511999999999"
-                    : "123456789"
-                }
+                placeholder="5511999999999"
                 value={recipient}
                 onChange={(e) => setRecipient(e.target.value)}
               />
               <p className="text-xs text-gray-500">
-                {platform === "whatsapp"
-                  ? "Digite o número com código do país (ex: 5511999999999)"
-                  : "Digite o ID do chat ou usuário"}
+                Digite o número com código do país (ex: 5511999999999)
               </p>
             </div>
 
@@ -259,21 +170,12 @@ export default function SendMessage() {
             <CardTitle className="text-lg">Dicas</CardTitle>
           </CardHeader>
           <CardContent>
-            {platform === "whatsapp" ? (
-              <ul className="space-y-2 text-sm text-gray-600">
-                <li>• Use o formato internacional: código do país + DDD + número</li>
-                <li>• Exemplo: 5511999999999 (Brasil)</li>
-                <li>• Não use espaços, traços ou parênteses</li>
-                <li>• O número deve estar salvo no WhatsApp conectado</li>
-              </ul>
-            ) : (
-              <ul className="space-y-2 text-sm text-gray-600">
-                <li>• Para obter o Chat ID, use o bot @userinfobot</li>
-                <li>• Para grupos, adicione o bot e use o comando /id</li>
-                <li>• Chat IDs podem ser negativos para grupos</li>
-                <li>• O bot deve ter permissão para enviar mensagens</li>
-              </ul>
-            )}
+            <ul className="space-y-2 text-sm text-gray-600">
+              <li>• Use o formato internacional: código do país + DDD + número</li>
+              <li>• Exemplo: 5511999999999 (Brasil)</li>
+              <li>• Não use espaços, traços ou parênteses</li>
+              <li>• O número deve estar salvo no WhatsApp conectado</li>
+            </ul>
           </CardContent>
         </Card>
       </div>
